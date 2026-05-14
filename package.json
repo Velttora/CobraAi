@@ -1,0 +1,20 @@
+{
+  "name": "renova",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.1.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "format": "prettier --write .",
+    "db:generate": "pnpm --filter @renova/db db:generate",
+    "db:migrate": "pnpm --filter @renova/db db:migrate"
+  },
+  "devDependencies": {}
+}

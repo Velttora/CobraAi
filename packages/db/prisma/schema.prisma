@@ -1,0 +1,198 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  agent
+  seller
+}
+
+enum InvoiceStatus {
+  due_soon
+  overdue
+  paid
+  in_collection
+}
+
+enum MessageChannel {
+  whatsapp
+  voice
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageStatus {
+  queued
+  sent
+  delivered
+  read
+  failed
+  completed
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  clerkOrgId String  @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients      Client[]
+  importBatches ImportBatch[]
+  conversations Conversation[]
+  campaigns    Campaign[]
+}
+
+model Client {
+  id             String   @id @default(cuid())
+  organizationId String
+  documentId     String?
+  name           String
+  phone          String?
+  email          String?
+  sellerId       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invoices     Invoice[]
+  conversations Conversation[]
+  events       CollectionEvent[]
+
+  @@index([organizationId])
+  @@index([organizationId, phone])
+  @@index([organizationId, documentId])
+}
+
+model Invoice {
+  id        String        @id @default(cuid())
+  clientId  String
+  externalId String?
+  amount    Decimal       @db.Decimal(12, 2)
+  currency  String        @default("COP")
+  dueDate   DateTime
+  status    InvoiceStatus @default(due_soon)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+  @@index([status, dueDate])
+}
+
+model ImportBatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  storageKey     String
+  status         String
+  totalRows      Int      @default(0)
+  successRows    Int      @default(0)
+  errorRows      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  errors       ImportRowError[]
+
+  @@index([organizationId])
+}
+
+model ImportRowError {
+  id            String @id @default(cuid())
+  importBatchId String
+  rowNumber     Int
+  reason        String
+  rawData       Json
+
+  importBatch ImportBatch @relation(fields: [importBatchId], references: [id])
+
+  @@index([importBatchId])
+}
+
+model Conversation {
+  id             String   @id @default(cuid())
+  organizationId String
+  clientId       String
+  channel        MessageChannel
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  client       Client       @relation(fields: [clientId], references: [id])
+  messages     Message[]
+  voiceCalls   VoiceCall[]
+
+  @@index([organizationId])
+  @@index([clientId])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  direction      MessageDirection
+  status         MessageStatus    @default(queued)
+  providerSid    String?          @unique
+  body           String?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+}
+
+model VoiceCall {
+  id             String        @id @default(cuid())
+  conversationId String
+  providerSid    String?       @unique
+  status         MessageStatus @default(queued)
+  transcript     String?
+  outcome        String?
+  metadata       Json?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  channel        MessageChannel
+  status         String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model CollectionEvent {
+  id        String   @id @default(cuid())
+  clientId  String
+  type      String
+  actorId   String?
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
