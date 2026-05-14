@@ -55,3 +55,6 @@ docker compose up -d postgres
 
 Copy `.env.example` to `.env` and fill provider credentials before running app
 flows that touch Clerk, Twilio, OpenAI, S3/R2, Resend, or Sentry.
+
+Postgres is exposed on host port `5433` to avoid conflicts with a local
+Postgres already using `5432`.

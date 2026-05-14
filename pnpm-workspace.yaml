@@ -3,3 +3,4 @@ packages:
   - "packages/*"
 allowBuilds:
   '@clerk/shared': set this to true or false
+  '@nestjs/core': set this to true or false

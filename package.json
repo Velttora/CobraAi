@@ -29,5 +29,13 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.59.3",
     "vitest": "^4.1.6"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
   }
 }
