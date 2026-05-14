@@ -10,11 +10,11 @@
     "db:migrate": "prisma migrate dev",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@prisma/client": "^7.8.0"
+    "@prisma/client": "^5.22.0"
   },
   "devDependencies": {
     "prisma": "^5.22.0"

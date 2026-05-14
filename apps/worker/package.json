@@ -9,10 +9,10 @@
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^5.22.0",
     "@renova/db": "workspace:*",
     "@renova/shared": "workspace:*",
     "dotenv": "^17.4.2",

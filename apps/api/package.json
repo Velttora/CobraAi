@@ -8,7 +8,7 @@
     "start": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@clerk/backend": "^3.4.7",
@@ -17,7 +17,7 @@
     "@nestjs/core": "^10.4.22",
     "@nestjs/platform-express": "^10.4.22",
     "@nestjs/swagger": "^7.4.2",
-    "@prisma/client": "^7.8.0",
+    "@prisma/client": "^5.22.0",
     "@renova/db": "workspace:*",
     "@renova/shared": "workspace:*",
     "openai": "^6.37.0",

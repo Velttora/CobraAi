@@ -27,6 +27,16 @@ packages/
   config/   Shared lint and TypeScript config
 ```
 
+Backend modules use Screaming Architecture names:
+
+```txt
+organizations, users, sellers, cartera, clients, invoices, conversations,
+voice, campaigns, payments, erp-sync
+```
+
+The broader technical diagram mentions Redis/BullMQ and JWT auth, but this MVP
+intentionally replaces them with Clerk and a Postgres-backed queue.
+
 ## Week 0 Commands
 
 ```bash
