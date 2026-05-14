@@ -4,12 +4,14 @@
     "declaration": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "incremental": true,
+    "incremental": false,
     "module": "CommonJS",
     "moduleResolution": "Node",
     "outDir": "./dist",
+    "rootDir": "./src",
     "sourceMap": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals"],
+    "paths": {}
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

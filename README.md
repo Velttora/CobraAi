@@ -41,16 +41,12 @@ intentionally replaces them with Clerk and a Postgres-backed queue.
 
 ```bash
 pnpm install
+docker compose up -d postgres
 pnpm db:generate
+pnpm db:migrate
 pnpm lint
 pnpm typecheck
 pnpm build
-```
-
-For local infrastructure:
-
-```bash
-docker compose up -d postgres
 ```
 
 Copy `.env.example` to `.env` and fill provider credentials before running app
@@ -58,3 +54,38 @@ flows that touch Clerk, Twilio, OpenAI, S3/R2, Resend, or Sentry.
 
 Postgres is exposed on host port `5433` to avoid conflicts with a local
 Postgres already using `5432`.
+
+## Week 1 Cartera Import
+
+With `pnpm dev` running, open the upload UI at:
+
+```txt
+http://localhost:3000
+```
+
+Download the canonical Excel template:
+
+```bash
+curl -o cartera-template.xlsx http://localhost:4000/api/cartera/template.xlsx
+```
+
+Upload an Excel file:
+
+```bash
+curl -X POST http://localhost:4000/api/cartera/import \
+  -H "x-renova-org-id: dev_org" \
+  -H "x-renova-org-name: Renova Dev Organization" \
+  -F "file=@cartera-template.xlsx"
+```
+
+If the response includes `errorReportUrl`, download row-level errors:
+
+```bash
+curl -o import-errors.csv http://localhost:4000/api/cartera/imports/<importBatchId>/errors.csv
+```
+
+Check import status:
+
+```bash
+curl http://localhost:4000/api/cartera/imports/<importBatchId>
+```

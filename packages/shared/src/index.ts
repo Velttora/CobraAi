@@ -22,7 +22,15 @@ export const carteraImportRowSchema = z.object({
   invoiceExternalId: z.string().optional(),
   amount: z.coerce.number().positive(),
   currency: z.string().default("COP"),
-  dueDate: z.coerce.date()
+  issueDate: z.coerce.date().optional(),
+  dueDate: z.coerce.date(),
+  status: invoiceStatusSchema.optional(),
+  daysPastDue: z.coerce.number().int().nonnegative().optional(),
+  creditDays: z.coerce.number().int().nonnegative().optional(),
+  paymentPromiseDate: z.coerce.date().optional(),
+  preferredChannel: z.string().optional(),
+  lastContactAt: z.coerce.date().optional(),
+  riskLabel: z.string().optional()
 });
 
 export type CarteraImportRow = z.infer<typeof carteraImportRowSchema>;

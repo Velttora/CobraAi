@@ -2,9 +2,14 @@
   "name": "@renova/db",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -14,7 +19,8 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
     "prisma": "^5.22.0"

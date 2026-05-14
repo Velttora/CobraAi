@@ -1,3 +1,5 @@
+import { CarteraImportForm } from "../components/cartera-import-form";
+
 const capabilities = [
   "Cartera",
   "Clientes",
@@ -31,6 +33,7 @@ export default function HomePage() {
           </span>
         ))}
       </div>
+      <CarteraImportForm />
     </main>
   );
 }
