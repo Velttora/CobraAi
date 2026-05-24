@@ -3,7 +3,7 @@ const nextConfig = {
   experimental: {
     typedRoutes: true
   },
-  transpilePackages: ["@renova/shared"]
+  transpilePackages: ["@cobrai/ui"]
 };
 
 export default nextConfig;

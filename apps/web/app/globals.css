@@ -6,8 +6,17 @@
   color-scheme: light;
 }
 
+.dark {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
-  background: #f8fafc;
+  background: #fafafa;
   color: #0f172a;
+}
+
+.dark body {
+  background: #0a0806;
+  color: #f1f5f9;
 }
