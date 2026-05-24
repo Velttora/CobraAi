@@ -13,7 +13,7 @@ import {
   ReqContext,
   type RequestContext
 } from "../common/decorators/request-context.decorator";
-import { CreatePortfolioDto, UpdatePortfolioDto } from "./dto/portfolio.dto";
+import { CreatePortfolioDto, UpdatePortfolioDto, UpdatePortfolioStrategyDto } from "./dto/portfolio.dto";
 import { PortfoliosService } from "./portfolios.service";
 
 @Controller("v1/portfolios")
@@ -42,8 +42,28 @@ export class PortfoliosController {
     @ReqContext() ctx: RequestContext,
     @Body() dto: CreatePortfolioDto
   ) {
-    const portfolio = await this.portfoliosService.create(ctx.tenantId, dto);
+    const portfolio = await this.portfoliosService.create(
+      ctx.tenantId,
+      dto,
+      ctx.userId
+    );
     return successResponse(portfolio);
+  }
+
+  @Patch(":id/strategy")
+  async updateStrategy(
+    @ReqContext() ctx: RequestContext,
+    @Param("id") id: string,
+    @Body() dto: UpdatePortfolioStrategyDto
+  ) {
+    return successResponse(
+      await this.portfoliosService.updateStrategy(
+        ctx.tenantId,
+        id,
+        dto,
+        ctx.userId
+      )
+    );
   }
 
   @Get(":id")

@@ -132,19 +132,37 @@ export class WorkflowsService {
 
   async getQueue(tenantId: string) {
     const today = startOfTodayUtc();
-    const debts = await this.prisma.debt.findMany({
+    const enabledPortfolios = await this.prisma.portfolio.findMany({
       where: {
         tenantId,
         deletedAt: null,
-        status: { in: ["active", "contacted", "promised"] }
+        automationStatus: { not: "none" }
       },
-      include: { debtor: true },
-      take: 200
+      select: { id: true, name: true }
     });
+    const portfolioIds = enabledPortfolios.map((p) => p.id);
+    const portfolioNameById = new Map(
+      enabledPortfolios.map((p) => [p.id, p.name])
+    );
+
+    const debts =
+      portfolioIds.length === 0
+        ? []
+        : await this.prisma.debt.findMany({
+            where: {
+              tenantId,
+              deletedAt: null,
+              portfolioId: { in: portfolioIds },
+              status: { in: ["active", "contacted", "promised"] }
+            },
+            include: { debtor: true },
+            take: 200
+          });
 
     const activeRules = await this.prisma.workflowRule.findMany({
       where: {
         tenantId,
+        portfolioId: { in: portfolioIds },
         isActive: true,
         deletedAt: null,
         trigger: "schedule"
@@ -156,14 +174,25 @@ export class WorkflowsService {
       string,
       { channel: string; count: number; debts: unknown[] }
     > = {};
+    const byPortfolio: Record<
+      string,
+      {
+        portfolio_id: string;
+        portfolio_name: string;
+        total: number;
+        by_channel: Record<string, number>;
+      }
+    > = {};
 
     for (const debt of debts) {
-      const matching = activeRules.filter((rule) =>
-        this.rules.matchesCondition(
-          debt,
-          debt.debtor,
-          rule.condition as Record<string, unknown>
-        )
+      const matching = activeRules.filter(
+        (rule) =>
+          rule.portfolioId === debt.portfolioId &&
+          this.rules.matchesCondition(
+            debt,
+            debt.debtor,
+            rule.condition as Record<string, unknown>
+          )
       );
       if (matching.length === 0) continue;
 
@@ -175,12 +204,26 @@ export class WorkflowsService {
       grouped[channel].count += 1;
       grouped[channel].debts.push({
         debt_id: debt.id,
+        portfolio_id: debt.portfolioId,
         debtor_name: debt.debtor.name,
         amount_outstanding: decimalToNumber(debt.amountOutstanding),
         ai_score: debt.aiScore,
         rule_id: rule.id,
         rule_name: rule.name
       });
+
+      const portfolioKey = debt.portfolioId ?? "unknown";
+      if (!byPortfolio[portfolioKey]) {
+        byPortfolio[portfolioKey] = {
+          portfolio_id: portfolioKey,
+          portfolio_name: portfolioNameById.get(portfolioKey) ?? portfolioKey,
+          total: 0,
+          by_channel: {}
+        };
+      }
+      byPortfolio[portfolioKey].total += 1;
+      byPortfolio[portfolioKey].by_channel[channel] =
+        (byPortfolio[portfolioKey].by_channel[channel] ?? 0) + 1;
     }
 
     const alreadyExecuted = await this.prisma.workflowExecution.findMany({
@@ -234,6 +277,7 @@ export class WorkflowsService {
       total: items.reduce((sum, row) => sum + row.count, 0),
       scheduled_today: items.reduce((sum, row) => sum + row.count, 0),
       by_channel: byChannel,
+      by_portfolio: Object.values(byPortfolio),
       deferred_pipeline: {
         upcoming_debts: upcomingDebts.length,
         future_debts: futureDebts.length,
@@ -288,17 +332,25 @@ export class WorkflowsService {
     };
   }
 
-  async listRules(tenantId: string) {
+  async listRules(tenantId: string, portfolioId: string) {
     return this.prisma.workflowRule.findMany({
-      where: { tenantId, deletedAt: null },
+      where: { tenantId, portfolioId, deletedAt: null },
       orderBy: [{ isActive: "desc" }, { priority: "asc" }]
     });
   }
 
   async createRule(tenantId: string, dto: CreateWorkflowRuleDto) {
-    return this.prisma.workflowRule.create({
+    const portfolio = await this.prisma.portfolio.findFirst({
+      where: { id: dto.portfolio_id, tenantId, deletedAt: null }
+    });
+    if (!portfolio) {
+      throw new NotFoundException("Portafolio no encontrado");
+    }
+
+    const rule = await this.prisma.workflowRule.create({
       data: {
         tenantId,
+        portfolioId: dto.portfolio_id,
         name: dto.name,
         trigger: dto.trigger,
         condition: dto.condition as Prisma.InputJsonValue,
@@ -309,11 +361,14 @@ export class WorkflowsService {
         isActive: dto.is_active ?? true
       }
     });
+
+    await this.syncPortfolioAutomationStatus(tenantId, dto.portfolio_id);
+    return rule;
   }
 
   async updateRule(tenantId: string, id: string, dto: UpdateWorkflowRuleDto) {
-    await this.getRule(tenantId, id);
-    return this.prisma.workflowRule.update({
+    const rule = await this.getRule(tenantId, id);
+    const updated = await this.prisma.workflowRule.update({
       where: { id },
       data: {
         name: dto.name,
@@ -325,14 +380,93 @@ export class WorkflowsService {
         isActive: dto.is_active
       }
     });
+    if (rule.portfolioId) {
+      await this.syncPortfolioAutomationStatus(tenantId, rule.portfolioId);
+    }
+    return updated;
   }
 
   async deactivateRule(tenantId: string, id: string) {
-    await this.getRule(tenantId, id);
-    return this.prisma.workflowRule.update({
+    const rule = await this.getRule(tenantId, id);
+    const updated = await this.prisma.workflowRule.update({
       where: { id },
       data: { isActive: false, deletedAt: new Date() }
     });
+    if (rule.portfolioId) {
+      await this.syncPortfolioAutomationStatus(tenantId, rule.portfolioId);
+    }
+    return updated;
+  }
+
+  async evaluateTenant(
+    tenantId: string
+  ): Promise<{ contacts: number; by_portfolio: Record<string, number> }> {
+    const enabledPortfolios = await this.prisma.portfolio.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        automationStatus: { not: "none" }
+      },
+      select: { id: true }
+    });
+
+    let contacts = 0;
+    const byPortfolio: Record<string, number> = {};
+
+    for (const portfolio of enabledPortfolios) {
+      const scheduleRules = await this.prisma.workflowRule.findMany({
+        where: {
+          tenantId,
+          portfolioId: portfolio.id,
+          trigger: "schedule",
+          isActive: true,
+          deletedAt: null
+        },
+        orderBy: { priority: "asc" }
+      });
+
+      const debts = await this.prisma.debt.findMany({
+        where: {
+          tenantId,
+          portfolioId: portfolio.id,
+          deletedAt: null,
+          status: { in: ["active", "contacted"] }
+        },
+        include: { debtor: { include: { consents: true } } }
+      });
+
+      let portfolioContacts = 0;
+      for (const debt of debts) {
+        for (const rule of scheduleRules) {
+          if (
+            !this.rules.matchesCondition(
+              debt,
+              debt.debtor,
+              rule.condition as Record<string, unknown>
+            )
+          ) {
+            continue;
+          }
+          const sent = await this.executeRuleAction(tenantId, debt, rule);
+          if (sent) {
+            contacts += 1;
+            portfolioContacts += 1;
+          }
+          break;
+        }
+
+        if (await this.shouldEscalateLegal(debt)) {
+          await this.applyTransition(tenantId, debt.id, "NO_RESPONSE_THRESHOLD");
+          await this.escalateDebt(tenantId, debt.id, "legal_auto", "legal_risk");
+        }
+      }
+
+      if (portfolioContacts > 0) {
+        byPortfolio[portfolio.id] = portfolioContacts;
+      }
+    }
+
+    return { contacts, by_portfolio: byPortfolio };
   }
 
   async runSchedulerCycle(): Promise<{ processed: number; contacts: number }> {
@@ -400,48 +534,73 @@ export class WorkflowsService {
       await this.evaluateTriggerRules(tenantId, promise.debtId, "promise_broken");
     }
 
-    const scheduleRules = await this.prisma.workflowRule.findMany({
-      where: {
-        tenantId,
-        trigger: "schedule",
-        isActive: true,
-        deletedAt: null
-      },
-      orderBy: { priority: "asc" }
-    });
-
-    const debts = await this.prisma.debt.findMany({
-      where: {
-        tenantId,
-        deletedAt: null,
-        status: { in: ["active", "contacted"] }
-      },
-      include: { debtor: { include: { consents: true } } }
-    });
-
-    for (const debt of debts) {
-      for (const rule of scheduleRules) {
-        if (
-          !this.rules.matchesCondition(
-            debt,
-            debt.debtor,
-            rule.condition as Record<string, unknown>
-          )
-        ) {
-          continue;
-        }
-        const sent = await this.executeRuleAction(tenantId, debt, rule);
-        if (sent) contacts += 1;
-        break;
-      }
-
-      if (await this.shouldEscalateLegal(debt)) {
-        await this.applyTransition(tenantId, debt.id, "NO_RESPONSE_THRESHOLD");
-        await this.escalateDebt(tenantId, debt.id, "legal_auto", "legal_risk");
-      }
-    }
+    const scheduleEvaluation = await this.evaluateTenant(tenantId);
+    contacts += scheduleEvaluation.contacts;
 
     return { processed, contacts };
+  }
+
+  private async syncPortfolioAutomationStatus(
+    tenantId: string,
+    portfolioId: string
+  ): Promise<void> {
+    const portfolio = await this.prisma.portfolio.findFirst({
+      where: { id: portfolioId, tenantId, deletedAt: null }
+    });
+    if (!portfolio) return;
+
+    const activeRules = await this.prisma.workflowRule.findMany({
+      where: {
+        tenantId,
+        portfolioId,
+        deletedAt: null,
+        isActive: true
+      },
+      select: { condition: true }
+    });
+
+    if (activeRules.length === 0) {
+      await this.prisma.portfolio.update({
+        where: { id: portfolioId },
+        data: { automationStatus: "none", activePackageSlug: null }
+      });
+      return;
+    }
+
+    const packageSlugs = new Set(
+      activeRules
+        .map((rule) => {
+          const condition = rule.condition as Record<string, unknown>;
+          return typeof condition.__source_package === "string"
+            ? condition.__source_package
+            : null;
+        })
+        .filter((slug): slug is string => Boolean(slug))
+    );
+
+    const customRules = activeRules.some((rule) => {
+      const condition = rule.condition as Record<string, unknown>;
+      return !condition.__source_package;
+    });
+
+    if (customRules) {
+      await this.prisma.portfolio.update({
+        where: { id: portfolioId },
+        data: { automationStatus: "custom" }
+      });
+      return;
+    }
+
+    if (packageSlugs.size === 1) {
+      const [slug] = [...packageSlugs];
+      await this.prisma.portfolio.update({
+        where: { id: portfolioId },
+        data: {
+          automationStatus: "package",
+          activePackageSlug: slug ?? null
+        }
+      });
+    }
   }
 
   private async evaluateTriggerRules(
@@ -455,9 +614,18 @@ export class WorkflowsService {
     });
     if (!debt) return;
 
+    if (!debt?.portfolioId) return;
+
+    const portfolio = await this.prisma.portfolio.findFirst({
+      where: { id: debt.portfolioId, tenantId, deletedAt: null },
+      select: { automationStatus: true }
+    });
+    if (!portfolio || portfolio.automationStatus === "none") return;
+
     const rules = await this.prisma.workflowRule.findMany({
       where: {
         tenantId,
+        portfolioId: debt.portfolioId,
         trigger,
         isActive: true,
         deletedAt: null
@@ -466,6 +634,7 @@ export class WorkflowsService {
     });
 
     for (const rule of rules) {
+      if (rule.portfolioId !== debt.portfolioId) continue;
       if (
         !this.rules.matchesCondition(
           debt,
@@ -484,6 +653,10 @@ export class WorkflowsService {
     debt: DebtContext,
     rule: WorkflowRule
   ): Promise<boolean> {
+    if (rule.portfolioId && rule.portfolioId !== debt.portfolioId) {
+      return false;
+    }
+
     const execution = await this.prisma.workflowExecution.create({
       data: {
         tenantId,

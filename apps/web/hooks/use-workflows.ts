@@ -48,6 +48,12 @@ export type WorkflowQueue = {
     count: number;
     debts: unknown[];
   }[];
+  by_portfolio?: {
+    portfolio_id: string;
+    portfolio_name: string;
+    total: number;
+    by_channel: Record<string, number>;
+  }[];
 };
 
 export type WorkflowStats = {
@@ -74,15 +80,17 @@ export function formatWorkflowChannel(channel?: string | null): string {
   return channel === "voice" ? "voice (stub)" : channel;
 }
 
-export function useWorkflowRules() {
+export function useWorkflowRules(portfolioId?: string) {
   const client = useApiClient();
   return useQuery({
-    queryKey: ["workflow-rules"],
+    queryKey: ["workflow-rules", portfolioId],
     queryFn: () =>
       fetchApi<ApiItemResponse<WorkflowRule[]>>(
         client,
-        "/api/v1/workflows/rules"
-      )
+        "/api/v1/workflows/rules",
+        { portfolio_id: portfolioId ?? "" }
+      ),
+    enabled: Boolean(portfolioId)
   });
 }
 
@@ -129,7 +137,7 @@ export function useWorkflowStats() {
   });
 }
 
-export function useToggleWorkflowRule() {
+export function useToggleWorkflowRule(portfolioId?: string) {
   const client = useApiClient();
   const queryClient = useQueryClient();
 
@@ -137,7 +145,8 @@ export function useToggleWorkflowRule() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       patchApi(client, `/api/v1/workflows/rules/${id}`, { is_active: isActive }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["workflow-rules"] });
+      void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", portfolioId] });
       toast.success("Regla actualizada");
     },
     onError: () => toast.error("No se pudo actualizar la regla")
@@ -186,9 +195,11 @@ export function useApplyWorkflowPackage() {
           throw new WorkflowPackageConflictError(
             payload.package_id ?? packageId,
             payload.existing_count ?? 0,
-            (typeof body.message === "string"
-              ? body.message
-              : payload.message) ??
+            (typeof payload.message === "string"
+              ? payload.message
+              : typeof (payload as { message?: string }).message === "string"
+                ? (payload as { message?: string }).message
+                : undefined) ??
               "Este paquete ya fue aplicado. ¿Deseas reemplazar las reglas existentes?"
           );
         }

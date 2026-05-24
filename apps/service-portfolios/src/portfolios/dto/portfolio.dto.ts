@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -20,6 +21,14 @@ export class CreatePortfolioDto {
   @IsOptional()
   @IsIn(["COP", "MXN", "USD", "BRL"])
   currency?: string;
+
+  @IsOptional()
+  @IsIn(["none", "package", "custom"])
+  strategy?: "none" | "package" | "custom";
+
+  @IsOptional()
+  @IsString()
+  package_slug?: string;
 }
 
 export class UpdatePortfolioDto {
@@ -37,4 +46,17 @@ export class UpdatePortfolioDto {
   @IsOptional()
   @IsIn(["active", "paused", "archived"])
   status?: "active" | "paused" | "archived";
+}
+
+export class UpdatePortfolioStrategyDto {
+  @IsIn(["none", "package", "custom"])
+  strategy!: "none" | "package" | "custom";
+
+  @IsOptional()
+  @IsString()
+  package_slug?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  overwrite?: boolean;
 }

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { CreateDebtModal } from "../../../../components/debts/CreateDebtModal";
 import { PortfolioDebtTable } from "../../../../components/portfolios/PortfolioDebtTable";
+import { PortfolioStrategyPanel } from "../../../../components/portfolios/PortfolioStrategyPanel";
+import { StrategyPill } from "../../../../components/portfolios/StrategyPill";
 import { useDebts } from "../../../../hooks/use-debts";
 import {
   usePortfolio,
@@ -14,12 +16,15 @@ import { formatCurrency } from "../../../../lib/formatters";
 import type { PortfolioQuarterStat } from "../../../../lib/types";
 import { toNumber } from "../../../../lib/types";
 
+type DetailTab = "debts" | "automation";
+
 export default function PortfolioDetailPage({
   params
 }: {
   params: { id: string };
 }): React.ReactElement {
   const [activeQuarter, setActiveQuarter] = useState<string | null>(null);
+  const [tab, setTab] = useState<DetailTab>("debts");
   const portfolioQuery = usePortfolio(params.id);
   const statsQuery = usePortfolioStats(params.id);
   const debtsQuery = useDebts({
@@ -49,10 +54,16 @@ export default function PortfolioDetailPage({
             {portfolio?.name ?? "Portafolio"}
           </h1>
           {portfolio ? (
-            <p className="mt-1 text-sm text-slate-500">
-              {portfolio.totalDebts} deudas ·{" "}
-              {formatCurrency(toNumber(portfolio.totalAmount), portfolio.currency)}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="text-sm text-slate-500">
+                {portfolio.totalDebts} deudas ·{" "}
+                {formatCurrency(toNumber(portfolio.totalAmount), portfolio.currency)}
+              </p>
+              <StrategyPill
+                activePackageSlug={portfolio.activePackageSlug}
+                automationStatus={portfolio.automationStatus}
+              />
+            </div>
           ) : null}
         </div>
         <div className="flex gap-2">
@@ -66,14 +77,43 @@ export default function PortfolioDetailPage({
         </div>
       </header>
 
-      <PortfolioDebtTable
-        activeQuarter={activeQuarter}
-        currency={portfolio?.currency ?? "COP"}
-        debts={debts}
-        loading={debtsQuery.isLoading || statsQuery.isLoading}
-        onQuarterChange={setActiveQuarter}
-        quarters={quarters}
-      />
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+        <button
+          className={`border-b-2 px-3 py-2 text-sm ${
+            tab === "debts"
+              ? "border-[#D85A30] font-medium text-[#D85A30]"
+              : "border-transparent text-slate-500"
+          }`}
+          onClick={() => setTab("debts")}
+          type="button"
+        >
+          Deudas
+        </button>
+        <button
+          className={`border-b-2 px-3 py-2 text-sm ${
+            tab === "automation"
+              ? "border-[#D85A30] font-medium text-[#D85A30]"
+              : "border-transparent text-slate-500"
+          }`}
+          onClick={() => setTab("automation")}
+          type="button"
+        >
+          Automatización
+        </button>
+      </div>
+
+      {tab === "automation" ? (
+        <PortfolioStrategyPanel portfolioId={params.id} />
+      ) : (
+        <PortfolioDebtTable
+          activeQuarter={activeQuarter}
+          currency={portfolio?.currency ?? "COP"}
+          debts={debts}
+          loading={debtsQuery.isLoading || statsQuery.isLoading}
+          onQuarterChange={setActiveQuarter}
+          quarters={quarters}
+        />
+      )}
     </section>
   );
 }

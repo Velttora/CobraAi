@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Param, Patch, Post, Body } from "@nestjs/common";
+import { Controller, Delete, Get, Param, Patch, Post, Body, Query, BadRequestException } from "@nestjs/common";
 import { successResponse } from "../common/utils/api.utils";
 import {
   ReqContext,
@@ -30,8 +30,16 @@ export class WorkflowsController {
   }
 
   @Get("rules")
-  async listRules(@ReqContext() ctx: RequestContext) {
-    return successResponse(await this.workflows.listRules(ctx.tenantId));
+  async listRules(
+    @ReqContext() ctx: RequestContext,
+    @Query("portfolio_id") portfolioId?: string
+  ) {
+    if (!portfolioId) {
+      throw new BadRequestException("portfolio_id es requerido");
+    }
+    return successResponse(
+      await this.workflows.listRules(ctx.tenantId, portfolioId)
+    );
   }
 
   @Get("packages")
@@ -52,6 +60,24 @@ export class WorkflowsController {
   ) {
     return successResponse(
       await this.packages.applyPackage(ctx.tenantId, id, dto.overwrite ?? false)
+    );
+  }
+
+  @Post("portfolios/:portfolioId/packages/:id/apply")
+  async applyPackageToPortfolio(
+    @ReqContext() ctx: RequestContext,
+    @Param("portfolioId") portfolioId: string,
+    @Param("id") id: string,
+    @Body() dto: ApplyWorkflowPackageDto
+  ) {
+    return successResponse(
+      await this.packages.applyPackageToPortfolio(
+        ctx.tenantId,
+        portfolioId,
+        id,
+        dto.overwrite ?? false,
+        ctx.userId
+      )
     );
   }
 

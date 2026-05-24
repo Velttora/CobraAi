@@ -5,6 +5,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Min
 } from "class-validator";
 import type {
@@ -14,6 +15,9 @@ import type {
 } from "@cobrai/db";
 
 export class CreateWorkflowRuleDto {
+  @IsUUID()
+  portfolio_id!: string;
+
   @IsString()
   name!: string;
 

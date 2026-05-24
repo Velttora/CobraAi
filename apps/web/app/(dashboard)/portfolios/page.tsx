@@ -1,6 +1,7 @@
 "use client";
 
 import { PortfolioCard } from "../../../components/portfolios/PortfolioCard";
+import { CreatePortfolioModal } from "../../../components/portfolios/CreatePortfolioModal";
 import { CardSkeleton } from "../../../components/shared/Skeleton";
 import { usePortfolios } from "../../../hooks/use-portfolios";
 
@@ -10,13 +11,9 @@ export default function PortfoliosPage(): React.ReactElement {
 
   return (
     <section className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-          Portafolios
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Carteras importadas y su estado de cobranza
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        {motionPortfoliosPageHeader()}
+        <CreatePortfolioModal />
       </header>
 
       {error ? (
@@ -34,5 +31,18 @@ export default function PortfoliosPage(): React.ReactElement {
             ))}
       </div>
     </section>
+  );
+}
+
+function motionPortfoliosPageHeader(): React.ReactElement {
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+        Portafolios
+      </h1>
+      <p className="mt-1 text-sm text-slate-500">
+        Carteras importadas y su estado de cobranza
+      </p>
+    </div>
   );
 }

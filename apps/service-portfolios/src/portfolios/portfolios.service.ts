@@ -1,6 +1,17 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException
+} from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
-import type { Portfolio } from "@cobrai/db";
+import type { Portfolio, WorkflowRule } from "@cobrai/db";
+import {
+  applyPackageToPortfolio,
+  countActivePortfolioRules,
+  deactivatePortfolioRules,
+  resolveAppliedById
+} from "@cobrai/workflow-packages";
 import {
   getCollectionQuarter,
   getQuarterLabel,
@@ -13,7 +24,13 @@ import {
   parsePagination,
   parseSort
 } from "../common/utils/api.utils";
-import type { CreatePortfolioDto, UpdatePortfolioDto } from "./dto/portfolio.dto";
+import type {
+  CreatePortfolioDto,
+  UpdatePortfolioDto,
+  UpdatePortfolioStrategyDto
+} from "./dto/portfolio.dto";
+
+type PortfolioListItem = Portfolio & { rulesCount: number };
 
 @Injectable()
 export class PortfoliosService {
@@ -22,7 +39,12 @@ export class PortfoliosService {
   async list(
     tenantId: string,
     query: Record<string, unknown>
-  ): Promise<{ items: Portfolio[]; total: number; page: number; limit: number }> {
+  ): Promise<{
+    items: PortfolioListItem[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const { page, limit, skip } = parsePagination(query);
     const filters = parseFilters(query);
     const { field, direction } = parseSort(query.sort, [
@@ -44,33 +66,109 @@ export class PortfoliosService {
       ...(filters.status ? { status: filters.status as never } : {})
     };
 
-    const [items, total] = await Promise.all([
+    const [items, total, ruleCounts] = await Promise.all([
       this.prisma.portfolio.findMany({ where, skip, take: limit, orderBy }),
-      this.prisma.portfolio.count({ where })
+      this.prisma.portfolio.count({ where }),
+      this.prisma.workflowRule.groupBy({
+        by: ["portfolioId"],
+        where: {
+          tenantId,
+          deletedAt: null,
+          isActive: true,
+          portfolioId: { not: null }
+        },
+        _count: { _all: true }
+      })
     ]);
 
-    return { items, total, page, limit };
+    const countByPortfolio = new Map(
+      ruleCounts.map((row) => [row.portfolioId!, row._count._all])
+    );
+
+    return {
+      items: items.map((item) => ({
+        ...item,
+        rulesCount: countByPortfolio.get(item.id) ?? 0
+      })),
+      total,
+      page,
+      limit
+    };
   }
 
-  async create(tenantId: string, dto: CreatePortfolioDto): Promise<Portfolio> {
-    return this.prisma.portfolio.create({
+  async create(
+    tenantId: string,
+    dto: CreatePortfolioDto,
+    userId?: string
+  ): Promise<Portfolio & { workflowRules?: WorkflowRule[] }> {
+    const appliedById = await resolveAppliedById(this.prisma, userId);
+
+    const portfolio = await this.prisma.portfolio.create({
       data: {
         tenantId,
         name: dto.name,
         description: dto.description,
-        currency: dto.currency ?? "COP"
+        currency: dto.currency ?? "COP",
+        automationStatus:
+          dto.strategy === "custom"
+            ? "custom"
+            : dto.strategy === "package"
+              ? "package"
+              : "none"
       }
     });
+
+    if (dto.strategy === "package" && dto.package_slug) {
+      await applyPackageToPortfolio(this.prisma, {
+        tenantId,
+        portfolioId: portfolio.id,
+        packageId: dto.package_slug,
+        overwrite: true,
+        appliedById
+      });
+    } else if (dto.strategy === "custom") {
+      await this.prisma.portfolioPackageApplication.create({
+        data: {
+          tenantId,
+          portfolioId: portfolio.id,
+          action: "custom",
+          appliedById
+        }
+      });
+    }
+
+    return this.findOne(tenantId, portfolio.id);
   }
 
-  async findOne(tenantId: string, id: string): Promise<Portfolio> {
+  async findOne(
+    tenantId: string,
+    id: string
+  ): Promise<
+    Portfolio & {
+      rulesCount: number;
+      workflowRules: WorkflowRule[];
+      packageApplications: unknown[];
+    }
+  > {
     const portfolio = await this.prisma.portfolio.findFirst({
-      where: { id, tenantId, deletedAt: null }
+      where: { id, tenantId, deletedAt: null },
+      include: {
+        workflowRules: {
+          where: { deletedAt: null },
+          orderBy: [{ isActive: "desc" }, { priority: "asc" }]
+        },
+        packageApplications: {
+          orderBy: { createdAt: "desc" },
+          take: 20
+        }
+      }
     });
     if (!portfolio) {
       throw new NotFoundException("Portafolio no encontrado");
     }
-    return portfolio;
+
+    const rulesCount = portfolio.workflowRules.filter((r) => r.isActive).length;
+    return { ...portfolio, rulesCount };
   }
 
   async update(
@@ -87,6 +185,138 @@ export class PortfoliosService {
         status: dto.status
       }
     });
+  }
+
+  async updateStrategy(
+    tenantId: string,
+    id: string,
+    dto: UpdatePortfolioStrategyDto,
+    userId?: string
+  ): Promise<Record<string, unknown>> {
+    const portfolio = await this.findOne(tenantId, id);
+    const appliedById = await resolveAppliedById(this.prisma, userId);
+
+    if (dto.strategy === "none") {
+      await deactivatePortfolioRules(this.prisma, tenantId, id);
+      await this.prisma.portfolio.update({
+        where: { id },
+        data: { automationStatus: "none", activePackageSlug: null }
+      });
+      await this.prisma.portfolioPackageApplication.create({
+        data: {
+          tenantId,
+          portfolioId: id,
+          packageSlug: portfolio.activePackageSlug,
+          action: "deactivated",
+          appliedById
+        }
+      });
+      return {
+        automation_status: "none",
+        active_package_slug: null,
+        confirm_required: false
+      };
+    }
+
+    if (dto.strategy === "custom") {
+      await this.prisma.portfolio.update({
+        where: { id },
+        data: { automationStatus: "custom" }
+      });
+      await this.prisma.portfolioPackageApplication.create({
+        data: {
+          tenantId,
+          portfolioId: id,
+          packageSlug: portfolio.activePackageSlug,
+          action: "custom",
+          appliedById
+        }
+      });
+      const updated = await this.findOne(tenantId, id);
+      return { ...updated, confirm_required: false };
+    }
+
+    if (dto.strategy === "package") {
+      if (!dto.package_slug) {
+        throw new BadRequestException("package_slug es requerido");
+      }
+
+      const existingCount = await countActivePortfolioRules(
+        this.prisma,
+        tenantId,
+        id
+      );
+
+      if (existingCount > 0 && !dto.overwrite) {
+        return {
+          confirm_required: true,
+          existing_count: existingCount,
+          package_id: dto.package_slug,
+          automation_status: portfolio.automationStatus,
+          active_package_slug: portfolio.activePackageSlug
+        };
+      }
+
+      const result = await this.applyPackageStrategy(
+        tenantId,
+        id,
+        dto.package_slug,
+        dto.overwrite ?? false,
+        appliedById,
+        portfolio.activePackageSlug
+      );
+
+      const updated = await this.findOne(tenantId, id);
+      return {
+        ...updated,
+        confirm_required: false,
+        rules_created: result.rules_created,
+        rules_replaced: result.rules_replaced
+      };
+    }
+
+    throw new BadRequestException("Estrategia inválida");
+  }
+
+  private async applyPackageStrategy(
+    tenantId: string,
+    portfolioId: string,
+    packageId: string,
+    overwrite: boolean,
+    appliedById: string | undefined,
+    previousPackageSlug: string | null
+  ) {
+    try {
+      return await applyPackageToPortfolio(this.prisma, {
+        tenantId,
+        portfolioId,
+        packageId,
+        overwrite,
+        appliedById,
+        previousPackageSlug
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error as Error & { code?: string }).code === "PACKAGE_ALREADY_APPLIED"
+      ) {
+        const err = error as Error & {
+          package_id: string;
+          existing_count: number;
+        };
+        throw new ConflictException({
+          code: "PACKAGE_ALREADY_APPLIED",
+          message:
+            "Este portafolio ya tiene reglas activas. Confirma si deseas reemplazarlas.",
+          package_id: err.package_id,
+          existing_count: err.existing_count
+        });
+      }
+      if (error instanceof Error && error.message.includes("no encontrado")) {
+        throw new NotFoundException(error.message);
+      }
+      throw error;
+    }
   }
 
   async softDelete(tenantId: string, id: string): Promise<Portfolio> {

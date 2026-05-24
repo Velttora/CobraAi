@@ -28,11 +28,36 @@ export interface Portfolio {
   name: string;
   description?: string | null;
   status: string;
+  automationStatus?: "none" | "package" | "custom";
+  activePackageSlug?: string | null;
+  rulesCount?: number;
   totalDebts: number;
   totalAmount: string | number;
   currency: string;
   importedAt?: string | null;
   createdAt: string;
+  workflowRules?: WorkflowRule[];
+  packageApplications?: PortfolioPackageApplication[];
+}
+
+export interface PortfolioPackageApplication {
+  id: string;
+  packageSlug?: string | null;
+  action: string;
+  createdAt: string;
+}
+
+export interface WorkflowRule {
+  id: string;
+  portfolioId?: string | null;
+  name: string;
+  trigger: string;
+  condition: Record<string, unknown>;
+  action: string;
+  channel?: string | null;
+  delayHours: number;
+  priority: number;
+  isActive: boolean;
 }
 
 export interface Debtor {

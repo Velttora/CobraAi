@@ -3,18 +3,17 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import type { Prisma } from "@cobrai/db";
 import { PrismaService } from "@cobrai/db";
 import {
+  applyPackageToPortfolio,
+  applyPackageToTenant,
+  countPortfolioPackageRules,
   getWorkflowPackageDefinition,
   getWorkflowPackageDefinitions,
-  toPackageSummary
-} from "./workflow-packages.registry";
-import {
-  PACKAGE_SOURCE_KEY,
+  toPackageSummary,
   type WorkflowPackageDefinition,
   type WorkflowPackageSummary
-} from "./workflow-packages.types";
+} from "@cobrai/workflow-packages";
 
 @Injectable()
 export class WorkflowPackagesService {
@@ -34,7 +33,15 @@ export class WorkflowPackagesService {
 
   async countAppliedRules(tenantId: string, packageId: string): Promise<number> {
     return this.prisma.workflowRule.count({
-      where: this.packageRuleWhere(tenantId, packageId)
+      where: {
+        tenantId,
+        portfolioId: null,
+        deletedAt: null,
+        condition: {
+          path: ["__source_package"],
+          equals: packageId
+        }
+      }
     });
   }
 
@@ -47,61 +54,98 @@ export class WorkflowPackagesService {
     rules_created: number;
     rules_replaced: number;
   }> {
-    const pkg = this.getPackage(packageId);
-    const existingCount = await this.countAppliedRules(tenantId, packageId);
+    this.getPackage(packageId);
 
-    if (existingCount > 0 && !overwrite) {
-      throw new ConflictException({
-        code: "PACKAGE_ALREADY_APPLIED",
-        message:
-          "Este paquete ya fue aplicado. Confirma si deseas reemplazar las reglas existentes.",
-        package_id: packageId,
-        existing_count: existingCount
-      });
+    try {
+      return await applyPackageToTenant(this.prisma, tenantId, packageId, overwrite);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error as Error & { code?: string }).code === "PACKAGE_ALREADY_APPLIED"
+      ) {
+        const err = error as Error & {
+          package_id: string;
+          existing_count: number;
+        };
+        throw new ConflictException({
+          code: "PACKAGE_ALREADY_APPLIED",
+          message:
+            "Este paquete ya fue aplicado. Confirma si deseas reemplazar las reglas existentes.",
+          package_id: err.package_id,
+          existing_count: err.existing_count
+        });
+      }
+      throw error;
     }
-
-    let rulesReplaced = 0;
-
-    if (existingCount > 0 && overwrite) {
-      const replaced = await this.prisma.workflowRule.updateMany({
-        where: this.packageRuleWhere(tenantId, packageId),
-        data: { isActive: false, deletedAt: new Date() }
-      });
-      rulesReplaced = replaced.count;
-    }
-
-    await this.prisma.workflowRule.createMany({
-      data: pkg.rules.map((rule) => ({
-        tenantId,
-        name: rule.name,
-        trigger: rule.trigger as never,
-        condition: {
-          ...rule.condition,
-          [PACKAGE_SOURCE_KEY]: packageId
-        } as Prisma.InputJsonValue,
-        action: rule.action as never,
-        channel: rule.channel as never,
-        delayHours: rule.delay_hours ?? 0,
-        priority: rule.priority ?? 100,
-        isActive: true
-      }))
-    });
-
-    return {
-      package_id: packageId,
-      rules_created: pkg.rules.length,
-      rules_replaced: rulesReplaced
-    };
   }
 
-  private packageRuleWhere(tenantId: string, packageId: string) {
-    return {
-      tenantId,
-      deletedAt: null,
-      condition: {
-        path: [PACKAGE_SOURCE_KEY],
-        equals: packageId
+  async applyPackageToPortfolio(
+    tenantId: string,
+    portfolioId: string,
+    packageId: string,
+    overwrite = false,
+    appliedById?: string
+  ): Promise<{
+    package_id: string;
+    portfolio_id: string;
+    rules_created: number;
+    rules_replaced: number;
+  }> {
+    this.getPackage(packageId);
+
+    const portfolio = await this.prisma.portfolio.findFirst({
+      where: { id: portfolioId, tenantId, deletedAt: null }
+    });
+    if (!portfolio) {
+      throw new NotFoundException("Portafolio no encontrado");
+    }
+
+    try {
+      const result = await applyPackageToPortfolio(this.prisma, {
+        tenantId,
+        portfolioId,
+        packageId,
+        overwrite,
+        appliedById,
+        previousPackageSlug: portfolio.activePackageSlug
+      });
+      return {
+        package_id: result.package_id,
+        portfolio_id: portfolioId,
+        rules_created: result.rules_created,
+        rules_replaced: result.rules_replaced
+      };
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error as Error & { code?: string }).code === "PACKAGE_ALREADY_APPLIED"
+      ) {
+        const err = error as Error & {
+          package_id: string;
+          existing_count: number;
+        };
+        throw new ConflictException({
+          code: "PACKAGE_ALREADY_APPLIED",
+          message:
+            "Este portafolio ya tiene reglas activas. Confirma si deseas reemplazarlas.",
+          package_id: err.package_id,
+          existing_count: err.existing_count
+        });
       }
-    };
+      throw error;
+    }
+  }
+
+  async countPortfolioAppliedRules(
+    tenantId: string,
+    portfolioId: string,
+    packageId: string
+  ): Promise<number> {
+    return countPortfolioPackageRules(
+      this.prisma,
+      tenantId,
+      portfolioId,
+      packageId
+    );
   }
 }

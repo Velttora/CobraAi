@@ -1,0 +1,78 @@
+{
+  "id": "empresa_grande",
+  "name": "Empresa grande (B2B)",
+  "description": "Estrategia formal para carteras corporativas con montos altos, ciclos largos y escalamiento progresivo.",
+  "profile": "Ideal para facturación B2B, cuentas por cobrar empresariales y carteras con pocos deudores de alto valor.",
+  "rules": [
+    {
+      "name": "Bienvenida — email formal",
+      "trigger": "debt_created",
+      "condition": { "status": "new" },
+      "action": "send_notification",
+      "channel": "email",
+      "delay_hours": 0,
+      "priority": 10
+    },
+    {
+      "name": "Segmento crítico — asignar estrategia",
+      "trigger": "score_updated",
+      "condition": { "ai_segment": "critical" },
+      "action": "assign_strategy",
+      "delay_hours": 0,
+      "priority": 5
+    },
+    {
+      "name": "Aging 31-60 — recordatorio email",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d31_60" },
+      "action": "send_notification",
+      "channel": "email",
+      "delay_hours": 0,
+      "priority": 30
+    },
+    {
+      "name": "Aging 61-90 — llamada IA",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d61_90" },
+      "action": "send_notification",
+      "channel": "voice",
+      "delay_hours": 0,
+      "priority": 25
+    },
+    {
+      "name": "Aging 90+ — SMS urgente",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": ["d91_180", "d180_plus"] },
+      "action": "send_notification",
+      "channel": "sms",
+      "delay_hours": 0,
+      "priority": 20
+    },
+    {
+      "name": "Promesa rota — escalamiento humano",
+      "trigger": "promise_broken",
+      "condition": {},
+      "action": "escalate_human",
+      "channel": "voice",
+      "delay_hours": 4,
+      "priority": 5
+    },
+    {
+      "name": "Monto alto vencido — llamada IA",
+      "trigger": "schedule",
+      "condition": { "amount_outstanding": { "gte": 5000000 }, "aging_days": { "gte": 45 } },
+      "action": "send_notification",
+      "channel": "voice",
+      "delay_hours": 0,
+      "priority": 15
+    },
+    {
+      "name": "Pago total — cerrar cuenta",
+      "trigger": "payment_confirmed",
+      "condition": { "amount_outstanding": 0 },
+      "action": "update_status",
+      "delay_hours": 0,
+      "priority": 10
+    }
+  ]
+}

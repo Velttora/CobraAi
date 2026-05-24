@@ -11,6 +11,7 @@ import {
   DebtorType
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { applyPackageToPortfolio } from "@cobrai/workflow-packages";
 import { loadSeedEnv } from "./load-seed-env";
 import { resolveSeedTenant } from "./resolve-seed-tenant";
 
@@ -255,6 +256,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.auditLog.deleteMany();
   await prisma.workflowExecution.deleteMany();
   await prisma.workflowRule.deleteMany();
+  await prisma.portfolioPackageApplication.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
   await prisma.contactConsent.deleteMany();
@@ -264,6 +266,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.promiseToPay.deleteMany();
   await prisma.contact.deleteMany();
   await prisma.debt.deleteMany();
+  await prisma.portfolioPackageApplication.deleteMany();
   await prisma.portfolio.deleteMany();
   await prisma.debtor.deleteMany();
   await prisma.user.deleteMany();
@@ -335,17 +338,50 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
     }
   });
 
-  const portfolio = await prisma.portfolio.create({
+  const portfolioNone = await prisma.portfolio.create({
     data: {
       tenantId: tenant.id,
-      name: "Cartera Q1 2026",
-      description: "Cartera de demostración con deudas MX y CO",
+      name: "Cartera sin automatización",
+      description: "Portafolio demo sin estrategia configurada",
       status: "active",
       currency: "COP",
+      automationStatus: "none",
       importedAt: new Date(),
       createdById: admin.id
     }
   });
+
+  const portfolioPackage = await prisma.portfolio.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Cartera PyME Fintech",
+      description: "Automatización con paquete pre-configurado",
+      status: "active",
+      currency: "COP",
+      automationStatus: "none",
+      importedAt: new Date(),
+      createdById: admin.id
+    }
+  });
+
+  const portfolioCustom = await prisma.portfolio.create({
+    data: {
+      tenantId: tenant.id,
+      name: "Cartera empresa grande",
+      description: "Reglas personalizadas por portafolio",
+      status: "active",
+      currency: "COP",
+      automationStatus: "custom",
+      importedAt: new Date(),
+      createdById: admin.id
+    }
+  });
+
+  const portfolioByDebtIndex = (idx: number): string => {
+    if (idx % 3 === 0) return portfolioNone.id;
+    if (idx % 3 === 1) return portfolioPackage.id;
+    return portfolioCustom.id;
+  };
 
   const debtors = await Promise.all(
     DEBTOR_SEEDS.map((seed) =>
@@ -416,7 +452,7 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
       return prisma.debt.create({
         data: {
           tenantId: tenant.id,
-          portfolioId: portfolio.id,
+          portfolioId: portfolioByDebtIndex(idx),
           debtorId: debtor.id,
           externalRef: `DEBT-${String(idx + 1).padStart(4, "0")}`,
           amountOriginal: amount,
@@ -470,7 +506,7 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
     await prisma.debt.create({
       data: {
         tenantId: tenant.id,
-        portfolioId: portfolio.id,
+        portfolioId: portfolioByDebtIndex(createdDebts.length + deferredCount),
         debtorId: debtor.id,
         externalRef: `DEBT-DEF-${plan.suffix}`,
         amountOriginal: plan.amount,
@@ -486,10 +522,24 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
   }
 
   await prisma.portfolio.update({
-    where: { id: portfolio.id },
+    where: { id: portfolioNone.id },
     data: {
-      totalDebts: createdDebts.length + deferredCount,
-      totalAmount
+      totalDebts: Math.ceil((createdDebts.length + deferredCount) / 3),
+      totalAmount: totalAmount / 3
+    }
+  });
+  await prisma.portfolio.update({
+    where: { id: portfolioPackage.id },
+    data: {
+      totalDebts: Math.ceil((createdDebts.length + deferredCount) / 3),
+      totalAmount: totalAmount / 3
+    }
+  });
+  await prisma.portfolio.update({
+    where: { id: portfolioCustom.id },
+    data: {
+      totalDebts: Math.floor((createdDebts.length + deferredCount) / 3),
+      totalAmount: totalAmount / 3
     }
   });
 
@@ -548,21 +598,19 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
     ]
   });
 
+  await applyPackageToPortfolio(prisma, {
+    tenantId: tenant.id,
+    portfolioId: portfolioPackage.id,
+    packageId: "pyme_fintech",
+    overwrite: true,
+    appliedById: admin.id
+  });
+
   await prisma.workflowRule.createMany({
     data: [
       {
         tenantId: tenant.id,
-        name: "Bienvenida deuda nueva",
-        trigger: WorkflowTrigger.debt_created,
-        condition: { status: "new" },
-        action: WorkflowAction.send_notification,
-        channel: "email",
-        delayHours: 0,
-        priority: 10,
-        isActive: true
-      },
-      {
-        tenantId: tenant.id,
+        portfolioId: portfolioCustom.id,
         name: "Score bajo — WhatsApp",
         trigger: WorkflowTrigger.score_updated,
         condition: { ai_score: { lt: 40 }, whatsapp_opt_in: true },
@@ -574,6 +622,7 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
       },
       {
         tenantId: tenant.id,
+        portfolioId: portfolioCustom.id,
         name: "Promesa rota — escalar",
         trigger: WorkflowTrigger.promise_broken,
         condition: {},
@@ -585,16 +634,7 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
       },
       {
         tenantId: tenant.id,
-        name: "Pago confirmado — cerrar",
-        trigger: WorkflowTrigger.payment_confirmed,
-        condition: { amount_outstanding: 0 },
-        action: WorkflowAction.update_status,
-        delayHours: 0,
-        priority: 15,
-        isActive: true
-      },
-      {
-        tenantId: tenant.id,
+        portfolioId: portfolioCustom.id,
         name: "Aging 90+ — SMS urgente",
         trigger: WorkflowTrigger.schedule,
         condition: { aging_bucket: ["d91_180", "d180_plus"] },
@@ -603,18 +643,17 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
         delayHours: 0,
         priority: 30,
         isActive: true
-      },
-      {
-        tenantId: tenant.id,
-        name: "Segmento crítico — estrategia",
-        trigger: WorkflowTrigger.score_updated,
-        condition: { ai_segment: "critical" },
-        action: WorkflowAction.assign_strategy,
-        delayHours: 1,
-        priority: 1,
-        isActive: true
       }
     ]
+  });
+
+  await prisma.portfolioPackageApplication.create({
+    data: {
+      tenantId: tenant.id,
+      portfolioId: portfolioCustom.id,
+      action: "custom",
+      appliedById: admin.id
+    }
   });
 
   for (const debtor of debtors.filter((d) => d.whatsappOptIn)) {
@@ -661,12 +700,13 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
       userId: admin.id,
       action: "seed.completed",
       resourceType: "tenant",
-      resourceId: portfolio.id,
+      resourceId: portfolioPackage.id,
       changes: {
         debtors: debtors.length,
-        debts: createdDebts.length,
+        debts: createdDebts.length + deferredCount,
+        portfolios: 3,
         templates: 5,
-        workflow_rules: 6
+        workflow_rules: "portfolio-scoped"
       },
       ipAddress: "127.0.0.1",
       userAgent: "cobrai-seed/1.0"
@@ -679,6 +719,10 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
     users: 2,
     debtors: debtors.length,
     debts: createdDebts.length,
-    portfolio: portfolio.name
+    portfolios: [
+      portfolioNone.name,
+      portfolioPackage.name,
+      portfolioCustom.name
+    ]
   });
 }

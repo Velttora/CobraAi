@@ -1,13 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ApiItemResponse,
   ApiListResponse,
   Debtor,
   Portfolio
 } from "../lib/types";
-import { fetchApi, useApiClient } from "./use-api-client";
+import { fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
 
 export function usePortfolios() {
   const client = useApiClient();
@@ -54,5 +54,50 @@ export function useDebtor(id: string) {
     queryFn: () =>
       fetchApi<ApiItemResponse<Debtor>>(client, `/api/v1/debtors/${id}`),
     enabled: Boolean(id)
+  });
+}
+
+export function useCreatePortfolio() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      description?: string;
+      currency?: string;
+      strategy?: "none" | "package" | "custom";
+      package_slug?: string;
+    }) => postApi<ApiItemResponse<Portfolio>>(client, "/api/v1/portfolios", body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["portfolios"] });
+    }
+  });
+}
+
+export function useUpdatePortfolioStrategy(portfolioId: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: {
+      strategy: "none" | "package" | "custom";
+      package_slug?: string;
+      overwrite?: boolean;
+    }) =>
+      patchApi<
+        ApiItemResponse<
+          Portfolio & {
+            confirm_required?: boolean;
+            existing_count?: number;
+            package_id?: string;
+          }
+        >
+      >(client, `/api/v1/portfolios/${portfolioId}/strategy`, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", portfolioId] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolios"] });
+      void queryClient.invalidateQueries({ queryKey: ["workflow-rules"] });
+    }
   });
 }

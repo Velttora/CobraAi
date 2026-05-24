@@ -9,6 +9,7 @@ import { PortfolioProjectionView } from "./PortfolioProjectionView";
 import { RecoveryChart } from "./RecoveryChart";
 import { SegmentDonut } from "./SegmentDonut";
 import { useDebts } from "../../hooks/use-debts";
+import { usePortfolios } from "../../hooks/use-portfolios";
 import {
   computeDashboardMetrics,
   formatMetricAmount,
@@ -32,6 +33,7 @@ export function DashboardView() {
     pipeline: pipelineMode
   });
   const metricsQuery = useDebts({ page: 1, limit: 100, sort: "ai_score:desc" });
+  const portfoliosQuery = usePortfolios();
 
   const tableDebts = tableQuery.data?.data.items ?? [];
   const allDebts = metricsQuery.data?.data.items ?? [];
@@ -46,6 +48,11 @@ export function DashboardView() {
     }
   }, [error]);
 
+  const portfoliosWithoutAutomation =
+    portfoliosQuery.data?.data.items.filter(
+      (p) => (p.automationStatus ?? "none") === "none"
+    ) ?? [];
+
   return (
     <section className="space-y-6">
       <header>
@@ -57,6 +64,15 @@ export function DashboardView() {
         </p>
         {motionDashboardTabBar({ tab, onTabChange: setTab })}
       </header>
+
+      {portfoliosWithoutAutomation.length > 0 ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+          {portfoliosWithoutAutomation.length} portafolio
+          {portfoliosWithoutAutomation.length === 1 ? "" : "s"} sin estrategia de
+          automatización:{" "}
+          {portfoliosWithoutAutomation.map((p) => p.name).join(", ")}.
+        </p>
+      ) : null}
 
       {tab === "projection" ? (
         <PortfolioProjectionView />

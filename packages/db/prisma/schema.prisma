@@ -36,6 +36,14 @@ enum PortfolioStatus {
   @@map("portfolio_status")
 }
 
+enum PortfolioAutomationStatus {
+  none
+  package
+  custom
+
+  @@map("portfolio_automation_status")
+}
+
 enum DebtorType {
   person
   company
@@ -246,6 +254,7 @@ model Tenant {
 
   users                 User[]
   portfolios            Portfolio[]
+  portfolioPackageApplications PortfolioPackageApplication[]
   debtors               Debtor[]
   debts                 Debt[]
   contacts              Contact[]
@@ -279,6 +288,7 @@ model User {
 
   tenant            Tenant      @relation(fields: [tenantId], references: [id])
   portfoliosCreated Portfolio[] @relation("PortfolioCreatedBy")
+  packageApplications PortfolioPackageApplication[] @relation("PackageApplicationBy")
   auditLogs         AuditLog[]
 
   @@unique([tenantId, email])
@@ -287,26 +297,49 @@ model User {
 }
 
 model Portfolio {
-  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId    String          @map("tenant_id")
-  name        String
-  description String?
-  status      PortfolioStatus @default(active)
-  totalDebts  Int             @default(0) @map("total_debts")
-  totalAmount Decimal         @default(0) @map("total_amount") @db.Decimal(15, 2)
-  currency    String          @default("COP") @db.Char(3)
-  importedAt  DateTime?       @map("imported_at")
-  createdById String?         @map("created_by")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
-  deletedAt   DateTime?       @map("deleted_at")
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                    @map("tenant_id")
+  name               String
+  description        String?
+  status             PortfolioStatus           @default(active)
+  automationStatus   PortfolioAutomationStatus @default(none) @map("automation_status")
+  activePackageSlug  String?                   @map("active_package_slug")
+  totalDebts         Int                       @default(0) @map("total_debts")
+  totalAmount        Decimal                   @default(0) @map("total_amount") @db.Decimal(15, 2)
+  currency           String                    @default("COP") @db.Char(3)
+  importedAt         DateTime?                 @map("imported_at")
+  createdById        String?                   @map("created_by")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  deletedAt          DateTime?                 @map("deleted_at")
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id])
-  createdBy User?  @relation("PortfolioCreatedBy", fields: [createdById], references: [id])
-  debts     Debt[]
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id])
+  createdBy           User?                         @relation("PortfolioCreatedBy", fields: [createdById], references: [id])
+  debts               Debt[]
+  workflowRules       WorkflowRule[]
+  packageApplications PortfolioPackageApplication[]
 
   @@index([tenantId, status])
+  @@index([tenantId, automationStatus])
   @@map("portfolios")
+}
+
+model PortfolioPackageApplication {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id")
+  portfolioId String   @map("portfolio_id") @db.Uuid
+  packageSlug String?  @map("package_slug")
+  action      String
+  appliedById String?  @map("applied_by")
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id])
+  appliedBy User?     @relation("PackageApplicationBy", fields: [appliedById], references: [id])
+
+  @@index([tenantId, portfolioId, createdAt(sort: Desc)])
+  @@map("portfolio_package_applications")
 }
 
 model Debtor {
@@ -566,24 +599,27 @@ model ContactConsent {
 }
 
 model WorkflowRule {
-  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String          @map("tenant_id")
-  name       String
-  trigger    WorkflowTrigger
-  condition  Json            @default("{}")
-  action     WorkflowAction
-  channel    ContactChannel?
-  delayHours Int             @default(0) @map("delay_hours")
-  priority   Int             @default(100)
-  isActive   Boolean         @default(true) @map("is_active")
-  createdAt  DateTime        @default(now()) @map("created_at")
-  updatedAt  DateTime        @updatedAt @map("updated_at")
-  deletedAt  DateTime?       @map("deleted_at")
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String          @map("tenant_id")
+  portfolioId String?         @map("portfolio_id") @db.Uuid
+  name        String
+  trigger     WorkflowTrigger
+  condition   Json            @default("{}")
+  action      WorkflowAction
+  channel     ContactChannel?
+  delayHours  Int             @default(0) @map("delay_hours")
+  priority    Int             @default(100)
+  isActive    Boolean         @default(true) @map("is_active")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  deletedAt   DateTime?       @map("deleted_at")
 
   tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  portfolio  Portfolio?          @relation(fields: [portfolioId], references: [id])
   executions WorkflowExecution[]
 
   @@index([tenantId, isActive])
+  @@index([tenantId, portfolioId, isActive])
   @@map("workflow_rules")
 }
 
