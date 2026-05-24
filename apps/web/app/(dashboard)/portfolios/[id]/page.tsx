@@ -3,11 +3,15 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { useState } from "react";
-import { DebtTable } from "../../../../components/dashboard/DebtTable";
 import { CreateDebtModal } from "../../../../components/debts/CreateDebtModal";
+import { PortfolioDebtTable } from "../../../../components/portfolios/PortfolioDebtTable";
 import { useDebts } from "../../../../hooks/use-debts";
-import { usePortfolio } from "../../../../hooks/use-portfolios";
+import {
+  usePortfolio,
+  usePortfolioStats
+} from "../../../../hooks/use-portfolios";
 import { formatCurrency } from "../../../../lib/formatters";
+import type { PortfolioQuarterStat } from "../../../../lib/types";
 import { toNumber } from "../../../../lib/types";
 
 export default function PortfolioDetailPage({
@@ -15,17 +19,20 @@ export default function PortfolioDetailPage({
 }: {
   params: { id: string };
 }): React.ReactElement {
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState("ai_score:desc");
+  const [activeQuarter, setActiveQuarter] = useState<string | null>(null);
   const portfolioQuery = usePortfolio(params.id);
+  const statsQuery = usePortfolioStats(params.id);
   const debtsQuery = useDebts({
     portfolioId: params.id,
-    page,
-    limit: 15,
-    sort
+    includeFuture: true,
+    page: 1,
+    limit: 50,
+    collectionQuarter: activeQuarter ?? undefined
   });
 
   const portfolio = portfolioQuery.data?.data;
+  const quarters = (statsQuery.data?.data.quarters ??
+    []) as PortfolioQuarterStat[];
   const debts = debtsQuery.data?.data.items ?? [];
 
   return (
@@ -48,37 +55,25 @@ export default function PortfolioDetailPage({
             </p>
           ) : null}
         </div>
-        <motionPortfolioActions portfolioId={params.id} />
+        <div className="flex gap-2">
+          <CreateDebtModal portfolioId={params.id} />
+          <Link
+            className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29]"
+            href={`/portfolios/${params.id}/import` as Route}
+          >
+            Importar archivo
+          </Link>
+        </div>
       </header>
 
-      <DebtTable
+      <PortfolioDebtTable
+        activeQuarter={activeQuarter}
+        currency={portfolio?.currency ?? "COP"}
         debts={debts}
-        loading={debtsQuery.isLoading}
-        onPageChange={setPage}
-        onSortChange={setSort}
-        pagination={debtsQuery.data?.data.pagination}
-        sort={sort}
+        loading={debtsQuery.isLoading || statsQuery.isLoading}
+        onQuarterChange={setActiveQuarter}
+        quarters={quarters}
       />
     </section>
-  );
-}
-
-function motionPortfolioActions({ portfolioId }: { portfolioId: string }) {
-  return (
-    <motionPortfolioActionsInner portfolioId={portfolioId} />
-  );
-}
-
-function motionPortfolioActionsInner({ portfolioId }: { portfolioId: string }) {
-  return (
-    <div className="flex gap-2">
-      <CreateDebtModal portfolioId={portfolioId} />
-      <Link
-        className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29]"
-        href={`/portfolios/${portfolioId}/import` as Route}
-      >
-        Importar archivo
-      </Link>
-    </div>
   );
 }
