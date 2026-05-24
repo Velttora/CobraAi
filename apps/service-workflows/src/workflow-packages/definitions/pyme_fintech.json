@@ -1,0 +1,70 @@
+{
+  "id": "pyme_fintech",
+  "name": "PyME / Fintech",
+  "description": "Cobranza digital ágil con WhatsApp y SMS como canales principales, ideal para volúmenes medios.",
+  "profile": "Pensado para fintechs, neobancos y PyMEs con cartera diversificada y comunicación omnicanal.",
+  "rules": [
+    {
+      "name": "Deuda nueva — WhatsApp opt-in",
+      "trigger": "debt_created",
+      "condition": { "status": "new", "whatsapp_opt_in": true },
+      "action": "send_notification",
+      "channel": "whatsapp",
+      "delay_hours": 1,
+      "priority": 10
+    },
+    {
+      "name": "Deuda nueva — email fallback",
+      "trigger": "debt_created",
+      "condition": { "status": "new" },
+      "action": "send_notification",
+      "channel": "email",
+      "delay_hours": 2,
+      "priority": 15
+    },
+    {
+      "name": "Score bajo — WhatsApp prioritario",
+      "trigger": "score_updated",
+      "condition": { "ai_score": { "lt": 40 }, "whatsapp_opt_in": true },
+      "action": "send_notification",
+      "channel": "whatsapp",
+      "delay_hours": 2,
+      "priority": 20
+    },
+    {
+      "name": "Aging 0-30 — WhatsApp recordatorio",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d0_30" },
+      "action": "send_notification",
+      "channel": "whatsapp",
+      "delay_hours": 0,
+      "priority": 30
+    },
+    {
+      "name": "Aging 31-60 — SMS",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d31_60" },
+      "action": "send_notification",
+      "channel": "sms",
+      "delay_hours": 0,
+      "priority": 25
+    },
+    {
+      "name": "Promesa rota — escalar agente",
+      "trigger": "promise_broken",
+      "condition": {},
+      "action": "escalate_human",
+      "channel": "email",
+      "delay_hours": 4,
+      "priority": 5
+    },
+    {
+      "name": "Pago confirmado — cerrar",
+      "trigger": "payment_confirmed",
+      "condition": { "amount_outstanding": 0 },
+      "action": "update_status",
+      "delay_hours": 0,
+      "priority": 10
+    }
+  ]
+}

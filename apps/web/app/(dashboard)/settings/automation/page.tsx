@@ -2,7 +2,9 @@
 
 import type { Route } from "next";
 import Link from "next/link";
+import { WorkflowPackagePicker } from "../../../../components/settings/WorkflowPackagePicker";
 import {
+  formatWorkflowChannel,
   useToggleWorkflowRule,
   useWorkflowQueue,
   useWorkflowRules,
@@ -37,6 +39,8 @@ export default function AutomationSettingsPage(): React.ReactElement {
         </p>
       </header>
 
+      <WorkflowPackagePicker hasRules={rulesList.length > 0} />
+
       {stats ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Contactos hoy" value={stats.contacts_today} />
@@ -58,7 +62,9 @@ export default function AutomationSettingsPage(): React.ReactElement {
                   className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
                   key={item.channel}
                 >
-                  <span className="capitalize">{item.channel}</span>
+                  <span className="capitalize">
+                    {formatWorkflowChannel(item.channel)}
+                  </span>
                   <span className="font-medium">{item.count}</span>
                 </li>
               ))
@@ -76,35 +82,46 @@ export default function AutomationSettingsPage(): React.ReactElement {
         <h2 className="border-b border-slate-200 px-5 py-4 text-sm font-semibold dark:border-slate-800">
           Reglas activas
         </h2>
-        <ul>
-          {rulesList.map((rule) => (
-            <li
-              className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0 dark:border-slate-800"
-              key={rule.id}
-            >
-              <div>
-                <p className="font-medium text-slate-900 dark:text-slate-100">
-                  {rule.name}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {rule.trigger} → {rule.action}
-                  {rule.channel ? ` · ${rule.channel}` : ""}
-                </p>
-              </div>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  checked={rule.isActive}
-                  disabled={toggleRule.isPending}
-                  onChange={(e) =>
-                    toggleRule.mutate({ id: rule.id, isActive: e.target.checked })
-                  }
-                  type="checkbox"
-                />
-                Activa
-              </label>
-            </li>
-          ))}
-        </ul>
+        {rulesList.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-slate-500">
+            Aún no tienes reglas. Aplica un paquete arriba para comenzar.
+          </p>
+        ) : (
+          <ul>
+            {rulesList.map((rule) => (
+              <li
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0 dark:border-slate-800"
+                key={rule.id}
+              >
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {rule.name}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {rule.trigger} → {rule.action}
+                    {rule.channel
+                      ? ` · ${formatWorkflowChannel(rule.channel)}`
+                      : ""}
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    checked={rule.isActive}
+                    disabled={toggleRule.isPending}
+                    onChange={(e) =>
+                      toggleRule.mutate({
+                        id: rule.id,
+                        isActive: e.target.checked
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Activa
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
       </article>
     </section>
   );

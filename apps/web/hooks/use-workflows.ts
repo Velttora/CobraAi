@@ -1,9 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { isAxiosError } from "axios";
 import { toast } from "sonner";
 import type { ApiItemResponse } from "../lib/types";
-import { fetchApi, patchApi, useApiClient } from "./use-api-client";
+import { fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
 
 export type WorkflowRule = {
   id: string;
@@ -15,6 +16,28 @@ export type WorkflowRule = {
   delayHours: number;
   priority: number;
   isActive: boolean;
+};
+
+export type WorkflowPackageSummary = {
+  id: string;
+  name: string;
+  description: string;
+  profile: string;
+  rules_count: number;
+  channels: string[];
+  has_voice_stub: boolean;
+};
+
+export type WorkflowPackageDetail = WorkflowPackageSummary & {
+  rules: {
+    name: string;
+    trigger: string;
+    condition: Record<string, unknown>;
+    action: string;
+    channel?: string;
+    delay_hours?: number;
+    priority?: number;
+  }[];
 };
 
 export type WorkflowQueue = {
@@ -34,6 +57,23 @@ export type WorkflowStats = {
   executions_today: number;
 };
 
+export class WorkflowPackageConflictError extends Error {
+  packageId: string;
+  existingCount: number;
+
+  constructor(packageId: string, existingCount: number, message: string) {
+    super(message);
+    this.name = "WorkflowPackageConflictError";
+    this.packageId = packageId;
+    this.existingCount = existingCount;
+  }
+}
+
+export function formatWorkflowChannel(channel?: string | null): string {
+  if (!channel) return "";
+  return channel === "voice" ? "voice (stub)" : channel;
+}
+
 export function useWorkflowRules() {
   const client = useApiClient();
   return useQuery({
@@ -43,6 +83,31 @@ export function useWorkflowRules() {
         client,
         "/api/v1/workflows/rules"
       )
+  });
+}
+
+export function useWorkflowPackages() {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workflow-packages"],
+    queryFn: () =>
+      fetchApi<ApiItemResponse<WorkflowPackageSummary[]>>(
+        client,
+        "/api/v1/workflows/packages"
+      )
+  });
+}
+
+export function useWorkflowPackage(id: string, enabled = false) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workflow-package", id],
+    queryFn: () =>
+      fetchApi<ApiItemResponse<WorkflowPackageDetail>>(
+        client,
+        `/api/v1/workflows/packages/${id}`
+      ),
+    enabled: enabled && Boolean(id)
   });
 }
 
@@ -76,5 +141,76 @@ export function useToggleWorkflowRule() {
       toast.success("Regla actualizada");
     },
     onError: () => toast.error("No se pudo actualizar la regla")
+  });
+}
+
+export function useApplyWorkflowPackage() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      packageId,
+      overwrite = false
+    }: {
+      packageId: string;
+      overwrite?: boolean;
+    }) => {
+      try {
+        return await postApi<
+          ApiItemResponse<{
+            package_id: string;
+            rules_created: number;
+            rules_replaced: number;
+          }>
+        >(client, `/api/v1/workflows/packages/${packageId}/apply`, {
+          overwrite
+        });
+      } catch (error) {
+        if (isAxiosError(error) && error.response?.status === 409) {
+          const body = error.response.data as {
+            message?:
+              | string
+              | {
+                  message?: string;
+                  package_id?: string;
+                  existing_count?: number;
+                };
+            package_id?: string;
+            existing_count?: number;
+          };
+          const payload =
+            typeof body.message === "object" && body.message !== null
+              ? body.message
+              : body;
+          throw new WorkflowPackageConflictError(
+            payload.package_id ?? packageId,
+            payload.existing_count ?? 0,
+            (typeof body.message === "string"
+              ? body.message
+              : payload.message) ??
+              "Este paquete ya fue aplicado. ¿Deseas reemplazar las reglas existentes?"
+          );
+        }
+        throw error;
+      }
+    },
+    onSuccess: (response) => {
+      void queryClient.invalidateQueries({ queryKey: ["workflow-rules"] });
+      const { rules_created, rules_replaced } = response.data;
+      if (rules_replaced > 0) {
+        toast.success(
+          `Paquete aplicado: ${rules_created} reglas creadas (${rules_replaced} reemplazadas)`
+        );
+        return;
+      }
+      toast.success(`Paquete aplicado: ${rules_created} reglas creadas`);
+    },
+    onError: (error) => {
+      if (error instanceof WorkflowPackageConflictError) {
+        return;
+      }
+      toast.error("No se pudo aplicar el paquete");
+    }
   });
 }

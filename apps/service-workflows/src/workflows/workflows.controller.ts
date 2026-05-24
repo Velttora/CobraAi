@@ -4,6 +4,8 @@ import {
   ReqContext,
   type RequestContext
 } from "../common/decorators/request-context.decorator";
+import { ApplyWorkflowPackageDto } from "../workflow-packages/dto/apply-package.dto";
+import { WorkflowPackagesService } from "../workflow-packages/workflow-packages.service";
 import {
   CreateWorkflowRuleDto,
   UpdateWorkflowRuleDto
@@ -12,7 +14,10 @@ import { WorkflowsService } from "./workflows.service";
 
 @Controller("v1/workflows")
 export class WorkflowsController {
-  constructor(private readonly workflows: WorkflowsService) {}
+  constructor(
+    private readonly workflows: WorkflowsService,
+    private readonly packages: WorkflowPackagesService
+  ) {}
 
   @Get("queue")
   async queue(@ReqContext() ctx: RequestContext) {
@@ -27,6 +32,27 @@ export class WorkflowsController {
   @Get("rules")
   async listRules(@ReqContext() ctx: RequestContext) {
     return successResponse(await this.workflows.listRules(ctx.tenantId));
+  }
+
+  @Get("packages")
+  async listPackages() {
+    return successResponse(this.packages.listPackages());
+  }
+
+  @Get("packages/:id")
+  async getPackage(@Param("id") id: string) {
+    return successResponse(this.packages.getPackage(id));
+  }
+
+  @Post("packages/:id/apply")
+  async applyPackage(
+    @ReqContext() ctx: RequestContext,
+    @Param("id") id: string,
+    @Body() dto: ApplyWorkflowPackageDto
+  ) {
+    return successResponse(
+      await this.packages.applyPackage(ctx.tenantId, id, dto.overwrite ?? false)
+    );
   }
 
   @Post("rules")

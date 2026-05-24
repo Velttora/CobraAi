@@ -1,0 +1,79 @@
+{
+  "id": "cartera_personas",
+  "name": "Cartera personas",
+  "description": "Estrategia de cobranza para consumo masivo con contacto frecuente y escalamiento por aging.",
+  "profile": "Créditos personales, microcrédito y carteras retail con muchos deudores de ticket medio-bajo.",
+  "rules": [
+    {
+      "name": "Bienvenida — SMS",
+      "trigger": "debt_created",
+      "condition": { "status": "new" },
+      "action": "send_notification",
+      "channel": "sms",
+      "delay_hours": 0,
+      "priority": 10
+    },
+    {
+      "name": "Score medio-bajo — WhatsApp",
+      "trigger": "score_updated",
+      "condition": { "ai_score": { "lt": 60 }, "whatsapp_opt_in": true },
+      "action": "send_notification",
+      "channel": "whatsapp",
+      "delay_hours": 1,
+      "priority": 20
+    },
+    {
+      "name": "Score bajo sin WhatsApp — SMS",
+      "trigger": "score_updated",
+      "condition": { "ai_score": { "lt": 40 } },
+      "action": "send_notification",
+      "channel": "sms",
+      "delay_hours": 2,
+      "priority": 25
+    },
+    {
+      "name": "Aging 0-30 — WhatsApp",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d0_30", "whatsapp_opt_in": true },
+      "action": "send_notification",
+      "channel": "whatsapp",
+      "delay_hours": 0,
+      "priority": 30
+    },
+    {
+      "name": "Aging 61-90 — llamada IA",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d61_90" },
+      "action": "send_notification",
+      "channel": "voice",
+      "delay_hours": 0,
+      "priority": 20
+    },
+    {
+      "name": "Aging 180+ — escalamiento legal",
+      "trigger": "schedule",
+      "condition": { "aging_bucket": "d180_plus" },
+      "action": "escalate_human",
+      "channel": "voice",
+      "delay_hours": 0,
+      "priority": 5
+    },
+    {
+      "name": "Promesa rota — SMS + tarea",
+      "trigger": "promise_broken",
+      "condition": {},
+      "action": "create_task",
+      "channel": "sms",
+      "delay_hours": 0,
+      "priority": 5
+    },
+    {
+      "name": "Pago confirmado — cerrar",
+      "trigger": "payment_confirmed",
+      "condition": { "amount_outstanding": 0 },
+      "action": "update_status",
+      "delay_hours": 0,
+      "priority": 10
+    }
+  ]
+}

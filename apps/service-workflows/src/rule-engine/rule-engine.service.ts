@@ -33,6 +33,9 @@ export class RuleEngineService {
     }
 
     for (const [field, expected] of Object.entries(condition)) {
+      if (field.startsWith("__")) {
+        continue;
+      }
       const actual = this.resolveField(debt, debtor, field);
       if (!this.compareValue(actual, expected as ConditionValue)) {
         return false;
