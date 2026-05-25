@@ -7,6 +7,7 @@ import { MetricsSection } from "./MetricsSection";
 import { HowItWorksSection } from "./HowItWorksSection";
 import { ChannelsSection } from "./ChannelsSection";
 import { PackagesSection } from "./PackagesSection";
+import { PricingSection } from "./PricingSection";
 import { ComplianceSection } from "./ComplianceSection";
 import { CompareSection } from "./CompareSection";
 import { CtaSection } from "./CtaSection";
@@ -27,6 +28,7 @@ export function LandingPage(): React.ReactElement {
         <HowItWorksSection />
         <ChannelsSection />
         <PackagesSection />
+        <PricingSection />
         <ComplianceSection />
         <CompareSection />
         <CtaSection />

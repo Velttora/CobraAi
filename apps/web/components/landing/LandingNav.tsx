@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: "#solution", label: "Solución" },
   { href: "#metrics", label: "Resultados" },
   { href: "#packages", label: "Paquetes" },
+  { href: "#pricing", label: "Precios" },
   { href: "#compare", label: "Comparativa" }
 ];
 
