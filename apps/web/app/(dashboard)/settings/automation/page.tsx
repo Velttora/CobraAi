@@ -12,6 +12,7 @@ import {
   useWorkflowStats,
   type WorkflowRule
 } from "../../../../hooks/use-workflows";
+import { partitionPortfolioRules } from "../../../../lib/workflow-rules";
 
 export default function AutomationSettingsPage(): React.ReactElement {
   const portfoliosQuery = usePortfolios();
@@ -30,6 +31,10 @@ export default function AutomationSettingsPage(): React.ReactElement {
   const selectedPortfolio = useMemo(
     () => portfolios.find((p) => p.id === selectedPortfolioId),
     [portfolios, selectedPortfolioId]
+  );
+  const { activeRules, inactiveRules } = partitionPortfolioRules(
+    rulesList,
+    selectedPortfolio?.automationStatus
   );
 
   return (
@@ -132,59 +137,110 @@ export default function AutomationSettingsPage(): React.ReactElement {
         )}
       </article>
 
-      <article className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="border-b border-slate-200 px-5 py-4 text-sm font-semibold dark:border-slate-800">
-          Reglas del portafolio
-        </h2>
-        {!selectedPortfolioId ? (
-          <p className="px-5 py-8 text-sm text-slate-500">
-            Selecciona un portafolio para ver sus reglas.
-          </p>
-        ) : rulesList.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-500">
-            Este portafolio no tiene reglas. Configura la estrategia en el detalle
-            del portafolio.
-          </p>
-        ) : (
-          <ul>
-            {rulesList.map((rule) => (
-              <li
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0 dark:border-slate-800"
-                key={rule.id}
-              >
-                {motionAutomationRuleRow({ rule })}
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    checked={rule.isActive}
-                    disabled={toggleRule.isPending}
-                    onChange={(e) =>
-                      toggleRule.mutate({
-                        id: rule.id,
-                        isActive: e.target.checked
-                      })
-                    }
-                    type="checkbox"
-                  />
-                  Activa
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-      </article>
+      <PortfolioRulesSection
+        activeRules={activeRules}
+        inactiveRules={inactiveRules}
+        isPending={toggleRule.isPending}
+        onToggle={(id, isActive) => toggleRule.mutate({ id, isActive })}
+        selectedPortfolioId={selectedPortfolioId}
+      />
     </section>
   );
 }
 
-function motionAutomationRuleRow({ rule }: { rule: WorkflowRule }): React.ReactElement {
+function PortfolioRulesSection({
+  selectedPortfolioId,
+  activeRules,
+  inactiveRules,
+  isPending,
+  onToggle
+}: {
+  selectedPortfolioId: string;
+  activeRules: WorkflowRule[];
+  inactiveRules: WorkflowRule[];
+  isPending: boolean;
+  onToggle: (id: string, isActive: boolean) => void;
+}): React.ReactElement {
+  const hasRules = activeRules.length > 0 || inactiveRules.length > 0;
+
   return (
-    <div>
-      <p className="font-medium text-slate-900 dark:text-slate-100">{rule.name}</p>
-      <p className="text-xs text-slate-500">
-        {rule.trigger} → {rule.action}
-        {rule.channel ? ` · ${formatWorkflowChannel(rule.channel)}` : ""}
-      </p>
-    </div>
+    <article className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="border-b border-slate-200 px-5 py-4 text-sm font-semibold dark:border-slate-800">
+        Reglas activas ({activeRules.length})
+      </h2>
+      {!selectedPortfolioId ? (
+        <p className="px-5 py-8 text-sm text-slate-500">
+          Selecciona un portafolio para ver sus reglas.
+        </p>
+      ) : !hasRules ? (
+        <p className="px-5 py-8 text-sm text-slate-500">
+          Este portafolio no tiene reglas. Configura la estrategia en el detalle
+          del portafolio.
+        </p>
+      ) : activeRules.length === 0 ? (
+        <p className="px-5 py-8 text-sm text-slate-500">Sin reglas activas.</p>
+      ) : (
+        <ul>
+          {activeRules.map((rule) => (
+            <PortfolioRuleRow
+              isPending={isPending}
+              key={rule.id}
+              onToggle={onToggle}
+              rule={rule}
+            />
+          ))}
+        </ul>
+      )}
+
+      {inactiveRules.length > 0 ? (
+        <>
+          <h3 className="border-b border-t border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-400">
+            Reglas inactivas ({inactiveRules.length})
+          </h3>
+          <ul>
+            {inactiveRules.map((rule) => (
+              <PortfolioRuleRow
+                isPending={isPending}
+                key={rule.id}
+                onToggle={onToggle}
+                rule={rule}
+              />
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </article>
+  );
+}
+
+function PortfolioRuleRow({
+  rule,
+  isPending,
+  onToggle
+}: {
+  rule: WorkflowRule;
+  isPending: boolean;
+  onToggle: (id: string, isActive: boolean) => void;
+}): React.ReactElement {
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 last:border-0 dark:border-slate-800">
+      <div>
+        <p className="font-medium text-slate-900 dark:text-slate-100">{rule.name}</p>
+        <p className="text-xs text-slate-500">
+          {rule.trigger} → {rule.action}
+          {rule.channel ? ` · ${formatWorkflowChannel(rule.channel)}` : ""}
+        </p>
+      </div>
+      <label className="inline-flex items-center gap-2 text-sm">
+        <input
+          checked={rule.isActive}
+          disabled={isPending}
+          onChange={(e) => onToggle(rule.id, e.target.checked)}
+          type="checkbox"
+        />
+        Activa
+      </label>
+    </li>
   );
 }
 

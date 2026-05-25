@@ -17,9 +17,9 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0A0806]">
-      <p className="text-lg font-bold text-[#D85A30]">CobraAI</p>
-      <nav className="mt-8 flex flex-col gap-1">
+    <aside className="sticky top-0 flex h-screen w-[220px] shrink-0 flex-col border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0A0806]">
+      <p className="shrink-0 text-lg font-bold text-[#D85A30]">CobraAI</p>
+      <nav className="mt-8 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {navItems.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -39,7 +39,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="mt-auto space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+      <div className="mt-4 shrink-0 space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
         <OrganizationSwitcher hidePersonal />
         <UserButton afterSignOutUrl="/login" />
       </div>

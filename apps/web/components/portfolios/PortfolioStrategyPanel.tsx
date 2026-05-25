@@ -13,6 +13,7 @@ import {
   type WorkflowRule,
   type WorkflowPackageSummary
 } from "../../hooks/use-workflows";
+import { partitionPortfolioRules } from "../../lib/workflow-rules";
 import { WorkflowPackageCard } from "../workflows/WorkflowPackageCard";
 import { StrategyPill } from "./StrategyPill";
 
@@ -29,8 +30,10 @@ export function PortfolioStrategyPanel({
   const toggleRule = useToggleWorkflowRule(portfolioId);
   const rules = (portfolio?.workflowRules ?? []) as WorkflowRule[];
 
-  const activeRules = rules.filter((r) => r.isActive);
-  const inactiveRules = rules.filter((r) => !r.isActive);
+  const { activeRules, inactiveRules } = partitionPortfolioRules(
+    rules,
+    portfolio?.automationStatus
+  );
 
   async function applyPackage(
     packageSlug: string,
