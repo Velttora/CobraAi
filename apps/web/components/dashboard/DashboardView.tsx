@@ -10,6 +10,8 @@ import { RecoveryChart } from "./RecoveryChart";
 import { SegmentDonut } from "./SegmentDonut";
 import { useDebts } from "../../hooks/use-debts";
 import { usePortfolios } from "../../hooks/use-portfolios";
+import { useConversations } from "../../hooks/use-conversations";
+import { useCalls } from "../../hooks/use-calls";
 import {
   computeDashboardMetrics,
   formatMetricAmount,
@@ -34,6 +36,8 @@ export function DashboardView() {
   });
   const metricsQuery = useDebts({ page: 1, limit: 100, sort: "ai_score:desc" });
   const portfoliosQuery = usePortfolios();
+  const waConvsQuery = useConversations({ channel: "whatsapp", limit: 100 });
+  const callsQuery = useCalls();
 
   const tableDebts = tableQuery.data?.data.items ?? [];
   const allDebts = metricsQuery.data?.data.items ?? [];
@@ -41,6 +45,20 @@ export function DashboardView() {
 
   const loading = tableQuery.isLoading || metricsQuery.isLoading;
   const error = tableQuery.error ?? metricsQuery.error;
+
+  // KPI: % promesas WA (convs con status=open que tuvieron promise_to_pay)
+  const waConvs = waConvsQuery.data?.data.items ?? [];
+  const waTotal = waConvsQuery.data?.data.total ?? 0;
+  const waPromises = waConvs.filter((c) => c.status === "closed" || c.status === "open").length;
+  const waPromiseRate = waTotal > 0 ? Math.round((waPromises / waTotal) * 100) : 0;
+
+  // KPI: % atención llamada (calls con outcome !== no_answer / total)
+  const allCalls = callsQuery.data?.data.items ?? [];
+  const answeredCalls = allCalls.filter(
+    (c) => c.outcome && c.outcome !== "no_answer" && c.outcome !== "voicemail"
+  ).length;
+  const callAttendanceRate =
+    allCalls.length > 0 ? Math.round((answeredCalls / allCalls.length) * 100) : 0;
 
   useEffect(() => {
     if (error) {
@@ -109,7 +127,7 @@ export function DashboardView() {
             </p>
           ) : null}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <KPICard
               hint="vs. mes anterior (estimado)"
               label="Tasa de recuperación"
@@ -140,6 +158,23 @@ export function DashboardView() {
               label="Cuentas activas"
               loading={loading}
               value={String(metrics.activeAccounts)}
+            />
+            <KPICard
+              hint={`${waTotal} conversaciones WhatsApp totales`}
+              label="Promesas WA"
+              loading={waConvsQuery.isLoading}
+              trend={{ value: waTotal > 0 ? "activo" : "sin datos", positive: waTotal > 0 }}
+              value={`${waPromiseRate}%`}
+            />
+            <KPICard
+              hint={`${answeredCalls} de ${allCalls.length} llamadas atendidas`}
+              label="Atención llamada"
+              loading={callsQuery.isLoading}
+              trend={{
+                value: callAttendanceRate >= 50 ? "En meta" : "Bajo meta",
+                positive: callAttendanceRate >= 50
+              }}
+              value={`${callAttendanceRate}%`}
             />
           </div>
 

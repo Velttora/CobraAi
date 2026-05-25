@@ -5,16 +5,21 @@ import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../../lib/utils";
+import { useEscalations } from "../../hooks/use-conversations";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/portfolios", label: "Portafolios" },
+  { href: "/conversations", label: "Conversaciones" },
+  { href: "/calls", label: "Llamadas" },
   { href: "/audit", label: "Auditoría" },
   { href: "/settings", label: "Configuración" }
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { data: escalationsData } = useEscalations();
+  const escalationCount = escalationsData?.data.length ?? 0;
 
   return (
     <aside className="sticky top-0 flex h-screen w-[220px] shrink-0 flex-col border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0A0806]">
@@ -23,10 +28,12 @@ export function Sidebar() {
         {navItems.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isConversations = item.href === "/conversations";
+
           return (
             <Link
               className={cn(
-                "rounded-md px-3 py-2 text-sm transition",
+                "flex items-center justify-between rounded-md px-3 py-2 text-sm transition",
                 active
                   ? "bg-[#D85A30]/10 font-medium text-[#D85A30]"
                   : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -34,7 +41,12 @@ export function Sidebar() {
               href={item.href as Route}
               key={item.href}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {isConversations && escalationCount > 0 && (
+                <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                  {escalationCount > 99 ? "99+" : escalationCount}
+                </span>
+              )}
             </Link>
           );
         })}

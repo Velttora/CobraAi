@@ -52,15 +52,19 @@ export class ContactsService {
     private readonly config: ConfigService
   ) {}
 
-  async list(tenantId: string, debtId?: string) {
+  async list(tenantId: string, debtId?: string, channel?: ContactChannel) {
     const items = await this.prisma.contact.findMany({
       where: {
         tenantId,
         deletedAt: null,
-        ...(debtId ? { debtId } : {})
+        ...(debtId ? { debtId } : {}),
+        ...(channel ? { channel } : {})
       },
       orderBy: { createdAt: "desc" },
-      take: 100
+      take: 100,
+      include: {
+        debtor: { select: { id: true, name: true } }
+      }
     });
     return items;
   }

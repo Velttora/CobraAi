@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import OpenAI from "openai";
 import { PrismaService } from "@cobrai/db";
+import { ConversationStatus } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
@@ -235,7 +236,7 @@ export class ConversationAgentService {
       case "escalate_human":
         await this.prisma.conversation.update({
           where: { id: ctx.conversation_id },
-          data: { status: "escalated" }
+          data: { status: ConversationStatus.escalated }
         });
         await this.kafka.publish(
           "cobrai.escalation.requested",

@@ -80,7 +80,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         break;
       case "cobrai.whatsapp.message_received":
         await this.agent.processInboundMessage(
-          payload as InboundMessagePayload
+          payload as unknown as InboundMessagePayload
         );
         break;
       case "cobrai.voice.call_completed":
