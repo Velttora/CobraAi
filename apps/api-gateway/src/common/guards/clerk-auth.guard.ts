@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Reflector } from "@nestjs/core";
+import { parseWebOrigins } from "../cors-origins";
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
 import type { AuthenticatedRequest, ClerkJwtPayload } from "../types/clerk-request";
 import { extractOrgId, extractOrgRole, normalizeClerkRole } from "../types/clerk-request";
@@ -40,8 +41,15 @@ export class ClerkAuthGuard implements CanActivate {
       throw new UnauthorizedException("CLERK_SECRET_KEY no configurada");
     }
 
+    const authorizedParties = parseWebOrigins(
+      this.config.get<string>("WEB_ORIGIN")
+    );
+
     try {
-      const payload = (await verifyToken(token, { secretKey })) as ClerkJwtPayload;
+      const payload = (await verifyToken(token, {
+        secretKey,
+        authorizedParties
+      })) as ClerkJwtPayload;
       request.clerkUserId = payload.sub;
       request.clerkOrgId = extractOrgId(payload);
       request.clerkOrgRole = normalizeClerkRole(extractOrgRole(payload));

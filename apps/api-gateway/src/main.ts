@@ -1,5 +1,9 @@
 import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import {
+  isAllowedCorsOrigin,
+  parseWebOrigins
+} from "./common/cors-origins";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
@@ -8,11 +12,15 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true
   });
 
+  const allowedOrigins = parseWebOrigins(process.env.WEB_ORIGIN);
   app.enableCors({
-    origin: process.env.WEB_ORIGIN?.split(",") ?? [
-      "http://localhost:3001",
-      "http://localhost:3000"
-    ],
+    origin: (origin, callback) => {
+      if (!origin || isAllowedCorsOrigin(origin, allowedOrigins)) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     credentials: true
   });
 
