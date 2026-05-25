@@ -14,7 +14,8 @@ async function bootstrap(): Promise<void> {
   );
 
   const port = Number(process.env.PORT ?? 3004);
-  await app.listen(port);
+  const host = process.env.HOST ?? "0.0.0.0";
+  await app.listen(port, host);
   Logger.log(
     `service-payments en http://localhost:${port}/api/v1`,
     "Bootstrap"

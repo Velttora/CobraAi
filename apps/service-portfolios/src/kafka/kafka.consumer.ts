@@ -16,7 +16,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    if (!this.config.get<string>("KAFKA_BROKERS")) {
+    if (!this.config.get<string>("KAFKA_BROKERS")?.trim()) {
       this.logger.warn("Kafka consumer deshabilitado en portfolios");
       return;
     }

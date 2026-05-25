@@ -4,7 +4,8 @@
       "Bash(git -C /Users/CamiloVict/Desktop/CobraAi status)",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git -C /Users/CamiloVict/Desktop/CobraAi diff --stat)"
+      "Bash(git -C /Users/CamiloVict/Desktop/CobraAi diff --stat)",
+      "Bash(chmod +x /Users/CamiloVict/Desktop/CobraAi/infra/fly/deploy.sh)"
     ]
   }
 }

@@ -1,0 +1,39 @@
+app = "cobrai-workflows"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../Dockerfile"
+  [build.args]
+    APP_NAME = "service-workflows"
+
+[env]
+  PORT                          = "8080"
+  NODE_ENV                      = "production"
+  HOST                          = "0.0.0.0"
+  KAFKA_CLIENT_ID               = "service-workflows"
+  LEGAL_ESCALATION_AGING_DAYS   = "180"
+  LEGAL_ESCALATION_MAX_SCORE    = "20"
+  LEGAL_ESCALATION_AMOUNT_USD   = "10000"
+
+# fly secrets set --config infra/fly/workflows.fly.toml \
+#   DATABASE_URL="postgresql://..." \
+#   REDIS_URL="redis://..." \
+#   KAFKA_BROKERS="host:9092"
+
+[http_service]
+  internal_port        = 8080
+  force_https          = true
+  auto_stop_machines   = "stop"
+  auto_start_machines  = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval     = "30s"
+    timeout      = "5s"
+    grace_period = "30s"
+    method       = "GET"
+    path         = "/api/health"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,0 +1,44 @@
+app = "cobrai-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../Dockerfile"
+  [build.args]
+    APP_NAME = "api-gateway"
+
+[env]
+  PORT                       = "8080"
+  NODE_ENV                   = "production"
+  RATE_LIMIT_IP_PER_MIN      = "100"
+  RATE_LIMIT_TENANT_PER_MIN  = "1000"
+  SERVICE_PORTFOLIOS_URL     = "http://cobrai-portfolios.internal:8080"
+  SERVICE_WORKFLOWS_URL      = "http://cobrai-workflows.internal:8080"
+  SERVICE_NOTIFICATIONS_URL  = "http://cobrai-notifications.internal:8080"
+  SERVICE_PAYMENTS_URL       = "http://cobrai-payments.internal:8080"
+  HOST                       = "0.0.0.0"
+
+# fly secrets set --config infra/fly/gateway.fly.toml \
+#   CLERK_SECRET_KEY=sk_live_... \
+#   CLERK_PUBLISHABLE_KEY=pk_live_... \
+#   CLERK_WEBHOOK_SECRET=whsec_... \
+#   DATABASE_URL="postgresql://..." \
+#   REDIS_URL="redis://..." \
+#   WEB_ORIGIN="https://tu-app.vercel.app"
+
+[http_service]
+  internal_port        = 8080
+  force_https          = true
+  auto_stop_machines   = "stop"
+  auto_start_machines  = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval     = "15s"
+    timeout      = "5s"
+    grace_period = "20s"
+    method       = "GET"
+    path         = "/health"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"

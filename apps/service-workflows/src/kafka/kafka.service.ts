@@ -11,7 +11,7 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   private readonly enabled: boolean;
 
   constructor(private readonly config: ConfigService) {
-    this.enabled = Boolean(this.config.get<string>("KAFKA_BROKERS"));
+    this.enabled = Boolean(this.config.get<string>("KAFKA_BROKERS")?.trim());
   }
 
   async onModuleInit(): Promise<void> {

@@ -1,0 +1,1 @@
+- [Deployment plan](project_deployment.md) — fly.io (5 apps) + Vercel, archivos en infra/fly/ y apps/web/vercel.json

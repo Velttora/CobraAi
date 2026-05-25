@@ -102,6 +102,10 @@ pnpm front       # web :3001
 
 ---
 
-## Producción (pendiente etapa 6.1)
+## Producción
 
-No commitear `.env.prod`. Variables adicionales: dominio real, SSL, secrets CI/CD (`SERVER_HOST`, `SERVER_SSH_KEY`, etc.), `PAYMENT_LINK_BASE_URL=https://pay.tudominio.com`.
+Guía paso a paso: **[DESPLIEGUE.md](./DESPLIEGUE.md)** (Fly `mia` + Vercel).
+
+- Vercel: `apps/web/.env.production.example` → copiar a `.env.production` e importar en el dashboard.
+- Fly: `fly secrets set --config infra/fly/gateway.fly.toml ...`
+- No commitear `.env.production` con claves reales.

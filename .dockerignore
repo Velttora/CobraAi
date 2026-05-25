@@ -1,0 +1,14 @@
+.git
+.env*
+node_modules
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/build
+coverage
+playwright-report
+test-results
+out
+*.tsbuildinfo
+infra/docker

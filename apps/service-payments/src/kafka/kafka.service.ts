@@ -12,8 +12,9 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly config: ConfigService) {}
 
   async onModuleInit(): Promise<void> {
-    if (!this.config.get<string>("KAFKA_BROKERS")) {
-      this.logger.warn("Kafka deshabilitado");
+    const brokers = this.config.get<string>("KAFKA_BROKERS")?.trim();
+    if (!brokers) {
+      this.logger.warn("Kafka deshabilitado (KAFKA_BROKERS no configurado)");
       return;
     }
     const kafka = createKafkaClient({

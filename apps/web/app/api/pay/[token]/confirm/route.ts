@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { paymentsServiceUrl } from "../../../../lib/payments-api";
+import { paymentsServiceUrl } from "../../../../../lib/payments-api";
 
 export async function POST(
   _request: Request,
