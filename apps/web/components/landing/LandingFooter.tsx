@@ -36,8 +36,18 @@ export function LandingFooter(): React.ReactElement {
           )}
         </nav>
       </div>
-      <p className="mt-8 text-center text-xs">
-        © 2026 CobraAI. Todos los derechos reservados.
+      <p className="mt-8 text-center text-xs leading-relaxed">
+        © 2026 CobraAI. Todos los derechos reservados.{" "}
+        Desarrollada por{" "}
+        <a
+          className="l-footer-credit-link"
+          href="https://velttora.com"
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Velttora LLC
+        </a>
+        .
       </p>
     </footer>
   );

@@ -444,6 +444,16 @@
   color: var(--l-text);
 }
 
+.l-footer-credit-link {
+  color: var(--l-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.l-footer-credit-link:hover {
+  color: var(--l-coral);
+}
+
 /* Section tag (line + label + line) */
 .landing-root .l-tag {
   display: flex;
