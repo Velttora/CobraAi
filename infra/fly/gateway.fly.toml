@@ -11,10 +11,11 @@ primary_region = "iad"
   NODE_ENV                   = "production"
   RATE_LIMIT_IP_PER_MIN      = "100"
   RATE_LIMIT_TENANT_PER_MIN  = "1000"
-  SERVICE_PORTFOLIOS_URL     = "http://cobrai-portfolios.internal:8080"
-  SERVICE_WORKFLOWS_URL      = "http://cobrai-workflows.internal:8080"
-  SERVICE_NOTIFICATIONS_URL  = "http://cobrai-notifications.internal:8080"
-  SERVICE_PAYMENTS_URL       = "http://cobrai-payments.internal:8080"
+  # URLs públicas: los servicios escuchan en IPv4 (0.0.0.0); *.internal usa IPv6 (6PN).
+  SERVICE_PORTFOLIOS_URL     = "https://cobrai-portfolios.fly.dev"
+  SERVICE_WORKFLOWS_URL      = "https://cobrai-workflows.fly.dev"
+  SERVICE_NOTIFICATIONS_URL  = "https://cobrai-notifications.fly.dev"
+  SERVICE_PAYMENTS_URL       = "https://cobrai-payments.fly.dev"
   HOST                       = "0.0.0.0"
 
 # fly secrets set --config infra/fly/gateway.fly.toml \
@@ -28,7 +29,7 @@ primary_region = "iad"
 [http_service]
   internal_port        = 8080
   force_https          = true
-  auto_stop_machines   = "stop"
+  auto_stop_machines   = false
   auto_start_machines  = true
   min_machines_running = 1
 

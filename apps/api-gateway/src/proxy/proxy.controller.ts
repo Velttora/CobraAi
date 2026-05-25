@@ -99,20 +99,34 @@ export class ProxyController {
       }
     }
 
-    const upstream = await fetch(targetUrl, {
-      method,
-      headers,
-      body
-    });
+    let upstreamRes: globalThis.Response;
+    try {
+      upstreamRes = await fetch(targetUrl, {
+        method,
+        headers,
+        body,
+        signal: AbortSignal.timeout(120_000)
+      });
+    } catch (error) {
+      res.status(503).json({
+        success: false,
+        error: {
+          code: "SERVICE_UNAVAILABLE",
+          message: `Servicio no disponible (${route.envKey})`,
+          detail: (error as Error).message
+        }
+      });
+      return;
+    }
 
-    res.status(upstream.status);
-    upstream.headers.forEach((value, key) => {
+    res.status(upstreamRes.status);
+    upstreamRes.headers.forEach((value, key) => {
       if (key !== "transfer-encoding") {
         res.setHeader(key, value);
       }
     });
 
-    const buffer = Buffer.from(await upstream.arrayBuffer());
+    const buffer = Buffer.from(await upstreamRes.arrayBuffer());
     res.send(buffer);
   }
 }
