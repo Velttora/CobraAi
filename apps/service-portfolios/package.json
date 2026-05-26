@@ -14,9 +14,9 @@
   "dependencies": {
     "@cobrai/compliance": "workspace:*",
     "@cobrai/db": "workspace:*",
-    "@cobrai/test-utils": "workspace:*",
     "@cobrai/kafka": "workspace:*",
     "@cobrai/ports": "workspace:*",
+    "@cobrai/test-utils": "workspace:*",
     "@cobrai/types": "workspace:*",
     "@cobrai/utils": "workspace:*",
     "@cobrai/workflow-packages": "workspace:*",
@@ -24,6 +24,7 @@
     "@nestjs/config": "^3.3.0",
     "@nestjs/core": "^10.4.22",
     "@nestjs/platform-express": "^10.4.22",
+    "@prisma/client": "^5.22.0",
     "bullmq": "^5.70.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
@@ -31,7 +32,7 @@
     "ioredis": "^5.10.1",
     "multer": "^2.1.1",
     "papaparse": "^5.5.3",
-    "@prisma/client": "^5.22.0",
+    "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "uuid": "^13.0.0"
@@ -43,6 +44,7 @@
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
     "@types/papaparse": "^5.5.2",
+    "@types/pdf-parse": "^1.1.5",
     "vitest": "^4.1.6"
   }
 }

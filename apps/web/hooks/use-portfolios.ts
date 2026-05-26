@@ -102,6 +102,24 @@ export function useUpdatePortfolioStrategy(portfolioId: string) {
   });
 }
 
+export function useResegmentAll() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      postApi<ApiItemResponse<{ updated: number }>>(
+        client,
+        "/api/v1/portfolios/resegment-all",
+        {}
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["debts"] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolios"] });
+    }
+  });
+}
+
 export function useDeletePortfolio() {
   const client = useApiClient();
   const queryClient = useQueryClient();

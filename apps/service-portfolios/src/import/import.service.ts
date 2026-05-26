@@ -6,6 +6,7 @@ import { DebtsService } from "../debts/debts.service";
 import { KafkaService } from "../kafka/kafka.service";
 import { PortfoliosService } from "../portfolios/portfolios.service";
 import { CsvParserService, type ImportRow } from "./csv-parser.service";
+import { PdfParserService } from "./pdf-parser.service";
 import { XlsxParserService } from "./xlsx-parser.service";
 
 export type ImportJobState = {
@@ -33,6 +34,7 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     private readonly csvParser: CsvParserService,
     private readonly xlsxParser: XlsxParserService,
+    private readonly pdfParser: PdfParserService,
     private readonly debtsService: DebtsService,
     private readonly portfoliosService: PortfoliosService,
     private readonly kafka: KafkaService
@@ -116,7 +118,14 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
         name: this.config.get<string>("IMPORT_DEFAULT_DEBTOR_NAME"),
       });
     }
-    throw new Error("Formato no soportado. Use CSV o XLSX.");
+    if (lower.endsWith(".pdf")) {
+      return this.pdfParser.parse(buffer, {
+        email: this.config.get<string>("IMPORT_DEFAULT_EMAIL"),
+        phone: this.config.get<string>("IMPORT_DEFAULT_PHONE"),
+        name: this.config.get<string>("IMPORT_DEFAULT_DEBTOR_NAME"),
+      });
+    }
+    throw new Error("Formato no soportado. Use CSV, XLSX o PDF.");
   }
 
   private async processJob(

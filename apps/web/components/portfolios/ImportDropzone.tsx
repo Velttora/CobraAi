@@ -81,11 +81,11 @@ export function ImportDropzone({
     >
       <Upload className="h-10 w-10 text-[#D85A30]" />
       <p className="mt-3 text-sm font-medium text-slate-900 dark:text-slate-100">
-        Arrastra CSV o Excel aquí
+        Arrastra CSV, Excel o PDF aquí
       </p>
       <p className="mt-1 text-xs text-slate-500">o haz clic para seleccionar</p>
       <input
-        accept=".csv,.xlsx,.xls"
+        accept=".csv,.xlsx,.xls,.pdf"
         className="sr-only"
         disabled={uploading}
         onChange={(e) => {

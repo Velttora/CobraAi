@@ -7,7 +7,13 @@
       "Bash(git -C /Users/CamiloVict/Desktop/CobraAi diff --stat)",
       "Bash(chmod +x /Users/CamiloVict/Desktop/CobraAi/infra/fly/deploy.sh)",
       "Bash(pnpm --filter @cobrai/service-portfolios exec tsc --noEmit)",
-      "Bash(pnpm --filter @cobrai/web exec tsc --noEmit)"
+      "Bash(pnpm --filter @cobrai/web exec tsc --noEmit)",
+      "Bash(find /Users/CamiloVict/Desktop/CobraAi/cursor -name \"*.pdf\" 2>/dev/null; find /Users/CamiloVict/Desktop -maxdepth 3 -name \"*.pdf\" 2>/dev/null | head -5)",
+      "Read(//Users/CamiloVict/Desktop/**)",
+      "Bash(pip3 install *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -m pip install pdfminer.six --quiet)",
+      "Bash(python3 -m pip install pdfminer.six --break-system-packages --quiet)"
     ]
   }
 }

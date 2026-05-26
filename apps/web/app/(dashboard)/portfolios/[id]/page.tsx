@@ -11,7 +11,8 @@ import { StrategyPill } from "../../../../components/portfolios/StrategyPill";
 import { useDebts } from "../../../../hooks/use-debts";
 import {
   usePortfolio,
-  usePortfolioStats
+  usePortfolioStats,
+  useResegmentAll
 } from "../../../../hooks/use-portfolios";
 import { formatCurrency } from "../../../../lib/formatters";
 import type { PortfolioQuarterStat } from "../../../../lib/types";
@@ -29,6 +30,8 @@ export default function PortfolioDetailPage({
   const [activeQuarter, setActiveQuarter] = useState<string | null>(null);
   const [tab, setTab] = useState<DetailTab>("debts");
   const [page, setPage] = useState(1);
+
+  const resegmentMutation = useResegmentAll();
 
   const portfolioQuery = usePortfolio(params.id);
   const statsQuery = usePortfolioStats(params.id);
@@ -85,6 +88,14 @@ export default function PortfolioDetailPage({
           >
             Importar archivo
           </Link>
+          <button
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            disabled={resegmentMutation.isPending}
+            onClick={() => resegmentMutation.mutate()}
+            type="button"
+          >
+            {resegmentMutation.isPending ? "Recalculando..." : "Recalcular scores"}
+          </button>
           {portfolio ? <DeletePortfolioModal portfolio={portfolio} /> : null}
         </div>
       </header>

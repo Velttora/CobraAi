@@ -13,12 +13,16 @@ import {
   ReqContext,
   type RequestContext
 } from "../common/decorators/request-context.decorator";
+import { ScoringService } from "../ai-scoring/scoring.service";
 import { CreatePortfolioDto, UpdatePortfolioDto, UpdatePortfolioStrategyDto } from "./dto/portfolio.dto";
 import { PortfoliosService } from "./portfolios.service";
 
 @Controller("v1/portfolios")
 export class PortfoliosController {
-  constructor(private readonly portfoliosService: PortfoliosService) {}
+  constructor(
+    private readonly portfoliosService: PortfoliosService,
+    private readonly scoringService: ScoringService
+  ) {}
 
   @Get()
   async list(
@@ -94,5 +98,11 @@ export class PortfoliosController {
     return successResponse(
       await this.portfoliosService.softDelete(ctx.tenantId, id)
     );
+  }
+
+  @Post("resegment-all")
+  async resegmentAll(@ReqContext() ctx: RequestContext) {
+    const updated = await this.scoringService.refreshPriorityScoresForTenant(ctx.tenantId);
+    return successResponse({ updated });
   }
 }
