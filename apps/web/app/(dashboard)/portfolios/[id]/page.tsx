@@ -4,6 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useState } from "react";
 import { CreateDebtModal } from "../../../../components/debts/CreateDebtModal";
+import { DeletePortfolioModal } from "../../../../components/portfolios/DeletePortfolioModal";
 import { PortfolioDebtTable } from "../../../../components/portfolios/PortfolioDebtTable";
 import { PortfolioStrategyPanel } from "../../../../components/portfolios/PortfolioStrategyPanel";
 import { StrategyPill } from "../../../../components/portfolios/StrategyPill";
@@ -76,7 +77,7 @@ export default function PortfolioDetailPage({
             </div>
           ) : null}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <CreateDebtModal portfolioId={params.id} />
           <Link
             className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29]"
@@ -84,6 +85,7 @@ export default function PortfolioDetailPage({
           >
             Importar archivo
           </Link>
+          {portfolio ? <DeletePortfolioModal portfolio={portfolio} /> : null}
         </div>
       </header>
 

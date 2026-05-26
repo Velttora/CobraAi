@@ -2,7 +2,6 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import { useState } from "react";
 import {
   ImportDropzone,
   ImportProgress
@@ -14,7 +13,6 @@ export default function PortfolioImportPage({
 }: {
   params: { id: string };
 }): React.ReactElement {
-  const [jobId, setJobId] = useState<string | null>(null);
   const portfolioQuery = usePortfolio(params.id);
   const portfolio = portfolioQuery.data?.data;
 
@@ -35,10 +33,11 @@ export default function PortfolioImportPage({
         </p>
       </header>
 
-      <ImportDropzone onJobCreated={setJobId} portfolioId={params.id} />
-      {jobId ? (
-        <ImportProgress jobId={jobId} portfolioId={params.id} />
-      ) : null}
+      <ImportDropzone
+        portfolioId={params.id}
+        portfolioName={portfolio?.name}
+      />
+      <ImportProgress portfolioId={params.id} />
     </section>
   );
 }

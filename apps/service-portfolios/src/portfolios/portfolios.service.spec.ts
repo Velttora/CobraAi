@@ -36,17 +36,51 @@ describe("PortfoliosService", () => {
       findFirst: vi.fn(),
       update: vi.fn()
     },
+    $transaction: vi.fn(),
     debt: {
-      groupBy: vi.fn()
+      groupBy: vi.fn(),
+      findMany: vi.fn(),
+      updateMany: vi.fn(),
+      count: vi.fn()
+    },
+    conversation: {
+      findMany: vi.fn(),
+      updateMany: vi.fn()
+    },
+    message: {
+      updateMany: vi.fn()
+    },
+    contact: {
+      updateMany: vi.fn()
+    },
+    promiseToPay: {
+      updateMany: vi.fn()
+    },
+    payment: {
+      updateMany: vi.fn()
+    },
+    paymentLink: {
+      updateMany: vi.fn()
+    },
+    workflowExecution: {
+      updateMany: vi.fn()
     },
     workflowRule: {
-      groupBy: vi.fn()
+      groupBy: vi.fn(),
+      updateMany: vi.fn()
+    },
+    portfolioPackageApplication: {
+      create: vi.fn(),
+      deleteMany: vi.fn()
+    },
+    contactConsent: {
+      updateMany: vi.fn()
+    },
+    debtor: {
+      updateMany: vi.fn()
     },
     user: {
       findUnique: vi.fn()
-    },
-    portfolioPackageApplication: {
-      create: vi.fn()
     }
   };
 
@@ -151,6 +185,34 @@ describe("PortfoliosService", () => {
       automation_status: "none",
       confirm_required: false
     });
+  });
+
+  it("softDelete cascades debts and related records", async () => {
+    prisma.debt.findMany.mockResolvedValue([
+      { id: "d1", debtorId: "debtor1" }
+    ]);
+    prisma.conversation.findMany.mockResolvedValue([{ id: "conv1" }]);
+    prisma.debt.count.mockResolvedValue(0);
+    prisma.portfolio.update.mockResolvedValue({
+      ...portfolioRecord,
+      deletedAt: new Date(),
+      status: "archived"
+    });
+
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => unknown) =>
+      fn(prisma)
+    );
+
+    await service.softDelete("org_1", "p1");
+
+    expect(prisma.debt.updateMany).toHaveBeenCalled();
+    expect(prisma.workflowRule.updateMany).toHaveBeenCalled();
+    expect(prisma.portfolioPackageApplication.deleteMany).toHaveBeenCalled();
+    expect(prisma.portfolio.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "archived", totalDebts: 0 })
+      })
+    );
   });
 
   it("updateStrategy package maps PACKAGE_ALREADY_APPLIED to conflict", async () => {

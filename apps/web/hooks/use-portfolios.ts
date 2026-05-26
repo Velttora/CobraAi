@@ -7,7 +7,7 @@ import type {
   Debtor,
   Portfolio
 } from "../lib/types";
-import { fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
+import { fetchApi, patchApi, postApi, deleteApi, useApiClient } from "./use-api-client";
 
 export function usePortfolios() {
   const client = useApiClient();
@@ -98,6 +98,25 @@ export function useUpdatePortfolioStrategy(portfolioId: string) {
       void queryClient.invalidateQueries({ queryKey: ["portfolio", portfolioId] });
       void queryClient.invalidateQueries({ queryKey: ["portfolios"] });
       void queryClient.invalidateQueries({ queryKey: ["workflow-rules"] });
+    }
+  });
+}
+
+export function useDeletePortfolio() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (portfolioId: string) =>
+      deleteApi<ApiItemResponse<Portfolio>>(
+        client,
+        `/api/v1/portfolios/${portfolioId}`
+      ),
+    onSuccess: (_data, portfolioId) => {
+      void queryClient.invalidateQueries({ queryKey: ["portfolios"] });
+      void queryClient.removeQueries({ queryKey: ["portfolio", portfolioId] });
+      void queryClient.removeQueries({ queryKey: ["portfolio-stats", portfolioId] });
+      void queryClient.removeQueries({ queryKey: ["debts"] });
     }
   });
 }

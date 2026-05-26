@@ -335,9 +335,118 @@ export class PortfoliosService {
 
   async softDelete(tenantId: string, id: string): Promise<Portfolio> {
     await this.findOne(tenantId, id);
-    return this.prisma.portfolio.update({
-      where: { id },
-      data: { deletedAt: new Date(), status: "archived" }
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const debts = await tx.debt.findMany({
+        where: { tenantId, portfolioId: id, deletedAt: null },
+        select: { id: true, debtorId: true }
+      });
+      const debtIds = debts.map((debt) => debt.id);
+      const debtorIds = [...new Set(debts.map((debt) => debt.debtorId))];
+
+      if (debtIds.length > 0) {
+        const conversations = await tx.conversation.findMany({
+          where: {
+            tenantId,
+            debtId: { in: debtIds },
+            deletedAt: null
+          },
+          select: { id: true }
+        });
+        const conversationIds = conversations.map((c) => c.id);
+
+        if (conversationIds.length > 0) {
+          await tx.message.updateMany({
+            where: {
+              tenantId,
+              conversationId: { in: conversationIds },
+              deletedAt: null
+            },
+            data: { deletedAt: now }
+          });
+          await tx.conversation.updateMany({
+            where: { id: { in: conversationIds } },
+            data: { deletedAt: now }
+          });
+        }
+
+        await tx.contact.updateMany({
+          where: { tenantId, debtId: { in: debtIds }, deletedAt: null },
+          data: { deletedAt: now }
+        });
+        await tx.promiseToPay.updateMany({
+          where: { tenantId, debtId: { in: debtIds }, deletedAt: null },
+          data: { deletedAt: now }
+        });
+        await tx.payment.updateMany({
+          where: { tenantId, debtId: { in: debtIds }, deletedAt: null },
+          data: { deletedAt: now }
+        });
+        await tx.paymentLink.updateMany({
+          where: { tenantId, debtId: { in: debtIds }, deletedAt: null },
+          data: { deletedAt: now }
+        });
+        await tx.workflowExecution.updateMany({
+          where: { tenantId, debtId: { in: debtIds }, deletedAt: null },
+          data: { deletedAt: now }
+        });
+        await tx.debt.updateMany({
+          where: { id: { in: debtIds } },
+          data: { deletedAt: now }
+        });
+      }
+
+      await tx.workflowRule.updateMany({
+        where: { tenantId, portfolioId: id, deletedAt: null },
+        data: { deletedAt: now, isActive: false }
+      });
+
+      await tx.portfolioPackageApplication.deleteMany({
+        where: { tenantId, portfolioId: id }
+      });
+
+      for (const debtorId of debtorIds) {
+        const activeDebts = await tx.debt.count({
+          where: { tenantId, debtorId, deletedAt: null }
+        });
+        if (activeDebts > 0) continue;
+
+        const orphanConversations = await tx.conversation.findMany({
+          where: { tenantId, debtorId, deletedAt: null },
+          select: { id: true }
+        });
+        const orphanConversationIds = orphanConversations.map((c) => c.id);
+
+        if (orphanConversationIds.length > 0) {
+          await tx.message.updateMany({
+            where: {
+              tenantId,
+              conversationId: { in: orphanConversationIds },
+              deletedAt: null
+            },
+            data: { deletedAt: now }
+          });
+          await tx.conversation.updateMany({
+            where: { id: { in: orphanConversationIds } },
+            data: { deletedAt: now }
+          });
+        }
+
+        await tx.contactConsent.updateMany({
+          where: { tenantId, debtorId, deletedAt: null },
+          data: { deletedAt: now }
+        });
+        await tx.debtor.updateMany({
+          where: { id: debtorId, tenantId, deletedAt: null },
+          data: { deletedAt: now }
+        });
+      }
+
+      return tx.portfolio.update({
+        where: { id },
+        data: { deletedAt: now, status: "archived", totalDebts: 0, totalAmount: 0 }
+      });
     });
   }
 

@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Upload } from "lucide-react";
+import { useImportJobs } from "../../contexts/ImportJobsContext";
 import { cn } from "../../lib/utils";
 
 export function ImportDropzone({
   portfolioId,
-  onJobCreated
+  portfolioName
 }: {
   portfolioId: string;
-  onJobCreated: (jobId: string) => void;
+  portfolioName?: string;
 }) {
+  const { trackJob } = useImportJobs();
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -23,7 +25,8 @@ export function ImportDropzone({
         form.append("file", file);
         const res = await fetch(`/api/import/${portfolioId}`, {
           method: "POST",
-          body: form
+          body: form,
+          keepalive: true
         });
         const json = (await res.json()) as {
           success?: boolean;
@@ -33,15 +36,21 @@ export function ImportDropzone({
         if (!res.ok || !json.success || !json.data?.job_id) {
           throw new Error(json.error?.message ?? "Error al importar");
         }
-        toast.success("Importación iniciada");
-        onJobCreated(json.data.job_id);
+        trackJob({
+          portfolioId,
+          jobId: json.data.job_id,
+          portfolioName,
+          fileName: file.name,
+          startedAt: new Date().toISOString()
+        });
+        toast.success("Importación en curso — puedes cambiar de pestaña");
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Error al importar");
       } finally {
         setUploading(false);
       }
     },
-    [onJobCreated, portfolioId]
+    [portfolioId, portfolioName, trackJob]
   );
 
   const onDrop = useCallback(
@@ -90,56 +99,59 @@ export function ImportDropzone({
 }
 
 export function ImportProgress({
-  portfolioId,
-  jobId
+  portfolioId
 }: {
   portfolioId: string;
-  jobId: string;
 }) {
-  const [status, setStatus] = useState<string>("queued");
-  const [processed, setProcessed] = useState(0);
-  const [success, setSuccess] = useState(0);
-  const [errors, setErrors] = useState(0);
+  const { getJobForPortfolio } = useImportJobs();
+  const job = getJobForPortfolio(portfolioId);
 
-  useEffect(() => {
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/import/${portfolioId}/${jobId}`);
-        const json = (await res.json()) as {
-          data?: {
-            status: string;
-            processed_rows?: number;
-            success_rows?: number;
-            error_rows?: number;
-          };
-        };
-        if (json.data) {
-          setStatus(json.data.status);
-          setProcessed(json.data.processed_rows ?? 0);
-          setSuccess(json.data.success_rows ?? 0);
-          setErrors(json.data.error_rows ?? 0);
-          if (["completed", "failed"].includes(json.data.status)) {
-            clearInterval(timer);
-          }
-        }
-      } catch {
-        clearInterval(timer);
-      }
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [jobId, portfolioId]);
+  if (!job) return null;
+
+  const isActive = !["completed", "failed"].includes(job.status);
+  const totalRows = job.estimated_rows || job.processed_rows;
+  const progressPct =
+    totalRows > 0
+      ? Math.min(100, Math.round((job.processed_rows / totalRows) * 100))
+      : isActive
+        ? 8
+        : 100;
 
   return (
     <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-      <h3 className="text-sm font-semibold">Progreso de importación</h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-semibold">Progreso de importación</h3>
+        {isActive ? (
+          <span className="rounded-full bg-[#D85A30]/10 px-2 py-0.5 text-xs font-medium text-[#D85A30]">
+            En segundo plano
+          </span>
+        ) : null}
+      </div>
+      {job.fileName ? (
+        <p className="mt-1 truncate text-xs text-slate-500">{job.fileName}</p>
+      ) : null}
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-        Estado: <span className="font-medium capitalize">{status}</span>
+        Estado: <span className="font-medium capitalize">{job.status}</span>
       </p>
+      {isActive ? (
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+          <div
+            className="h-full rounded-full bg-[#D85A30] transition-all duration-500"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      ) : null}
       <ul className="mt-2 space-y-1 text-sm text-slate-500">
-        <li>Procesadas: {processed}</li>
-        <li>Exitosas: {success}</li>
-        <li>Errores: {errors}</li>
+        <li>Procesadas: {job.processed_rows}</li>
+        <li>Exitosas: {job.success_rows}</li>
+        <li>Errores: {job.error_rows}</li>
       </ul>
+      {isActive ? (
+        <p className="mt-3 text-xs text-slate-400">
+          La importación continúa aunque cambies de página o de pestaña del
+          navegador.
+        </p>
+      ) : null}
     </section>
   );
 }
