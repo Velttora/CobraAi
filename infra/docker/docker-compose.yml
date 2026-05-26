@@ -81,5 +81,16 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       DYNAMIC_CONFIG_ENABLED: "true"
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cobrai-cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ../cloudflared/config.yml:/etc/cloudflared/config.yml
+      - ../cloudflared/credentials.json:/etc/cloudflared/credentials.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   cobrai-postgres-data:

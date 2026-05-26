@@ -6,9 +6,25 @@ export interface PromptContext {
   dueDate: string;
   paymentLink: string;
   debtStatus: string;
+  // Nivel 1 — historial del deudor
+  debtorHistory?: DebtorHistory;
+}
+
+export interface DebtorHistory {
+  previousContactsCount: number;
+  brokenPromisesCount: number;
+  lastOutcome: string | null;
+  lastContactDaysAgo: number | null;
+  preferredChannel: string | null;
+  callSummary: string | null;        // resumen de la última llamada Vapi
+  hasPromisePending: boolean;
+  promisedDate: string | null;
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
+  const history = ctx.debtorHistory;
+  const historySection = history ? buildHistorySection(history) : "";
+
   return `Eres Valeria, agente de cobranza de CobraAI, representando a ${ctx.companyName}.
 Hablas español colombiano de manera amable, profesional y empática.
 NUNCA eres agresiva, amenazante ni usas lenguaje que pueda infringir la Ley 1266 de Colombia.
@@ -19,17 +35,18 @@ CONTEXTO DEL DEUDOR:
 - Fecha vencimiento: ${ctx.dueDate}
 - Estado actual: ${ctx.debtStatus}
 - Enlace de pago: ${ctx.paymentLink}
-
+${historySection}
 TU OBJETIVO: Ayudar al deudor a resolver su situación de la manera más conveniente para ambas partes.
 
 REGLAS:
 1. Respuestas cortas (máximo 3 oraciones para WhatsApp).
-2. Si promete pagar: confirma fecha y monto, agradece.
-3. Si pide plan de pagos: ofrece dividir en 3 cuotas, envía el link.
-4. Si disputa la deuda: anota que revisarás, ofrece comunicar al área de atención.
-5. Si dice que ya pagó: agradece, explica que el pago puede tomar 24-48h en reflejarse.
-6. Si es agresivo o pide hablar con humano: ofrece escalar a un agente.
-7. Si pide no ser contactado: respeta y confirma que no se le contactará más.
+2. Usa el historial para personalizar — si ya prometió y no pagó, menciónalo con empatía.
+3. Si promete pagar: confirma fecha y monto, agradece.
+4. Si pide plan de pagos: ofrece dividir en 3 cuotas, envía el link.
+5. Si disputa la deuda: anota que revisarás, ofrece comunicar al área de atención.
+6. Si dice que ya pagó: agradece, explica que el pago puede tomar 24-48h en reflejarse.
+7. Si es agresivo o pide hablar con humano: ofrece escalar a un agente.
+8. Si pide no ser contactado: respeta y confirma que no se le contactará más.
 
 REGULACIÓN COLOMBIA (Ley 1266 / Habeas Data):
 - NO amenazar con acciones legales inexistentes.
@@ -44,4 +61,36 @@ FORMATO DE RESPUESTA — devuelve ÚNICAMENTE este JSON:
   "promise_date": "YYYY-MM-DD" | null,
   "promise_amount": número | null
 }`;
+}
+
+function buildHistorySection(h: DebtorHistory): string {
+  const lines: string[] = ["\nHISTORIAL DEL DEUDOR:"];
+
+  if (h.previousContactsCount === 0) {
+    lines.push("- Es el primer contacto con este deudor. Sé cálido y presenta la situación claramente.");
+  } else {
+    lines.push(`- Contactos previos: ${h.previousContactsCount}`);
+
+    if (h.lastContactDaysAgo !== null) {
+      lines.push(`- Último contacto: hace ${h.lastContactDaysAgo} día(s) — resultado: ${h.lastOutcome ?? "sin registro"}`);
+    }
+
+    if (h.brokenPromisesCount > 0) {
+      lines.push(`- Promesas incumplidas: ${h.brokenPromisesCount} — aborda con empatía, pregunta qué pasó.`);
+    }
+
+    if (h.hasPromisePending && h.promisedDate) {
+      lines.push(`- TIENE UNA PROMESA PENDIENTE para el ${h.promisedDate} — pregunta si pudo realizarla.`);
+    }
+
+    if (h.callSummary) {
+      lines.push(`- Resumen de última llamada: "${h.callSummary}"`);
+    }
+
+    if (h.preferredChannel) {
+      lines.push(`- Canal preferido detectado: ${h.preferredChannel}`);
+    }
+  }
+
+  return lines.join("\n") + "\n";
 }

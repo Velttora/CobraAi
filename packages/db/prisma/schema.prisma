@@ -177,6 +177,7 @@ enum ConversationStatus {
   closed
   archived
   pending
+  escalated
 
   @@map("conversation_status")
 }

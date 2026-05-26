@@ -1,6 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
+import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 
 type ContactOutcome =
   | "promise_made"
@@ -42,6 +44,8 @@ export class VapiWebhookHandler {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kafka: KafkaService,
+    private readonly whatsapp: TwilioWhatsAppAdapter,
+    private readonly config: ConfigService,
   ) {}
 
   async handleEndOfCall(payload: VapiWebhookPayload): Promise<void> {
@@ -95,7 +99,12 @@ export class VapiWebhookHandler {
       );
     }
 
-    // 3. Publicar cobrai.voice.call_completed
+    // 3. Si hubo promesa de pago → enviar link por WhatsApp
+    if (outcome === "promise_made") {
+      await this.sendPaymentLinkWhatsApp(tenantId, debtId);
+    }
+
+    // 4. Publicar cobrai.voice.call_completed
     await this.kafka.publish("cobrai.voice.call_completed", tenantId, {
       call_id: call.id,
       debt_id: debtId,
@@ -136,6 +145,37 @@ export class VapiWebhookHandler {
       default:
         return "refused";
     }
+  }
+
+  private async sendPaymentLinkWhatsApp(tenantId: string, debtId: string): Promise<void> {
+    const debt = await this.prisma.debt.findFirst({
+      where: { id: debtId, tenantId },
+      select: { debtorId: true, amountOutstanding: true, debtor: { select: { name: true, phones: true } } },
+    });
+    if (!debt) return;
+
+    const phones = (debt.debtor.phones ?? []) as string[];
+    const phone = phones[0];
+    if (!phone) return;
+
+    const baseUrl = this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "https://cobrai.app/pay";
+    const link = `${baseUrl}/${debtId}`;
+    const monto = Number(debt.amountOutstanding).toLocaleString("es-CO");
+    const nombre = debt.debtor.name.split(" ")[0] ?? "cliente";
+
+    await this.whatsapp.sendTemplate({
+      to: `+${phone}`,
+      tenant_id: tenantId,
+      template_id: "link_pago",
+      variables: {
+        nombre,
+        monto,
+        link_pago: link,
+        body: `Hola ${nombre}, gracias por su compromiso de pago 🙏. Aquí le enviamos el enlace para realizar su pago de $${monto} COP:\n\n${link}\n\nCualquier duda estamos a su disposición.`,
+      },
+    });
+
+    this.logger.log(`Link de pago enviado por WA a ${phone} para deuda ${debtId}`);
   }
 
   private async saveTranscript(

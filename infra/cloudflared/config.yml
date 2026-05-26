@@ -1,0 +1,7 @@
+tunnel: 77411341-b4c0-4e60-9a8f-46f44ee0b1ae
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: cobra.fogging.org
+    service: http://host.docker.internal:3003
+  - service: http_status:404

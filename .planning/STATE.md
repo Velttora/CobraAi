@@ -4,16 +4,16 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 1 (WhatsApp Real) — pendiente de iniciar
-- **Completadas:** ninguna de las fases WA/Voice
+- **Fase activa:** Phase 4 (Dashboard Conversaciones)
+- **Completadas:** Phases 1, 2, 3
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 
 ## Fases
 | # | Nombre | Estado |
 |---|---|---|
-| 1 | WhatsApp Real (Twilio WA Business API) | 🔲 pendiente |
-| 2 | Voice Agent Real (Vapi.ai) | 🔲 pendiente |
-| 3 | LLM Conversational Agent (WA bidireccional) | 🔲 pendiente |
+| 1 | WhatsApp Real (Twilio WA Business API) | ✅ completa |
+| 2 | Voice Agent Real (Vapi.ai) | ✅ completa |
+| 3 | LLM Conversational Agent (WA bidireccional) | ✅ completa |
 | 4 | Dashboard Conversaciones y Escalaciones | 🔲 pendiente |
 
 ## Contexto acumulado

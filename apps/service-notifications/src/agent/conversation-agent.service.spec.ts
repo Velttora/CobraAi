@@ -23,11 +23,12 @@ const mockConsentUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
 
 const mockPrisma = {
   debtor: { findFirst: mockDebtorFindFirst },
-  message: { findMany: mockMessageFindMany, create: mockMessageCreate },
+  message: { findMany: mockMessageFindMany, create: mockMessageCreate, findFirst: vi.fn().mockResolvedValue(null) },
   debt: { updateMany: mockDebtUpdateMany },
-  promiseToPay: { create: mockPromiseCreate },
+  promiseToPay: { create: mockPromiseCreate, count: vi.fn().mockResolvedValue(0), findFirst: vi.fn().mockResolvedValue(null) },
   conversation: { update: mockConversationUpdate },
-  contactConsent: { updateMany: mockConsentUpdateMany }
+  contactConsent: { updateMany: mockConsentUpdateMany },
+  contact: { findMany: vi.fn().mockResolvedValue([]) }
 };
 
 const mockKafka = { publish: vi.fn().mockResolvedValue(undefined) };

@@ -7,7 +7,11 @@ function makePrisma() {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     debt: {
-      findFirst: vi.fn().mockResolvedValue({ debtorId: "debtor-uuid-1" }),
+      findFirst: vi.fn().mockResolvedValue({
+        debtorId: "debtor-uuid-1",
+        amountOutstanding: 1500000,
+        debtor: { name: "Gustavo Moreno", phones: ["573233682536"] }
+      }),
     },
     conversation: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -61,7 +65,9 @@ describe("VapiWebhookHandler", () => {
     prisma = makePrisma();
     kafka = makeKafka();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handler = new VapiWebhookHandler(prisma as any, kafka as any);
+    const whatsapp = { sendTemplate: vi.fn().mockResolvedValue({ message_id: "wa-sid", status: "sent" }) };
+    const config = { get: vi.fn().mockReturnValue("http://localhost:3001/pay"), getOrThrow: vi.fn() };
+    handler = new VapiWebhookHandler(prisma as any, kafka as any, whatsapp as any, config as any);
   });
 
   describe("handleEndOfCall", () => {
