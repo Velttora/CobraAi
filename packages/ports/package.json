@@ -10,6 +10,9 @@
       "default": "./dist/index.js"
     }
   },
+  "dependencies": {
+    "@cobrai/utils": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",

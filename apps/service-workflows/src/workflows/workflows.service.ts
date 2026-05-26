@@ -14,7 +14,9 @@ import type {
   WorkflowRule
 } from "@cobrai/db";
 import {
-  getAgingBucket
+  daysSinceLastContact,
+  getAgingBucket,
+  planOperationalScores
 } from "@cobrai/utils";
 import {
   computeAgingDays,
@@ -516,6 +518,8 @@ export class WorkflowsService {
       processed += 1;
     }
 
+    await this.refreshPriorityScoresForTenant(tenantId, activeDebts);
+
     const brokenPromises = await this.prisma.promiseToPay.findMany({
       where: {
         tenantId,
@@ -914,6 +918,56 @@ export class WorkflowsService {
     this.logger.log(
       `Transición upcoming→new (${tenantId}): ${nowNew.length} deudas activadas`
     );
+  }
+
+  private async refreshPriorityScoresForTenant(
+    tenantId: string,
+    activeDebts: Array<Debt & { debtor: { whatsappOptIn: boolean } }>
+  ): Promise<void> {
+    if (activeDebts.length === 0) return;
+
+    const maxByPortfolio = new Map<string, number>();
+    for (const debt of activeDebts) {
+      const amt = decimalToNumber(debt.amountOutstanding);
+      maxByPortfolio.set(
+        debt.portfolioId,
+        Math.max(maxByPortfolio.get(debt.portfolioId) ?? 0, amt)
+      );
+    }
+
+    const lastContacts = await this.prisma.contact.groupBy({
+      by: ["debtId"],
+      where: { tenantId, deletedAt: null },
+      _max: { createdAt: true }
+    });
+    const lastContactByDebt = new Map(
+      lastContacts.map((row) => [row.debtId, row._max.createdAt ?? null])
+    );
+
+    for (const debt of activeDebts) {
+      const recoveryScore = debt.aiScore ?? 50;
+      const operational = planOperationalScores({
+        recovery_score: recoveryScore,
+        amount_outstanding: decimalToNumber(debt.amountOutstanding),
+        days_since_last_contact: daysSinceLastContact(
+          lastContactByDebt.get(debt.id) ?? null
+        ),
+        max_amount_in_portfolio: maxByPortfolio.get(debt.portfolioId) ?? 1,
+        aging_days: computeAgingDays(debt.dueDate),
+        debt_status: debt.status,
+        has_whatsapp: debt.debtor.whatsappOptIn
+      });
+
+      await this.prisma.debt.update({
+        where: { id: debt.id },
+        data: {
+          priorityScore: operational.priority_score,
+          aiSegment: operational.segment,
+          riskLevel: operational.segment,
+          bestChannel: operational.best_channel
+        }
+      });
+    }
   }
 
   private async getDebt(tenantId: string, debtId: string): Promise<Debt> {

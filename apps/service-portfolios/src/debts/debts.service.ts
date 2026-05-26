@@ -10,7 +10,8 @@ import { ScoringService } from "../ai-scoring/scoring.service";
 import { DebtorsService } from "../debtors/debtors.service";
 import {
   getCollectionQuarter,
-  getInitialDebtStatus
+  getInitialDebtStatus,
+  getQuarterDateRange
 } from "@cobrai/utils";
 import {
   computeAgingBucket,
@@ -34,17 +35,17 @@ export class DebtsService {
   async list(tenantId: string, query: Record<string, unknown>) {
     const { page, limit, skip } = parsePagination(query);
     const filters = parseFilters(query);
-    const { field, direction } = parseSort(query.sort, [
-      "created_at",
-      "due_date",
-      "ai_score",
-      "amount_outstanding"
-    ]);
+    const { field, direction } = parseSort(
+      query.sort,
+      ["created_at", "due_date", "ai_score", "priority_score", "amount_outstanding"],
+      "priority_score"
+    );
 
     const orderByMap: Record<string, Prisma.DebtOrderByWithRelationInput> = {
       created_at: { createdAt: direction },
       due_date: { dueDate: direction },
       ai_score: { aiScore: direction },
+      priority_score: { priorityScore: direction },
       amount_outstanding: { amountOutstanding: direction }
     };
 
@@ -65,7 +66,7 @@ export class DebtsService {
           ? { status: { notIn: ["future", "upcoming"] } }
           : {}),
       ...(filters.collection_quarter
-        ? { collectionQuarter: filters.collection_quarter }
+        ? this.collectionQuarterFilter(filters.collection_quarter)
         : {}),
       ...(filters.aging_bucket ? { agingBucket: filters.aging_bucket as never } : {}),
       ...(filters.ai_segment ? { aiSegment: filters.ai_segment as never } : {}),
@@ -169,6 +170,7 @@ export class DebtsService {
       where: { id: debt.id },
       data: {
         aiScore: scoring.score,
+        priorityScore: scoring.priority_score,
         aiSegment: scoring.segment,
         riskLevel: scoring.risk_level,
         bestChannel: scoring.best_channel,
@@ -285,6 +287,7 @@ export class DebtsService {
       where: { id },
       data: {
         aiScore: scoring.score,
+        priorityScore: scoring.priority_score,
         aiSegment: scoring.segment,
         riskLevel: scoring.risk_level,
         bestChannel: scoring.best_channel
@@ -293,11 +296,32 @@ export class DebtsService {
       await this.kafka.publish("cobrai.debt.segmented", tenantId, {
         debt_id: updated.id,
         ai_score: scoring.score,
+        priority_score: scoring.priority_score,
         ai_segment: scoring.segment,
         best_channel: scoring.best_channel
       });
       return updated;
     });
+  }
+
+  /** Alineado con stats: quarter guardado o fecha de cobro programada / vencimiento. */
+  private collectionQuarterFilter(quarter: string): Prisma.DebtWhereInput {
+    const { start, end } = getQuarterDateRange(quarter);
+    return {
+      OR: [
+        { collectionQuarter: quarter },
+        {
+          collectionQuarter: null,
+          OR: [
+            { scheduledCollectionDate: { gte: start, lte: end } },
+            {
+              scheduledCollectionDate: null,
+              dueDate: { gte: start, lte: end }
+            }
+          ]
+        }
+      ]
+    };
   }
 
   private async refreshPortfolioTotals(

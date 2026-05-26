@@ -26,6 +26,9 @@ import {
 
 describe("PortfoliosService", () => {
   const prisma = {
+    tenant: {
+      upsert: vi.fn()
+    },
     portfolio: {
       findMany: vi.fn(),
       count: vi.fn(),
@@ -64,6 +67,7 @@ describe("PortfoliosService", () => {
     vi.clearAllMocks();
     service = new PortfoliosService(prisma as never);
     vi.mocked(resolveAppliedById).mockResolvedValue(undefined);
+    prisma.tenant.upsert.mockResolvedValue({ id: "org_1" });
     prisma.portfolio.findFirst.mockResolvedValue(portfolioRecord);
     prisma.portfolioPackageApplication.create.mockResolvedValue({});
   });
@@ -72,6 +76,9 @@ describe("PortfoliosService", () => {
     prisma.portfolio.create.mockResolvedValue({ id: "p1", name: "Test" });
     const result = await service.create("org_1", { name: "Test" });
     expect(result.id).toBe("p1");
+    expect(prisma.tenant.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "org_1" } })
+    );
     expect(prisma.portfolio.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ tenantId: "org_1" }) })
     );

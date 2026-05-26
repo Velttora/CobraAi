@@ -108,6 +108,7 @@ export interface Debt {
   agingBucket: string;
   status: string;
   aiScore?: number | null;
+  priorityScore?: number | null;
   aiSegment?: string | null;
   riskLevel?: string | null;
   bestChannel?: string | null;

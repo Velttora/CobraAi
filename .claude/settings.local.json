@@ -5,7 +5,9 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git -C /Users/CamiloVict/Desktop/CobraAi diff --stat)",
-      "Bash(chmod +x /Users/CamiloVict/Desktop/CobraAi/infra/fly/deploy.sh)"
+      "Bash(chmod +x /Users/CamiloVict/Desktop/CobraAi/infra/fly/deploy.sh)",
+      "Bash(pnpm --filter @cobrai/service-portfolios exec tsc --noEmit)",
+      "Bash(pnpm --filter @cobrai/web exec tsc --noEmit)"
     ]
   }
 }

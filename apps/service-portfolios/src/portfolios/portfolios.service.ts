@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException
 } from "@nestjs/common";
-import { PrismaService } from "@cobrai/db";
+import { ensureTenantRecord, PrismaService } from "@cobrai/db";
 import type { Portfolio, WorkflowRule } from "@cobrai/db";
 import {
   applyPackageToPortfolio,
@@ -101,6 +101,7 @@ export class PortfoliosService {
     dto: CreatePortfolioDto,
     userId?: string
   ): Promise<Portfolio & { workflowRules?: WorkflowRule[] }> {
+    await ensureTenantRecord(this.prisma, tenantId);
     const appliedById = await resolveAppliedById(this.prisma, userId);
 
     const portfolio = await this.prisma.portfolio.create({
@@ -119,13 +120,26 @@ export class PortfoliosService {
     });
 
     if (dto.strategy === "package" && dto.package_slug) {
-      await applyPackageToPortfolio(this.prisma, {
-        tenantId,
-        portfolioId: portfolio.id,
-        packageId: dto.package_slug,
-        overwrite: true,
-        appliedById
-      });
+      try {
+        await applyPackageToPortfolio(this.prisma, {
+          tenantId,
+          portfolioId: portfolio.id,
+          packageId: dto.package_slug,
+          overwrite: true,
+          appliedById
+        });
+      } catch (error) {
+        const err = error as Error & { code?: string };
+        if (err.code === "PACKAGE_ALREADY_APPLIED") {
+          throw new ConflictException(
+            "Este portafolio ya tiene reglas activas. Usa sobrescribir para aplicar el paquete."
+          );
+        }
+        if (err.message.includes("no encontrado")) {
+          throw new BadRequestException(err.message);
+        }
+        throw error;
+      }
     } else if (dto.strategy === "custom") {
       await this.prisma.portfolioPackageApplication.create({
         data: {

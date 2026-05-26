@@ -17,12 +17,15 @@ describe("AIScoringStubAdapter", () => {
         has_phone: true,
         has_email: false,
         promises_broken_count: 2,
-        previous_contacts_count: 5
+        previous_contacts_count: 5,
+        max_amount_in_portfolio: 1_000_000
       }
     });
 
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
+    expect(result.priority_score).toBeGreaterThanOrEqual(0);
+    expect(result.priority_score).toBeLessThanOrEqual(100);
     expect(result.model_version).toMatch(/^stub-/);
     expect(result.best_channel).toBe("whatsapp");
   });

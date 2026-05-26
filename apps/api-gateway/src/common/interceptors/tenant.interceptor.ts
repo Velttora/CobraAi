@@ -12,6 +12,7 @@ import { Reflector } from "@nestjs/core";
 import { Observable } from "rxjs";
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
 import type { AuthenticatedRequest } from "../types/clerk-request";
+import { ensureTenantRecord, PrismaService } from "@cobrai/db";
 import { RateLimitService } from "../../rate-limit/rate-limit.service";
 
 @Injectable()
@@ -19,7 +20,8 @@ export class TenantInterceptor implements NestInterceptor {
   constructor(
     private readonly reflector: Reflector,
     private readonly rateLimit: RateLimitService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService
   ) {}
 
   async intercept(
@@ -47,6 +49,16 @@ export class TenantInterceptor implements NestInterceptor {
     request.headers["x-tenant-id"] = tenantId;
     request.headers["x-user-id"] = request.clerkUserId ?? "";
     request.headers["x-user-role"] = request.clerkOrgRole ?? "viewer";
+
+    try {
+      await ensureTenantRecord(this.prisma, tenantId);
+    } catch (error) {
+      throw new HttpException(
+        "No se pudo sincronizar la organización en la base de datos",
+        HttpStatus.SERVICE_UNAVAILABLE,
+        { cause: error }
+      );
+    }
 
     const tenantLimit = Number(
       this.config.get<string>("RATE_LIMIT_TENANT_PER_MIN") ?? 1000

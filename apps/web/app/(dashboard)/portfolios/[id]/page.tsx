@@ -18,6 +18,8 @@ import { toNumber } from "../../../../lib/types";
 
 type DetailTab = "debts" | "automation";
 
+const PAGE_SIZE = 100;
+
 export default function PortfolioDetailPage({
   params
 }: {
@@ -25,13 +27,15 @@ export default function PortfolioDetailPage({
 }): React.ReactElement {
   const [activeQuarter, setActiveQuarter] = useState<string | null>(null);
   const [tab, setTab] = useState<DetailTab>("debts");
+  const [page, setPage] = useState(1);
+
   const portfolioQuery = usePortfolio(params.id);
   const statsQuery = usePortfolioStats(params.id);
   const debtsQuery = useDebts({
     portfolioId: params.id,
     includeFuture: true,
-    page: 1,
-    limit: 50,
+    page,
+    limit: PAGE_SIZE,
     collectionQuarter: activeQuarter ?? undefined
   });
 
@@ -39,6 +43,12 @@ export default function PortfolioDetailPage({
   const quarters = (statsQuery.data?.data.quarters ??
     []) as PortfolioQuarterStat[];
   const debts = debtsQuery.data?.data.items ?? [];
+  const pagination = debtsQuery.data?.data.pagination;
+
+  function handleQuarterChange(quarter: string | null): void {
+    setActiveQuarter(quarter);
+    setPage(1);
+  }
 
   return (
     <section className="space-y-6">
@@ -110,8 +120,12 @@ export default function PortfolioDetailPage({
           currency={portfolio?.currency ?? "COP"}
           debts={debts}
           loading={debtsQuery.isLoading || statsQuery.isLoading}
-          onQuarterChange={setActiveQuarter}
+          onPageChange={setPage}
+          onQuarterChange={handleQuarterChange}
+          page={pagination?.page ?? 1}
           quarters={quarters}
+          totalDebts={pagination?.total}
+          totalPages={pagination?.total_pages}
         />
       )}
     </section>

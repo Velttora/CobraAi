@@ -1,4 +1,10 @@
 import { randomUUID } from "node:crypto";
+import {
+  bestChannelForScores,
+  calculatePriorityScore,
+  calculateRecoveryScore,
+  deriveManagementSegment
+} from "@cobrai/utils";
 import type {
   AIScoringPort,
   ScoreDebtInput,
@@ -8,41 +14,49 @@ import type { ContactChannel, RiskSegment } from "../types/risk-segment";
 
 const STUB_MODEL_VERSION = "stub-1.0.0";
 
-function deriveSegment(score: number): RiskSegment {
-  if (score >= 80) return "critical";
-  if (score >= 60) return "high";
-  if (score >= 40) return "medium";
-  if (score >= 20) return "low";
-  return "minimal";
-}
-
-function pickChannel(features: ScoreDebtInput["features"]): ContactChannel {
-  if (features.has_whatsapp) return "whatsapp";
-  if (features.has_phone) return "voice";
-  if (features.has_email) return "email";
-  return "sms";
-}
-
 /**
- * Stub local: scoring determinístico a partir de features para flujos E2E sin IA.
+ * Stub local: scoring determinístico (recuperación + prioridad) para E2E.
  */
 export class AIScoringStubAdapter implements AIScoringPort {
   async scoreDebt(input: ScoreDebtInput): Promise<ScoringResult> {
     const { features } = input;
-    const agingWeight = Math.min(features.aging_days / 120, 1) * 40;
-    const amountWeight = Math.min(features.amount_outstanding / 10_000_000, 1) * 30;
-    const promiseWeight = Math.min(features.promises_broken_count * 5, 15);
-    const contactWeight = Math.min(features.previous_contacts_count * 2, 15);
-    const score = Math.round(
-      Math.min(100, agingWeight + amountWeight + promiseWeight + contactWeight)
+    const score = calculateRecoveryScore({
+      aging_days: features.aging_days,
+      amount_outstanding: features.amount_outstanding,
+      has_whatsapp: features.has_whatsapp,
+      has_phone: features.has_phone,
+      has_email: features.has_email,
+      promises_broken_count: features.promises_broken_count,
+      previous_contacts_count: features.previous_contacts_count
+    });
+
+    const priority_score = calculatePriorityScore(
+      score,
+      features.amount_outstanding,
+      features.days_since_last_contact ?? null,
+      Math.max(features.max_amount_in_portfolio, 1)
     );
-    const segment = deriveSegment(score);
+
+    const segment: RiskSegment = deriveManagementSegment({
+      ai_score: score,
+      priority_score,
+      aging_days: features.aging_days,
+      amount_outstanding: features.amount_outstanding,
+      debt_status: features.debt_status
+    });
+
+    const best_channel: ContactChannel = bestChannelForScores(
+      score,
+      priority_score,
+      features.has_whatsapp
+    );
 
     return {
       score,
+      priority_score,
       segment,
       risk_level: segment,
-      best_channel: pickChannel(features),
+      best_channel,
       best_contact_time: {
         days: ["mon", "tue", "wed", "thu", "fri"],
         hours: "09:00-18:00"
@@ -58,6 +72,7 @@ export function createStubScoringResult(
 ): ScoringResult {
   return {
     score: 50,
+    priority_score: 50,
     segment: "medium",
     risk_level: "medium",
     best_channel: "email",

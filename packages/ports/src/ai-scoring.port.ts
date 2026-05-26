@@ -23,12 +23,17 @@ export interface DebtFeatures {
   has_email: boolean;
   promises_broken_count: number;
   previous_contacts_count: number;
+  days_since_last_contact?: number | null;
+  max_amount_in_portfolio: number;
+  debt_status?: string;
   industry_sector?: string;
 }
 
 export interface ScoringResult {
-  /** Puntuación 0–100. */
+  /** Probabilidad de recuperación 0–100. */
   score: number;
+  /** Prioridad de gestión hoy 0–100 (valor esperado). */
+  priority_score: number;
   segment: RiskSegment;
   risk_level: RiskSegment;
   best_channel: ContactChannel;

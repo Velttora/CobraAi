@@ -7,7 +7,10 @@
     "moduleResolution": "Node",
     "declaration": true,
     "declarationMap": true,
-    "types": ["node", "vitest/globals"]
+    "types": ["node", "vitest/globals"],
+    "paths": {
+      "@cobrai/utils": ["../utils/dist"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts"]

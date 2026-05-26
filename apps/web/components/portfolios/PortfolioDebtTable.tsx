@@ -9,16 +9,22 @@ import { getDaysUntilCollection, getQuarterLabel } from "../../lib/quarters";
 import type { Debt, PortfolioQuarterStat } from "../../lib/types";
 import { toNumber } from "../../lib/types";
 import { cn } from "../../lib/utils";
-import { ScoreBar } from "../shared/ScoreBar";
+import { DebtScoresCell } from "../shared/DebtScoresCell";
 import { StatusBadge } from "../shared/StatusBadge";
 import { TableSkeleton } from "../shared/Skeleton";
 
-type SortKey = "ai_score" | "amount_outstanding" | "due_date" | "status";
+type SortKey =
+  | "ai_score"
+  | "priority_score"
+  | "amount_outstanding"
+  | "due_date"
+  | "status";
 type SortOption = `${SortKey}:${"asc" | "desc"}`;
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: "ai_score:desc", label: "Score IA ↓" },
-  { value: "ai_score:asc", label: "Score IA ↑" },
+  { value: "priority_score:desc", label: "Prioridad de hoy ↓" },
+  { value: "ai_score:desc", label: "Prob. recuperación ↓" },
+  { value: "ai_score:asc", label: "Prob. recuperación ↑" },
   { value: "amount_outstanding:desc", label: "Monto ↓" },
   { value: "amount_outstanding:asc", label: "Monto ↑" },
   { value: "due_date:asc", label: "Vencimiento ↑" },
@@ -29,7 +35,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 const COLUMN_SORT: { key: SortKey; label: string }[] = [
   { key: "amount_outstanding", label: "Monto" },
   { key: "due_date", label: "Vencimiento" },
-  { key: "ai_score", label: "Score IA" },
+  { key: "priority_score", label: "Prioridad" },
   { key: "status", label: "Estado" }
 ];
 
@@ -54,10 +60,18 @@ function compareDebts(a: Debt, b: Debt, sort: SortOption): number {
   const deferredA = isDeferredDebt(a);
   const deferredB = isDeferredDebt(b);
 
-  if (field === "ai_score") {
+  if (field === "ai_score" || field === "priority_score") {
     if (deferredA && !deferredB) return 1;
     if (!deferredA && deferredB) return -1;
-    return sign * ((a.aiScore ?? 0) - (b.aiScore ?? 0));
+    const scoreA =
+      field === "priority_score"
+        ? (a.priorityScore ?? a.aiScore ?? 0)
+        : (a.aiScore ?? 0);
+    const scoreB =
+      field === "priority_score"
+        ? (b.priorityScore ?? b.aiScore ?? 0)
+        : (b.aiScore ?? 0);
+    return sign * (scoreA - scoreB);
   }
   if (field === "amount_outstanding") {
     return (
@@ -160,11 +174,14 @@ function DebtRow({
       <td className="px-4 py-3">
         <DueDateCell debt={debt} />
       </td>
-      <td className="min-w-[120px] px-4 py-3">
+      <td className="min-w-[160px] px-4 py-3">
         {deferred ? (
           <span className="text-slate-400">—</span>
         ) : (
-          <ScoreBar score={debt.aiScore} />
+          <DebtScoresCell
+            priorityScore={debt.priorityScore}
+            recoveryScore={debt.aiScore}
+          />
         )}
       </td>
       <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
@@ -255,7 +272,11 @@ export function PortfolioDebtTable({
   loading,
   activeQuarter,
   onQuarterChange,
-  currency = "COP"
+  currency = "COP",
+  totalDebts,
+  totalPages,
+  page = 1,
+  onPageChange
 }: {
   debts: Debt[];
   quarters: PortfolioQuarterStat[];
@@ -263,9 +284,13 @@ export function PortfolioDebtTable({
   activeQuarter: string | null;
   onQuarterChange: (quarter: string | null) => void;
   currency?: string;
+  totalDebts?: number;
+  totalPages?: number;
+  page?: number;
+  onPageChange?: (page: number) => void;
 }) {
   const [viewMode, setViewMode] = useState<"grouped" | "flat">("grouped");
-  const [sort, setSort] = useState<SortOption>("ai_score:desc");
+  const [sort, setSort] = useState<SortOption>("priority_score:desc");
 
   const sortedDebts = useMemo(
     () => [...debts].sort((a, b) => compareDebts(a, b, sort)),
@@ -396,9 +421,35 @@ export function PortfolioDebtTable({
         viewMode={viewMode}
       />
 
-      <footer className="border-t border-slate-200 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
-        Mostrando {sortedDebts.length} cuentas · Total:{" "}
-        {formatCurrency(totalAmount, currency)}
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400">
+        <span>
+          {totalDebts !== undefined
+            ? `Mostrando ${sortedDebts.length} de ${totalDebts} cuentas`
+            : `${sortedDebts.length} cuentas`}
+        </span>
+        {totalPages !== undefined && totalPages > 1 ? (
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:bg-slate-800"
+              disabled={page <= 1}
+              onClick={() => onPageChange?.(page - 1)}
+              type="button"
+            >
+              ← Anterior
+            </button>
+            <span className="text-xs text-slate-500">
+              Página {page} de {totalPages}
+            </span>
+            <button
+              className="rounded border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:bg-slate-800"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange?.(page + 1)}
+              type="button"
+            >
+              Siguiente →
+            </button>
+          </div>
+        ) : null}
       </footer>
     </section>
   );

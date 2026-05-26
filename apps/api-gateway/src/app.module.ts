@@ -16,6 +16,7 @@ import { ProxyModule } from "./proxy/proxy.module";
 import { RateLimitMiddleware } from "./rate-limit/rate-limit.middleware";
 import { RateLimitModule } from "./rate-limit/rate-limit.module";
 import { WebhookModule } from "./webhook/webhook.module";
+import { PrismaService } from "@cobrai/db";
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { WebhookModule } from "./webhook/webhook.module";
     ProxyModule
   ],
   providers: [
+    PrismaService,
     { provide: APP_GUARD, useClass: ClerkAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },

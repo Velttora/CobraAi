@@ -24,6 +24,7 @@
     "db:migrate": "pnpm --filter @cobrai/db db:migrate",
     "db:seed": "pnpm --filter @cobrai/db db:seed",
     "db:seed:align": "pnpm --filter @cobrai/db db:seed:align",
+    "db:clear": "pnpm --filter @cobrai/db db:clear",
     "db:studio": "pnpm --filter @cobrai/db db:studio",
     "gateway:dev": "pnpm --filter @cobrai/api-gateway dev",
     "web:dev": "pnpm --filter @cobrai/web dev",
@@ -33,7 +34,8 @@
     "services": "turbo run dev --filter=@cobrai/api-gateway --filter=@cobrai/service-portfolios --filter=@cobrai/service-workflows --filter=@cobrai/service-notifications --filter=@cobrai/service-payments",
     "db:migrate:deploy": "pnpm --filter @cobrai/db exec prisma migrate deploy",
     "fly:setup-infra": "bash infra/fly/setup-infra.sh",
-    "fly:deploy": "bash infra/fly/deploy.sh"
+    "fly:deploy": "bash infra/fly/deploy.sh",
+    "transform:cartera": "tsx scripts/transform-cartera.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

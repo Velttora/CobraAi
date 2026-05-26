@@ -12,16 +12,26 @@ import { getDaysUntilCollection } from "../../lib/quarters";
 import type { Debt } from "../../lib/types";
 import { toNumber } from "../../lib/types";
 import { useDebounce } from "../../hooks/use-debounce";
-import { ScoreBar } from "../shared/ScoreBar";
+import { DebtScoresCell } from "../shared/DebtScoresCell";
 import { StatusBadge } from "../shared/StatusBadge";
 import { TableSkeleton } from "../shared/Skeleton";
 
-type SortField = "amount_outstanding" | "due_date" | "ai_score" | "created_at";
+type SortField =
+  | "amount_outstanding"
+  | "due_date"
+  | "ai_score"
+  | "priority_score"
+  | "created_at";
 
 const columns: { key: SortField; label: string }[] = [
   { key: "amount_outstanding", label: "Monto" },
-  { key: "due_date", label: "Vencimiento" },
-  { key: "ai_score", label: "Score IA" }
+  { key: "due_date", label: "Vencimiento" }
+];
+
+const SORT_PRESETS: { value: string; label: string }[] = [
+  { value: "priority_score:desc", label: "Prioridad de hoy ↓" },
+  { value: "ai_score:desc", label: "Mayor probabilidad ↓" },
+  { value: "amount_outstanding:desc", label: "Mayor monto ↓" }
 ];
 
 export function DebtTable({
@@ -68,17 +78,38 @@ export function DebtTable({
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Cuentas prioritarias
-        </h2>
-        <input
+      <div className="space-y-3 border-b border-slate-200 p-4 dark:border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            Cuentas prioritarias
+          </h2>
+          <input
           className="h-9 w-full max-w-xs rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar deudor..."
           type="search"
           value={search}
         />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {SORT_PRESETS.map((preset) => {
+            const active = sort === preset.value;
+            return (
+              <button
+                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                  active
+                    ? "bg-[#D85A30] text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+                }`}
+                key={preset.value}
+                onClick={() => onSortChange?.(preset.value)}
+                type="button"
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
@@ -103,6 +134,7 @@ export function DebtTable({
                   </button>
                 </th>
               ))}
+              <th className="px-4 py-3">Scores</th>
               <th className="px-4 py-3">Aging</th>
               <th className="px-4 py-3">Estado</th>
               {pipelineMode ? <th className="px-4 py-3">Activa en</th> : null}
@@ -146,11 +178,14 @@ export function DebtTable({
                   <td className="px-4 py-3">
                     {new Date(debt.dueDate).toLocaleDateString("es-CO")}
                   </td>
-                  <td className="px-4 py-3 min-w-[120px]">
+                  <td className="px-4 py-3 min-w-[160px]">
                     {deferred ? (
                       <span className="text-slate-400">—</span>
                     ) : (
-                      <ScoreBar score={debt.aiScore} />
+                      <DebtScoresCell
+                        priorityScore={debt.priorityScore}
+                        recoveryScore={debt.aiScore}
+                      />
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-400">

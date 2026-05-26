@@ -16,6 +16,17 @@ export function parseFilters(
   query: Record<string, unknown>
 ): Record<string, string> {
   const filters: Record<string, string> = {};
+
+  // Express/qs parsea ?filter[campo]=valor como { filter: { campo: valor } }
+  const nested = query.filter;
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    for (const [key, value] of Object.entries(nested)) {
+      if (typeof value === "string") {
+        filters[key] = value;
+      }
+    }
+  }
+
   for (const [key, value] of Object.entries(query)) {
     const match = /^filter\[(.+)\]$/.exec(key);
     if (match?.[1] && typeof value === "string") {

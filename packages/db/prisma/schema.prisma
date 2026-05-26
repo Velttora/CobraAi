@@ -390,6 +390,7 @@ model Debt {
   agingBucket       AgingBucket     @map("aging_bucket")
   status            DebtStatus      @default(new)
   aiScore           Int?            @map("ai_score")
+  priorityScore     Int?            @map("priority_score")
   aiSegment         RiskSegment?    @map("ai_segment")
   riskLevel         RiskSegment?    @map("risk_level")
   bestChannel       ContactChannel? @map("best_channel")
@@ -411,6 +412,7 @@ model Debt {
 
   @@index([tenantId, status])
   @@index([tenantId, aiScore])
+  @@index([tenantId, priorityScore])
   @@index([tenantId, portfolioId])
   @@index([tenantId, portfolioId, collectionQuarter])
   @@index([tenantId, debtorId])

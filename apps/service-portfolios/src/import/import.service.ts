@@ -1,12 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Queue, Worker, type Job } from "bullmq";
-import ExcelJS from "exceljs";
 import { randomUUID } from "node:crypto";
 import { DebtsService } from "../debts/debts.service";
 import { KafkaService } from "../kafka/kafka.service";
 import { PortfoliosService } from "../portfolios/portfolios.service";
 import { CsvParserService, type ImportRow } from "./csv-parser.service";
+import { XlsxParserService } from "./xlsx-parser.service";
 
 export type ImportJobState = {
   job_id: string;
@@ -32,6 +32,7 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly csvParser: CsvParserService,
+    private readonly xlsxParser: XlsxParserService,
     private readonly debtsService: DebtsService,
     private readonly portfoliosService: PortfoliosService,
     private readonly kafka: KafkaService
@@ -109,38 +110,13 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
       }
     }
     if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-      return this.parseExcel(buffer);
+      return this.xlsxParser.parse(buffer, {
+        email: this.config.get<string>("IMPORT_DEFAULT_EMAIL"),
+        phone: this.config.get<string>("IMPORT_DEFAULT_PHONE"),
+        name: this.config.get<string>("IMPORT_DEFAULT_DEBTOR_NAME"),
+      });
     }
     throw new Error("Formato no soportado. Use CSV o XLSX.");
-  }
-
-  private async parseExcel(buffer: Buffer): Promise<ImportRow[]> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
-      return [];
-    }
-    const headers: string[] = [];
-    sheet.getRow(1).eachCell((cell, col) => {
-      headers[col] = String(cell.value ?? "")
-        .trim()
-        .toLowerCase();
-    });
-
-    const rows: ImportRow[] = [];
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const record: Record<string, string> = {};
-      row.eachCell((cell, col) => {
-        const key = headers[col];
-        if (key) {
-          record[key] = String(cell.value ?? "").trim();
-        }
-      });
-      rows.push(this.csvParser.mapImportRow(record));
-    });
-    return rows;
   }
 
   private async processJob(

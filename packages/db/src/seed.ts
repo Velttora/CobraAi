@@ -12,6 +12,12 @@ import {
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { applyPackageToPortfolio } from "@cobrai/workflow-packages";
+import {
+  bestChannelForScores,
+  calculatePriorityScore,
+  calculateRecoveryScore,
+  deriveManagementSegment
+} from "@cobrai/utils";
 import { loadSeedEnv } from "./load-seed-env";
 import { resolveSeedTenant } from "./resolve-seed-tenant";
 
@@ -39,30 +45,6 @@ function collectionQuarterFor(date: Date): string {
   const month = date.getUTCMonth();
   const year = date.getUTCFullYear();
   return `Q${Math.floor(month / 3) + 1}-${year}`;
-}
-
-function computeAiScore(agingDays: number, hasWhatsapp: boolean): number {
-  return Math.min(
-    100,
-    Math.max(0, Math.round(100 - agingDays * 0.3 + (hasWhatsapp ? 15 : 0)))
-  );
-}
-
-function scoreToSegment(score: number): RiskSegment {
-  if (score < 30) return "critical";
-  if (score < 50) return "high";
-  if (score < 70) return "medium";
-  if (score < 85) return "low";
-  return "minimal";
-}
-
-function bestChannelFor(
-  score: number,
-  hasWhatsapp: boolean
-): ContactChannel {
-  if (hasWhatsapp) return "whatsapp";
-  if (score < 50) return "voice";
-  return "email";
 }
 
 type DebtorSeed = {
@@ -252,7 +234,8 @@ const AGING_PLAN: Array<{
   { bucket: "d180_plus", count: 2, minDays: 195, maxDays: 240 }
 ];
 
-async function clearDatabase(): Promise<void> {
+/** Borra todos los tenants, usuarios, carteras y datos demo (local o prod). */
+export async function clearDatabase(): Promise<void> {
   await prisma.auditLog.deleteMany();
   await prisma.workflowExecution.deleteMany();
   await prisma.workflowRule.deleteMany();
@@ -435,6 +418,8 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
     }
   }
 
+  const maxSeedAmount = Math.max(...debtRows.map((r) => r.amount), 1);
+
   let totalAmount = 0;
   const createdDebts = await Promise.all(
     debtRows.map(async (row, idx) => {
@@ -444,9 +429,28 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
       }
       const dueDate = daysAgo(row.daysPastDue);
       const agingDays = row.daysPastDue;
-      const aiScore = computeAiScore(agingDays, debtor.whatsappOptIn);
-      const aiSegment = scoreToSegment(aiScore);
       const amount = row.amount;
+      const aiScore = calculateRecoveryScore({
+        aging_days: agingDays,
+        amount_outstanding: amount,
+        has_whatsapp: debtor.whatsappOptIn,
+        has_phone: true,
+        has_email: Boolean(debtor.email),
+        promises_broken_count: 0,
+        previous_contacts_count: 0
+      });
+      const priorityScore = calculatePriorityScore(
+        aiScore,
+        amount,
+        null,
+        maxSeedAmount
+      );
+      const aiSegment = deriveManagementSegment({
+        ai_score: aiScore,
+        priority_score: priorityScore,
+        aging_days: agingDays,
+        amount_outstanding: amount
+      });
       totalAmount += amount;
 
       return prisma.debt.create({
@@ -468,9 +472,14 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
                 ? DebtStatus.active
                 : DebtStatus.contacted,
           aiScore,
+          priorityScore,
           aiSegment,
           riskLevel: aiSegment,
-          bestChannel: bestChannelFor(aiScore, debtor.whatsappOptIn),
+          bestChannel: bestChannelForScores(
+            aiScore,
+            priorityScore,
+            debtor.whatsappOptIn
+          ),
           metadata: {
             seed: true,
             invoice_number: `INV-2026-${idx + 1}`

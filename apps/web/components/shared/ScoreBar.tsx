@@ -2,20 +2,31 @@ import { cn } from "../../lib/utils";
 
 export function ScoreBar({
   score,
-  className
+  className,
+  mode = "recovery"
 }: {
   score: number | null | undefined;
   className?: string;
+  /** recovery: alto = mejor probabilidad. priority: alto = más urgente gestionar. */
+  mode?: "recovery" | "priority";
 }) {
   const value = Math.max(0, Math.min(100, score ?? 0));
   const color =
-    value >= 80
-      ? "bg-[#A32D2D]"
-      : value >= 60
-        ? "bg-[#D85A30]"
-        : value >= 40
-          ? "bg-[#C49A00]"
-          : "bg-[#0F6E56]";
+    mode === "priority"
+      ? value >= 80
+        ? "bg-[#A32D2D]"
+        : value >= 60
+          ? "bg-[#D85A30]"
+          : value >= 40
+            ? "bg-[#C49A00]"
+            : "bg-slate-400"
+      : value >= 80
+        ? "bg-[#0F6E56]"
+        : value >= 60
+          ? "bg-[#3D9970]"
+          : value >= 40
+            ? "bg-[#C49A00]"
+            : "bg-[#D85A30]";
 
   return (
     <div className={cn("flex items-center gap-2", className)}>

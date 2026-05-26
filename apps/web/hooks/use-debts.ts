@@ -21,7 +21,7 @@ export function useDebts(query: DebtsQuery = {}) {
   const params: Record<string, string | number | undefined> = {
     page: query.page ?? 1,
     limit: query.limit ?? 25,
-    sort: query.sort ?? "ai_score:desc"
+    sort: query.sort ?? "priority_score:desc"
   };
   if (query.portfolioId) params["filter[portfolio_id]"] = query.portfolioId;
   if (query.status) params["filter[status]"] = query.status;

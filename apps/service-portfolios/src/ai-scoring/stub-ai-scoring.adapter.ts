@@ -1,53 +1,63 @@
 import type {
   AIScoringPort,
   ContactChannel,
-  RiskSegment,
   ScoreDebtInput,
   ScoringResult
 } from "@cobrai/ports";
+import {
+  bestChannelForScores,
+  calculatePriorityScore,
+  calculateRecoveryScore,
+  deriveManagementSegment
+} from "@cobrai/utils";
 
-const MODEL_VERSION = "stub-portfolios-1.0";
+const MODEL_VERSION = "stub-portfolios-2.0";
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function segmentFromScore(score: number): RiskSegment {
-  if (score < 30) return "critical";
-  if (score < 50) return "high";
-  if (score < 70) return "medium";
-  if (score < 85) return "low";
-  return "minimal";
-}
-
-function bestChannel(
-  score: number,
-  hasWhatsapp: boolean
-): ContactChannel {
-  if (hasWhatsapp) return "whatsapp";
-  if (score < 50) return "voice";
-  return "email";
-}
-
-/** Stub de scoring según fórmula del MVP (etapa 1.1). */
+/** Stub de scoring dual: recuperación + prioridad de gestión. */
 export class StubAIScoringAdapter implements AIScoringPort {
   async scoreDebt(input: ScoreDebtInput): Promise<ScoringResult> {
     const { features } = input;
-    const score = Math.round(
-      clamp(
-        100 - features.aging_days * 0.3 + (features.has_whatsapp ? 15 : 0),
-        0,
-        100
-      )
+    const score = calculateRecoveryScore({
+      aging_days: features.aging_days,
+      amount_outstanding: features.amount_outstanding,
+      has_whatsapp: features.has_whatsapp,
+      has_phone: features.has_phone,
+      has_email: features.has_email,
+      promises_broken_count: features.promises_broken_count,
+      previous_contacts_count: features.previous_contacts_count
+    });
+
+    const priority_score = calculatePriorityScore(
+      score,
+      features.amount_outstanding,
+      features.days_since_last_contact ?? null,
+      Math.max(features.max_amount_in_portfolio, 1)
     );
-    const segment = segmentFromScore(score);
+
+    const segment = deriveManagementSegment({
+      ai_score: score,
+      priority_score,
+      aging_days: features.aging_days,
+      amount_outstanding: features.amount_outstanding,
+      debt_status: features.debt_status
+    });
+
+    const best_channel: ContactChannel = bestChannelForScores(
+      score,
+      priority_score,
+      features.has_whatsapp
+    );
 
     return {
       score,
+      priority_score,
       segment,
       risk_level: segment,
-      best_channel: bestChannel(score, features.has_whatsapp),
-      best_contact_time: { days: ["mon", "tue", "wed", "thu", "fri"], hours: "09:00-18:00" },
+      best_channel,
+      best_contact_time: {
+        days: ["mon", "tue", "wed", "thu", "fri"],
+        hours: "09:00-18:00"
+      },
       confidence: 0.8,
       model_version: MODEL_VERSION
     };
