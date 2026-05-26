@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import Papa from "papaparse";
+import { normalizeHeader } from "./column-map";
 
 export type ImportRow = {
   external_ref?: string;
@@ -26,7 +27,7 @@ export class CsvParserService {
     const parsed = Papa.parse<Record<string, string>>(text, {
       header: true,
       skipEmptyLines: true,
-      transformHeader: (h) => h.trim().toLowerCase()
+      transformHeader: (h) => normalizeHeader(h)
     });
 
     if (parsed.errors.length > 0) {

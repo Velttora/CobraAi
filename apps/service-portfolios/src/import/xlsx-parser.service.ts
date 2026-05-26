@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
 import { type ImportRow } from "./csv-parser.service";
+import { normalizeHeader } from "./column-map";
 
 /**
  * Detecta y parsea archivos Excel en dos formatos:
@@ -141,7 +142,7 @@ export class XlsxParserService {
   private parseSimple(sheet: ExcelJS.Worksheet): ImportRow[] {
     const headers: string[] = [];
     sheet.getRow(1).eachCell((cell, col) => {
-      headers[col] = String(cell.value ?? "").trim().toLowerCase();
+      headers[col] = normalizeHeader(String(cell.value ?? "").trim());
     });
 
     const rows: ImportRow[] = [];

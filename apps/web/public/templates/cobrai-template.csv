@@ -1,0 +1,4 @@
+Referencia,Nombre,NIT / Cédula,Teléfono,Correo,Monto,Moneda,Vencimiento,Fecha Factura,Fecha Cobro,Plazo Días,Tipo,Ciudad,País
+FV-2026-001,EMPRESA EJEMPLO SAS,900123456-1,3001234567,pagos@empresa.com,1500000,COP,2026-03-01,2026-01-15,,,company,Bogotá,CO
+FV-2026-002,DISTRIBUIDORA DEL NORTE SAS,830045678-2,6016789012,cxp@distribuidora.com,3250000,COP,2026-02-15,2025-12-01,,,company,Medellín,CO
+FV-2026-003,CARLOS MARIO PÉREZ,1020304050,3119876543,carlos.perez@gmail.com,450000,COP,2026-04-10,2026-01-10,,,person,Cali,CO
