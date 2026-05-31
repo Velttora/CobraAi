@@ -4,6 +4,11 @@ import { randomUUID } from "node:crypto";
 import type { SMSPort, SendSMSInput, SendSMSResult } from "@cobrai/ports";
 import { truncateSms } from "../common/utils/api.utils";
 
+interface SinchBatchResponse {
+  id: string;
+  status: string;
+}
+
 @Injectable()
 export class SmsAdapter implements SMSPort {
   private readonly logger = new Logger(SmsAdapter.name);
@@ -11,42 +16,38 @@ export class SmsAdapter implements SMSPort {
   constructor(private readonly config: ConfigService) {}
 
   async sendSMS(input: SendSMSInput): Promise<SendSMSResult> {
-    const accountSid = this.config.get<string>("TWILIO_ACCOUNT_SID");
-    const authToken = this.config.get<string>("TWILIO_AUTH_TOKEN");
-    const from = this.config.get<string>("TWILIO_FROM_NUMBER");
+    const servicePlanId = this.config.get<string>("SINCH_SERVICE_PLAN_ID");
+    const apiToken = this.config.get<string>("SINCH_API_TOKEN");
+    const from = this.config.get<string>("SINCH_FROM");
     const body = truncateSms(input.body);
 
-    if (!accountSid || !authToken || !from) {
-      this.logger.warn(`Twilio sandbox: SMS simulado a ${input.to}`);
+    if (!servicePlanId || !apiToken || !from) {
+      this.logger.warn(`Sinch sandbox: SMS simulado a ${input.to}`);
       return { message_id: randomUUID(), status: "sent" };
     }
 
-    const credentials = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
-    const params = new URLSearchParams({
-      To: input.to,
-      From: from,
-      Body: body
-    });
+    const to = input.to.startsWith("+") ? input.to.slice(1) : input.to;
 
     const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+      `https://api.sinch.com/xms/v1/${servicePlanId}/batches`,
       {
         method: "POST",
         headers: {
-          Authorization: `Basic ${credentials}`,
-          "Content-Type": "application/x-www-form-urlencoded"
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json"
         },
-        body: params.toString()
+        body: JSON.stringify({ from, to: [to], body })
       }
     );
 
     if (!response.ok) {
       const detail = await response.text();
-      this.logger.error(`Twilio error ${response.status}: ${detail}`);
+      this.logger.error(`Sinch error ${response.status}: ${detail}`);
       return { message_id: randomUUID(), status: "failed" };
     }
 
-    const data = (await response.json()) as { sid?: string };
-    return { message_id: data.sid ?? randomUUID(), status: "sent" };
+    const data = (await response.json()) as SinchBatchResponse;
+    this.logger.log(`Sinch SMS enviado batch_id=${data.id} to=${input.to}`);
+    return { message_id: data.id ?? randomUUID(), status: "sent" };
   }
 }
