@@ -41,8 +41,7 @@ export class EmailAdapter implements EmailPort {
         personalizations: [{ to: [{ email: input.to }], dynamic_template_data: input.variables }],
         from: { email: from },
         subject,
-        content: [{ type: "text/html", value: html }],
-        mail_settings: { sandbox_mode: { enable: true } }
+        content: [{ type: "text/html", value: html }]
       })
     });
 
