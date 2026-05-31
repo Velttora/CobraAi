@@ -4,9 +4,8 @@ import { randomUUID } from "node:crypto";
 import type { SMSPort, SendSMSInput, SendSMSResult } from "@cobrai/ports";
 import { truncateSms } from "../common/utils/api.utils";
 
-interface SinchBatchResponse {
+interface BirdMessageResponse {
   id: string;
-  status: string;
 }
 
 @Injectable()
@@ -16,38 +15,36 @@ export class SmsAdapter implements SMSPort {
   constructor(private readonly config: ConfigService) {}
 
   async sendSMS(input: SendSMSInput): Promise<SendSMSResult> {
-    const servicePlanId = this.config.get<string>("SINCH_SERVICE_PLAN_ID");
-    const apiToken = this.config.get<string>("SINCH_API_TOKEN");
-    const from = this.config.get<string>("SINCH_FROM");
+    const apiKey = this.config.get<string>("BIRD_API_KEY");
+    const originator = this.config.get<string>("BIRD_FROM") ?? "CobraAI";
     const body = truncateSms(input.body);
 
-    if (!servicePlanId || !apiToken || !from) {
-      this.logger.warn(`Sinch sandbox: SMS simulado a ${input.to}`);
+    if (!apiKey) {
+      this.logger.warn(`Bird sandbox: SMS simulado a ${input.to}`);
       return { message_id: randomUUID(), status: "sent" };
     }
 
-    const to = input.to.startsWith("+") ? input.to.slice(1) : input.to;
-
-    const response = await fetch(
-      `https://api.sinch.com/xms/v1/${servicePlanId}/batches`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ from, to: [to], body })
-      }
-    );
+    const response = await fetch("https://rest.messagebird.com/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `AccessKey ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        originator,
+        recipients: [input.to],
+        body
+      })
+    });
 
     if (!response.ok) {
       const detail = await response.text();
-      this.logger.error(`Sinch error ${response.status}: ${detail}`);
+      this.logger.error(`Bird error ${response.status}: ${detail}`);
       return { message_id: randomUUID(), status: "failed" };
     }
 
-    const data = (await response.json()) as SinchBatchResponse;
-    this.logger.log(`Sinch SMS enviado batch_id=${data.id} to=${input.to}`);
+    const data = (await response.json()) as BirdMessageResponse;
+    this.logger.log(`Bird SMS enviado id=${data.id} to=${input.to}`);
     return { message_id: data.id ?? randomUUID(), status: "sent" };
   }
 }
