@@ -45,7 +45,7 @@ export class CreateWorkflowRuleDto {
   action!: WorkflowAction;
 
   @IsOptional()
-  @IsEnum(["whatsapp", "voice", "email", "sms"] as const)
+  @IsEnum(["whatsapp", "voice", "email"] as const)
   channel?: ContactChannel;
 
   @IsOptional()
@@ -82,7 +82,7 @@ export class UpdateWorkflowRuleDto {
   action?: WorkflowAction;
 
   @IsOptional()
-  @IsEnum(["whatsapp", "voice", "email", "sms"] as const)
+  @IsEnum(["whatsapp", "voice", "email"] as const)
   channel?: ContactChannel;
 
   @IsOptional()

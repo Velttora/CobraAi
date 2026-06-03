@@ -413,7 +413,10 @@ export class ContactsService {
       channels.push("whatsapp");
     }
     if (phonesFromDebtor(debtor.phones).length > 0) {
-      channels.push("voice", "sms");
+      channels.push("voice");
+      if (this.config.get<string>("FEATURE_SMS_ENABLED") === "true") {
+        channels.push("sms");
+      }
     }
     if (debtor.email) {
       channels.push("email");

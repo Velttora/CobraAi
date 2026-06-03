@@ -23,7 +23,7 @@ export const PLANS: PricingPlan[] = [
     features: [
       "Hasta 1,000 deudas activas",
       "3 portafolios",
-      "Email + SMS reales",
+      "Email real",
       "WA y Voz en stub",
       "Scoring IA incluido",
       "1 integración ERP",
