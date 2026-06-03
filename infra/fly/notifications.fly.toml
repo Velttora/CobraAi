@@ -20,7 +20,11 @@ primary_region = "gru"
 #   SENDGRID_API_KEY="SG...." \
 #   TWILIO_ACCOUNT_SID="AC..." \
 #   TWILIO_AUTH_TOKEN="..." \
-#   TWILIO_FROM_NUMBER="+1..."
+#   TWILIO_WA_FROM="whatsapp:+1..." \
+#   TWILIO_WA_WEBHOOK_URL="https://.../api/v1/webhooks/twilio-whatsapp" \
+#   VAPI_API_KEY="..." \
+#   VAPI_AGENT_ID="..." \
+#   OPENAI_API_KEY="sk-..."
 
 [http_service]
   internal_port        = 8080

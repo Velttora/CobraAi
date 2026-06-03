@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post } from "@nestjs/common";
 import { successResponse } from "../common/utils/api.utils";
 import {
   ReqContext,
   type RequestContext
 } from "../common/decorators/request-context.decorator";
-import { CreateTemplateDto } from "./dto/template.dto";
+import { CreateTemplateDto, UpdateTemplateDto } from "./dto/template.dto";
 import { TemplatesService } from "./templates.service";
 
 @Controller("v1/templates")
@@ -25,5 +25,19 @@ export class TemplatesController {
     return successResponse(
       await this.templatesService.create(ctx.tenantId, dto)
     );
+  }
+
+  @Patch(":id")
+  async update(
+    @ReqContext() ctx: RequestContext,
+    @Param("id") id: string,
+    @Body() dto: UpdateTemplateDto
+  ) {
+    return successResponse(await this.templatesService.update(ctx.tenantId, id, dto));
+  }
+
+  @Delete(":id")
+  async delete(@ReqContext() ctx: RequestContext, @Param("id") id: string) {
+    return successResponse(await this.templatesService.delete(ctx.tenantId, id));
   }
 }

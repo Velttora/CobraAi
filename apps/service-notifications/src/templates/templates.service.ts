@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
-import type { CreateTemplateDto } from "./dto/template.dto";
+import type { CreateTemplateDto, UpdateTemplateDto } from "./dto/template.dto";
 
 @Injectable()
 export class TemplatesService {
@@ -24,6 +24,25 @@ export class TemplatesService {
         language: dto.language ?? "es",
         isApproved: dto.is_approved ?? false
       }
+    });
+  }
+
+  async update(tenantId: string, id: string, dto: UpdateTemplateDto) {
+    return this.prisma.notificationTemplate.update({
+      where: { id, tenantId, deletedAt: null },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.channel !== undefined && { channel: dto.channel }),
+        ...(dto.content !== undefined && { content: dto.content }),
+        ...(dto.variables !== undefined && { variables: dto.variables })
+      }
+    });
+  }
+
+  async delete(tenantId: string, id: string) {
+    return this.prisma.notificationTemplate.update({
+      where: { id, tenantId },
+      data: { deletedAt: new Date() }
     });
   }
 }

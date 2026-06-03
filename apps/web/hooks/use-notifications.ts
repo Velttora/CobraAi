@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ApiItemResponse, ApiListResponse } from "../lib/types";
-import { fetchApi, postApi, useApiClient } from "./use-api-client";
+import { deleteApi, fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
 
 export type NotificationTemplate = {
   id: string;
@@ -50,6 +50,50 @@ export function useCreateTemplate() {
       toast.success("Template creado");
     },
     onError: () => toast.error("No se pudo crear el template")
+  });
+}
+
+export function useUpdateTemplate() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      name: string;
+      channel: string;
+      content: string;
+      variables?: string[];
+    }) =>
+      patchApi<ApiItemResponse<NotificationTemplate>>(
+        client,
+        `/api/v1/templates/${id}`,
+        body
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["templates"] });
+      toast.success("Template actualizado");
+    },
+    onError: () => toast.error("No se pudo actualizar el template")
+  });
+}
+
+export function useDeleteTemplate() {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      deleteApi<ApiItemResponse<NotificationTemplate>>(
+        client,
+        `/api/v1/templates/${id}`
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["templates"] });
+      toast.success("Template eliminado");
+    },
+    onError: () => toast.error("No se pudo eliminar el template")
   });
 }
 

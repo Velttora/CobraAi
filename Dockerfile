@@ -20,13 +20,15 @@ RUN pnpm --filter @cobrai/db run db:generate
 RUN pnpm --filter "@cobrai/${APP_NAME}..." run build
 
 # Production bundle with resolved node_modules (pnpm symlinks)
-RUN pnpm --filter "@cobrai/${APP_NAME}" deploy --prod --legacy /deploy
+RUN pnpm --filter "@cobrai/${APP_NAME}" deploy --prod --legacy /deploy --config.ignore-scripts=true
 
-# pnpm deploy isolates deps; copy generated Prisma engine into the deploy store
-RUN PRISMA_CLIENT_PATH="$(find /app/node_modules/.pnpm -path '*/@prisma+client@*/node_modules/.prisma/client' -type d | head -1)" \
-  && test -n "$PRISMA_CLIENT_PATH" \
-  && find /deploy/node_modules/.pnpm -path '*/@prisma+client@*/node_modules/.prisma' -type d | while read -r dest; do \
-       mkdir -p "$dest" && rm -rf "$dest/client" && cp -a "$PRISMA_CLIENT_PATH" "$dest/client"; \
+# pnpm deploy isolates deps; copy generated Prisma engine into every @prisma/client in /deploy
+RUN PRISMA_MOD_ROOT="$(dirname "$(dirname "$(dirname "$(find /app/node_modules/.pnpm -path '*/node_modules/@prisma/client/default.js' | head -1)")")")" \
+  && test -d "$PRISMA_MOD_ROOT/.prisma/client" \
+  && find /deploy/node_modules/.pnpm -path '*/node_modules/@prisma/client/default.js' | while read -r default_js; do \
+       dest_root="$(dirname "$(dirname "$(dirname "$default_js")")")"; \
+       rm -rf "$dest_root/.prisma"; \
+       cp -a "$PRISMA_MOD_ROOT/.prisma" "$dest_root/.prisma"; \
      done \
   && rm -f /deploy/.env /deploy/.env.*
 

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { toast } from "sonner";
 import type { ApiItemResponse } from "../lib/types";
-import { fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
+import { deleteApi, fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
 
 export type WorkflowRule = {
   id: string;
@@ -150,6 +150,68 @@ export function useToggleWorkflowRule(portfolioId?: string) {
       toast.success("Regla actualizada");
     },
     onError: () => toast.error("No se pudo actualizar la regla")
+  });
+}
+
+export function useCreateWorkflowRule(portfolioId?: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      portfolio_id: string;
+      name: string;
+      trigger: string;
+      action: string;
+      channel?: string;
+      delay_hours?: number;
+      priority?: number;
+      condition?: Record<string, unknown>;
+    }) =>
+      postApi<ApiItemResponse<WorkflowRule>>(client, "/api/v1/workflows/rules", {
+        condition: {},
+        ...body
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      toast.success("Regla creada");
+    },
+    onError: () => toast.error("No se pudo crear la regla")
+  });
+}
+
+export function useUpdateWorkflowRule(portfolioId?: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      name?: string;
+      action?: string;
+      channel?: string;
+      delay_hours?: number;
+      priority?: number;
+    }) => patchApi<ApiItemResponse<WorkflowRule>>(client, `/api/v1/workflows/rules/${id}`, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      toast.success("Regla actualizada");
+    },
+    onError: () => toast.error("No se pudo actualizar la regla")
+  });
+}
+
+export function useDeleteWorkflowRule(portfolioId?: string) {
+  const client = useApiClient();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteApi(client, `/api/v1/workflows/rules/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      toast.success("Regla eliminada");
+    },
+    onError: () => toast.error("No se pudo eliminar la regla")
   });
 }
 

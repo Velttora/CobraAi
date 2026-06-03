@@ -8,6 +8,27 @@ import {
   MinLength
 } from "class-validator";
 
+export class UpdateTemplateDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @IsOptional()
+  @IsEnum(ContactChannel)
+  channel?: ContactChannel;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  content?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  variables?: string[];
+}
+
 export class CreateTemplateDto {
   @IsString()
   @MinLength(2)

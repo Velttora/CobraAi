@@ -53,6 +53,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@cobrai/db",
       "@nestjs/core",
       "@prisma/client",
       "@prisma/engines",
