@@ -173,6 +173,7 @@ export function useCreateWorkflowRule(portfolioId?: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", portfolioId] });
       toast.success("Regla creada");
     },
     onError: () => toast.error("No se pudo crear la regla")
@@ -196,6 +197,7 @@ export function useUpdateWorkflowRule(portfolioId?: string) {
     }) => patchApi<ApiItemResponse<WorkflowRule>>(client, `/api/v1/workflows/rules/${id}`, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", portfolioId] });
       toast.success("Regla actualizada");
     },
     onError: () => toast.error("No se pudo actualizar la regla")
@@ -209,6 +211,7 @@ export function useDeleteWorkflowRule(portfolioId?: string) {
     mutationFn: (id: string) => deleteApi(client, `/api/v1/workflows/rules/${id}`),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });
+      void queryClient.invalidateQueries({ queryKey: ["portfolio", portfolioId] });
       toast.success("Regla eliminada");
     },
     onError: () => toast.error("No se pudo eliminar la regla")

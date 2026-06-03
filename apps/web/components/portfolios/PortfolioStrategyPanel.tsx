@@ -15,6 +15,7 @@ import {
 } from "../../hooks/use-workflows";
 import { partitionPortfolioRules } from "../../lib/workflow-rules";
 import { WorkflowPackageCard } from "../workflows/WorkflowPackageCard";
+import { WorkflowRulesManager } from "../workflows/WorkflowRulesManager";
 import { StrategyPill } from "./StrategyPill";
 
 export function PortfolioStrategyPanel({
@@ -128,77 +129,83 @@ export function PortfolioStrategyPanel({
         )}
       </article>
 
-      <article className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-        <h3 className="text-sm font-semibold">
-          Reglas activas ({activeRules.length})
-        </h3>
-        <ul className="mt-3 space-y-2">
-          {activeRules.length === 0 ? (
-            <li className="text-sm text-slate-500">Sin reglas activas</li>
-          ) : (
-            activeRules.map((rule) => (
-              <li
-                className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
-                key={rule.id}
-              >
-                <span>
-                  {rule.name}
-                  <span className="ml-2 text-xs text-slate-500">
-                    {rule.trigger}
-                    {rule.channel
-                      ? ` · ${formatWorkflowChannel(rule.channel)}`
-                      : ""}
-                  </span>
-                </span>
-                <button
-                  className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
-                  onClick={() =>
-                    toggleRule.mutate({ id: rule.id, isActive: false })
-                  }
-                  type="button"
-                >
-                  Activa
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      </article>
+      {portfolio?.automationStatus === "custom" ? (
+        <WorkflowRulesManager portfolioId={portfolioId} />
+      ) : (
+        <>
+          <article className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <h3 className="text-sm font-semibold">
+              Reglas activas ({activeRules.length})
+            </h3>
+            <ul className="mt-3 space-y-2">
+              {activeRules.length === 0 ? (
+                <li className="text-sm text-slate-500">Sin reglas activas</li>
+              ) : (
+                activeRules.map((rule) => (
+                  <li
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
+                    key={rule.id}
+                  >
+                    <span>
+                      {rule.name}
+                      <span className="ml-2 text-xs text-slate-500">
+                        {rule.trigger}
+                        {rule.channel
+                          ? ` · ${formatWorkflowChannel(rule.channel)}`
+                          : ""}
+                      </span>
+                    </span>
+                    <button
+                      className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
+                      onClick={() =>
+                        toggleRule.mutate({ id: rule.id, isActive: false })
+                      }
+                      type="button"
+                    >
+                      Activa
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </article>
 
-      {portfolio?.automationStatus === "custom" && inactiveRules.length > 0 ? (
-        <article className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">
-            Reglas inactivas ({inactiveRules.length})
-          </h3>
-          <ul className="mt-3 space-y-2">
-            {inactiveRules.map((rule) => (
-              <li
-                className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
-                key={rule.id}
-              >
-                <span className="text-slate-500">
-                  {rule.name}
-                  <span className="ml-2 text-xs">
-                    {rule.trigger}
-                    {rule.channel
-                      ? ` · ${formatWorkflowChannel(rule.channel)}`
-                      : ""}
-                  </span>
-                </span>
-                <button
-                  className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600"
-                  onClick={() =>
-                    toggleRule.mutate({ id: rule.id, isActive: true })
-                  }
-                  type="button"
-                >
-                  Inactiva
-                </button>
-              </li>
-            ))}
-          </ul>
-        </article>
-      ) : null}
+          {inactiveRules.length > 0 ? (
+            <article className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+              <h3 className="text-sm font-semibold text-slate-600 dark:text-slate-400">
+                Reglas inactivas ({inactiveRules.length})
+              </h3>
+              <ul className="mt-3 space-y-2">
+                {inactiveRules.map((rule) => (
+                  <li
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
+                    key={rule.id}
+                  >
+                    <span className="text-slate-500">
+                      {rule.name}
+                      <span className="ml-2 text-xs">
+                        {rule.trigger}
+                        {rule.channel
+                          ? ` · ${formatWorkflowChannel(rule.channel)}`
+                          : ""}
+                      </span>
+                    </span>
+                    <button
+                      className="rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600"
+                      onClick={() =>
+                        toggleRule.mutate({ id: rule.id, isActive: true })
+                      }
+                      type="button"
+                    >
+                      Inactiva
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </article>
+          ) : null}
+        </>
+      )}
 
       {portfolio?.packageApplications && portfolio.packageApplications.length > 0 ? (
         <article className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
