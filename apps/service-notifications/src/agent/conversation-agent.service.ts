@@ -39,7 +39,7 @@ const FALLBACK_RESPONSE: AgentResponse = {
 @Injectable()
 export class ConversationAgentService {
   private readonly logger = new Logger(ConversationAgentService.name);
-  private readonly openai: OpenAI;
+  private readonly openai: OpenAI | null;
   private readonly model: string;
   private readonly maxTokens: number;
 
@@ -49,9 +49,13 @@ export class ConversationAgentService {
     private readonly kafka: KafkaService,
     private readonly whatsapp: TwilioWhatsAppAdapter
   ) {
-    this.openai = new OpenAI({
-      apiKey: config.getOrThrow<string>("OPENAI_API_KEY")
-    });
+    const apiKey = config.get<string>("OPENAI_API_KEY");
+    this.openai = apiKey ? new OpenAI({ apiKey }) : null;
+    if (!this.openai) {
+      this.logger.warn(
+        "OPENAI_API_KEY no configurada: agente conversacional en modo fallback"
+      );
+    }
     this.model = config.get<string>("OPENAI_MODEL") ?? "gpt-4o-mini";
     this.maxTokens = Number(config.get<string>("OPENAI_MAX_TOKENS") ?? "500");
   }
@@ -129,23 +133,25 @@ export class ConversationAgentService {
       { role: "user", content: body }
     ];
 
-    // 4. Llamar a GPT
+    // 4. Llamar a GPT (o fallback si no hay API key)
     let agentResponse: AgentResponse = FALLBACK_RESPONSE;
-    try {
-      const completion = await this.openai.chat.completions.create({
-        model: this.model,
-        messages: chatMessages,
-        max_tokens: this.maxTokens,
-        response_format: { type: "json_object" },
-        temperature: 0.7
-      });
-      const raw = completion.choices[0]?.message?.content ?? "{}";
-      agentResponse = JSON.parse(raw) as AgentResponse;
-      if (!agentResponse.intent) {
-        agentResponse = FALLBACK_RESPONSE;
+    if (this.openai) {
+      try {
+        const completion = await this.openai.chat.completions.create({
+          model: this.model,
+          messages: chatMessages,
+          max_tokens: this.maxTokens,
+          response_format: { type: "json_object" },
+          temperature: 0.7
+        });
+        const raw = completion.choices[0]?.message?.content ?? "{}";
+        agentResponse = JSON.parse(raw) as AgentResponse;
+        if (!agentResponse.intent) {
+          agentResponse = FALLBACK_RESPONSE;
+        }
+      } catch (err: unknown) {
+        this.logger.error(`OpenAI error: ${String(err)}`);
       }
-    } catch (err: unknown) {
-      this.logger.error(`OpenAI error: ${String(err)}`);
     }
 
     this.logger.log(

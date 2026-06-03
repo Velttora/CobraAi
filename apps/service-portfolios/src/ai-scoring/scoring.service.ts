@@ -13,13 +13,24 @@ type ScoreContext = {
   previousContactsCount: number;
 };
 
-const ACTIVE_DEBT_STATUSES = [
+/**
+ * Estados que se re-segmentan (recalcula priority_score, segmento y best_channel).
+ * Incluye toda deuda aún en gestión; excluye solo las terminales (pagada total o
+ * castigada), donde el canal sugerido ya no aplica.
+ */
+const SEGMENTABLE_DEBT_STATUSES = [
+  "future",
+  "upcoming",
   "new",
   "analyzing",
   "active",
   "contacted",
   "promised",
-  "legal_risk"
+  "plan",
+  "disputed",
+  "legal_risk",
+  "legal",
+  "paid_partial"
 ] as const;
 
 function debtorContactFlags(debtor: Debtor): {
@@ -146,14 +157,14 @@ export class ScoringService {
       where: {
         tenantId,
         deletedAt: null,
-        status: { in: [...ACTIVE_DEBT_STATUSES] }
+        status: { in: [...SEGMENTABLE_DEBT_STATUSES] }
       },
       include: { debtor: true }
     });
     return this.updateOperationalScoresForDebts(tenantId, debts);
   }
 
-  /** Tras editar datos de contacto del deudor, actualiza scores de sus deudas activas. */
+  /** Tras editar datos de contacto del deudor, actualiza scores de sus deudas en gestión. */
   async refreshScoresForDebtor(
     tenantId: string,
     debtorId: string
@@ -163,7 +174,7 @@ export class ScoringService {
         tenantId,
         debtorId,
         deletedAt: null,
-        status: { in: [...ACTIVE_DEBT_STATUSES] }
+        status: { in: [...SEGMENTABLE_DEBT_STATUSES] }
       },
       include: { debtor: true }
     });

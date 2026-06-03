@@ -62,6 +62,17 @@ describe("VapiVoiceAdapter", () => {
     adapter = new VapiVoiceAdapter(makeConfig());
   });
 
+  it("sin credenciales Vapi → modo sandbox sin llamar a la API", async () => {
+    const sandbox = new VapiVoiceAdapter({
+      get: () => undefined,
+      getOrThrow: vi.fn()
+    } as unknown as ConfigService);
+    const result = await sandbox.initiateCall(makeInput());
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(result.status).toBe("queued");
+    expect(result.call_id).toMatch(/^sandbox-/);
+  });
+
   describe("initiateCall", () => {
     it("llama a POST https://api.vapi.ai/call y retorna call_id", async () => {
       (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({

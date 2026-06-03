@@ -14,13 +14,14 @@ vi.mock("twilio", () => ({
 }));
 
 function makeConfig(): ConfigService {
+  const map: Record<string, string> = {
+    TWILIO_ACCOUNT_SID: "ACtest",
+    TWILIO_AUTH_TOKEN: "authtest",
+    TWILIO_WA_FROM: "whatsapp:+14155238886"
+  };
   return {
+    get: (key: string) => map[key],
     getOrThrow: (key: string) => {
-      const map: Record<string, string> = {
-        TWILIO_ACCOUNT_SID: "ACtest",
-        TWILIO_AUTH_TOKEN: "authtest",
-        TWILIO_WA_FROM: "whatsapp:+14155238886"
-      };
       const val = map[key];
       if (!val) throw new Error(`Missing config: ${key}`);
       return val;
@@ -35,6 +36,22 @@ describe("TwilioWhatsAppAdapter", () => {
     vi.clearAllMocks();
     mockCreate.mockResolvedValue({ sid: "SMtest123" });
     adapter = new TwilioWhatsAppAdapter(makeConfig(), mockPrisma as never);
+  });
+
+  it("sin credenciales Twilio → modo sandbox sin llamar a la API", async () => {
+    const sandbox = new TwilioWhatsAppAdapter(
+      { get: () => undefined } as unknown as ConfigService,
+      mockPrisma as never
+    );
+    const result = await sandbox.sendTemplate({
+      to: "+573001234567",
+      template_id: "recordatorio",
+      variables: { nombre: "Juan" },
+      tenant_id: "org_test"
+    });
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(result.status).toBe("sent");
+    expect(result.message_id).toMatch(/^sandbox-/);
   });
 
   it("sendTemplate con número sin prefijo → agrega whatsapp: y retorna message_id", async () => {

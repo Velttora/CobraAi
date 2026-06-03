@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { randomUUID } from "node:crypto";
 import axios from "axios";
 import type {
   VoiceAgentPort,
@@ -65,18 +66,30 @@ function montoEspanol(raw: string | number): string {
 export class VapiVoiceAdapter implements VoiceAgentPort {
   private readonly logger = new Logger(VapiVoiceAdapter.name);
   private readonly baseUrl = "https://api.vapi.ai";
-  private readonly apiKey: string;
-  private readonly agentId: string;
-
+  private readonly apiKey: string | null;
+  private readonly agentId: string | null;
   private readonly phoneNumberId: string | undefined;
 
   constructor(private readonly config: ConfigService) {
-    this.apiKey = config.getOrThrow<string>("VAPI_API_KEY");
-    this.agentId = config.getOrThrow<string>("VAPI_AGENT_ID");
+    this.apiKey = config.get<string>("VAPI_API_KEY") ?? null;
+    this.agentId = config.get<string>("VAPI_AGENT_ID") ?? null;
     this.phoneNumberId = config.get<string>("VAPI_PHONE_NUMBER_ID");
+
+    if (!this.apiKey || !this.agentId) {
+      this.logger.warn(
+        "Vapi no configurado (VAPI_API_KEY / VAPI_AGENT_ID): llamadas en modo sandbox"
+      );
+    }
   }
 
   async initiateCall(input: InitiateCallInput): Promise<InitiateCallResult> {
+    if (!this.apiKey || !this.agentId) {
+      this.logger.warn(
+        `Vapi sandbox: llamada simulada a ${input.debtor_phone}`
+      );
+      return { call_id: `sandbox-${randomUUID()}`, status: "queued" };
+    }
+
     const ctx = input.strategy_context;
     const phone = input.debtor_phone.startsWith("+")
       ? input.debtor_phone
@@ -126,6 +139,10 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
   }
 
   async getCallStatus(call_id: string): Promise<CallStatus> {
+    if (!this.apiKey) {
+      return { call_id, status: "queued" };
+    }
+
     try {
       const response = await axios.get<VapiCallResponse>(
         `${this.baseUrl}/call/${call_id}`,

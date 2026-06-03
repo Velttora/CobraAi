@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { randomUUID } from "node:crypto";
 import twilio from "twilio";
 import type {
   WhatsAppPort,
@@ -11,23 +12,43 @@ import { PrismaService } from "@cobrai/db";
 @Injectable()
 export class TwilioWhatsAppAdapter implements WhatsAppPort {
   private readonly logger = new Logger(TwilioWhatsAppAdapter.name);
-  private readonly client: ReturnType<typeof twilio>;
-  private readonly from: string;
+  private readonly client: ReturnType<typeof twilio> | null;
+  private readonly from: string | null;
 
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService
   ) {
-    this.client = twilio(
-      config.getOrThrow<string>("TWILIO_ACCOUNT_SID"),
-      config.getOrThrow<string>("TWILIO_AUTH_TOKEN")
-    );
-    this.from = config.getOrThrow<string>("TWILIO_WA_FROM");
+    const accountSid = config.get<string>("TWILIO_ACCOUNT_SID");
+    const authToken = config.get<string>("TWILIO_AUTH_TOKEN");
+    const fromRaw =
+      config.get<string>("TWILIO_WA_FROM") ??
+      config.get<string>("TWILIO_FROM_NUMBER");
+
+    if (accountSid && authToken && fromRaw) {
+      this.client = twilio(accountSid, authToken);
+      this.from = fromRaw.startsWith("whatsapp:")
+        ? fromRaw
+        : `whatsapp:${fromRaw}`;
+    } else {
+      this.client = null;
+      this.from = null;
+      this.logger.warn(
+        "Twilio no configurado (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_WA_FROM): WhatsApp en modo sandbox"
+      );
+    }
   }
 
   async sendTemplate(
     input: SendWhatsAppTemplateInput
   ): Promise<SendWhatsAppTemplateResult> {
+    if (!this.client || !this.from) {
+      this.logger.warn(
+        `WA sandbox: mensaje simulado a ${input.to} (template ${input.template_id})`
+      );
+      return { message_id: `sandbox-${randomUUID()}`, status: "sent" };
+    }
+
     const to = input.to.startsWith("whatsapp:")
       ? input.to
       : `whatsapp:${input.to}`;

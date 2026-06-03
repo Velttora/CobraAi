@@ -37,18 +37,18 @@ const mockWhatsapp = {
 };
 
 function makeConfig(): ConfigService {
+  const map: Record<string, string> = {
+    OPENAI_API_KEY: "sk-test",
+    OPENAI_MODEL: "gpt-4o-mini",
+    OPENAI_MAX_TOKENS: "500",
+    PAYMENT_LINK_BASE_URL: "http://localhost:3001/pay"
+  };
   return {
+    get: (key: string) => map[key] ?? null,
     getOrThrow: (key: string) => {
-      if (key === "OPENAI_API_KEY") return "sk-test";
-      throw new Error(`Missing: ${key}`);
-    },
-    get: (key: string) => {
-      const map: Record<string, string> = {
-        OPENAI_MODEL: "gpt-4o-mini",
-        OPENAI_MAX_TOKENS: "500",
-        PAYMENT_LINK_BASE_URL: "http://localhost:3001/pay"
-      };
-      return map[key] ?? null;
+      const val = map[key];
+      if (!val) throw new Error(`Missing: ${key}`);
+      return val;
     }
   } as unknown as ConfigService;
 }
