@@ -34,3 +34,32 @@ export function channelLabel(channel: string | null | undefined): string {
   };
   return labels[channel] ?? channel;
 }
+
+/**
+ * Resuelve el canal efectivo a usar dado el canal sugerido por el scoring y la
+ * disponibilidad actual del deudor. Si el sugerido no está disponible, busca un
+ * fallback en orden: whatsapp → voice → email.
+ */
+export function resolveContactChannel(
+  suggestedChannel: string | null | undefined,
+  debtor: DebtorContactSnapshot
+): {
+  channel: SuggestedChannel | null;
+  isFallback: boolean;
+  originalSuggested: SuggestedChannel | null;
+} {
+  const original = (suggestedChannel as SuggestedChannel) ?? null;
+
+  if (original && isChannelAvailableForDebtor(original, debtor)) {
+    return { channel: original, isFallback: false, originalSuggested: original };
+  }
+
+  const FALLBACK_ORDER: SuggestedChannel[] = ["whatsapp", "voice", "email"];
+  for (const ch of FALLBACK_ORDER) {
+    if (ch !== original && isChannelAvailableForDebtor(ch, debtor)) {
+      return { channel: ch, isFallback: true, originalSuggested: original };
+    }
+  }
+
+  return { channel: null, isFallback: true, originalSuggested: original };
+}

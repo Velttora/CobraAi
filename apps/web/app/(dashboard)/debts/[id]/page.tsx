@@ -17,9 +17,9 @@ import {
 } from "../../../../lib/formatters";
 import {
   channelLabel,
-  isChannelAvailableForDebtor
+  resolveContactChannel
 } from "../../../../lib/contact-channels";
-import { toNumber } from "../../../../lib/types";
+import { toNumber, type Debt } from "../../../../lib/types";
 
 export default function DebtDetailPage({
   params
@@ -112,28 +112,7 @@ export default function DebtDetailPage({
             <div>
               <dt className="text-xs text-slate-500">Canal sugerido</dt>
               <dd>
-                {channelLabel(debt.bestChannel)}
-                {debt.bestChannel &&
-                debt.debtor &&
-                !isChannelAvailableForDebtor(debt.bestChannel, {
-                  email: debt.debtor.email,
-                  phones: debt.debtor.phones,
-                  whatsappOptIn: debt.debtor.whatsappOptIn
-                }) ? (
-                  <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">
-                    Falta información de contacto para este canal.{" "}
-                    <Link
-                      className="underline"
-                      href={`/debtors/${debt.debtor.id}` as Route}
-                    >
-                      Editar deudor
-                    </Link>
-                  </span>
-                ) : !debt.bestChannel ? (
-                  <span className="mt-1 block text-xs text-slate-500">
-                    Agrega email o teléfono en el perfil del deudor.
-                  </span>
-                ) : null}
+                <ChannelSuggestion debt={debt} />
               </dd>
             </div>
           </dl>
@@ -168,8 +147,67 @@ export default function DebtDetailPage({
         </ul>
       </article>
       {contactOpen ? (
-        <ContactModal debtId={debt.id} onClose={() => setContactOpen(false)} />
+        <ContactModal
+          debtId={debt.id}
+          debtor={
+            debt.debtor
+              ? {
+                  email: debt.debtor.email,
+                  phones: debt.debtor.phones,
+                  whatsappOptIn: debt.debtor.whatsappOptIn
+                }
+              : undefined
+          }
+          onClose={() => setContactOpen(false)}
+          suggestedChannel={debt.bestChannel}
+        />
       ) : null}
     </section>
+  );
+}
+
+function ChannelSuggestion({ debt }: { debt: Debt }): React.ReactElement {
+  const debtorSnapshot = debt.debtor
+    ? {
+        email: debt.debtor.email,
+        phones: debt.debtor.phones,
+        whatsappOptIn: debt.debtor.whatsappOptIn
+      }
+    : undefined;
+
+  const { channel, isFallback, originalSuggested } = debtorSnapshot
+    ? resolveContactChannel(debt.bestChannel, debtorSnapshot)
+    : {
+        channel: debt.bestChannel ?? null,
+        isFallback: false,
+        originalSuggested: null
+      };
+
+  return (
+    <>
+      {channelLabel(channel as string | null)}
+      {isFallback && originalSuggested && debt.debtor && (
+        <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+          El canal sugerido es <strong>{channelLabel(originalSuggested)}</strong> pero
+          falta la información. Por favor agrégala en el perfil.{" "}
+          <Link className="underline" href={`/debtors/${debt.debtor.id}` as Route}>
+            Editar deudor
+          </Link>
+        </span>
+      )}
+      {isFallback && !originalSuggested && channel && debt.debtor && (
+        <span className="mt-1 block text-xs text-amber-700 dark:text-amber-400">
+          Canal detectado por disponibilidad. Re-segmenta para recalcular el sugerido.{" "}
+          <Link className="underline" href={`/debtors/${debt.debtor.id}` as Route}>
+            Editar deudor
+          </Link>
+        </span>
+      )}
+      {!channel && (
+        <span className="mt-1 block text-xs text-slate-500">
+          Agrega email o teléfono en el perfil del deudor.
+        </span>
+      )}
+    </>
   );
 }

@@ -159,6 +159,7 @@ export function rankPreferredChannels(
   if (whatsappOptIn && priorityScore >= 40) ranked.push("whatsapp");
   if (priorityScore > 70 || recoveryScore < 40) ranked.push("voice");
   ranked.push("email");
+  ranked.push("voice"); // fallback: si no hay email, voice siempre está disponible con teléfono
   return [...new Set(ranked)];
 }
 

@@ -2,19 +2,39 @@
 
 import { useMemo, useState } from "react";
 import { useCreateContact, useTemplates } from "../../hooks/use-notifications";
+import {
+  channelLabel,
+  resolveContactChannel,
+  type DebtorContactSnapshot
+} from "../../lib/contact-channels";
 
 const CHANNELS = ["email", "sms", "whatsapp", "voice"] as const;
 
 export function ContactModal({
   debtId,
+  suggestedChannel,
+  debtor,
   onClose
 }: {
   debtId: string;
+  suggestedChannel?: string | null;
+  debtor?: DebtorContactSnapshot;
   onClose: () => void;
 }): React.ReactElement {
   const templatesQuery = useTemplates();
   const createContact = useCreateContact();
-  const [channel, setChannel] = useState<(typeof CHANNELS)[number]>("email");
+
+  const { channel: effectiveChannel, isFallback, originalSuggested } = useMemo(
+    () =>
+      debtor
+        ? resolveContactChannel(suggestedChannel, debtor)
+        : { channel: null, isFallback: false, originalSuggested: null },
+    [suggestedChannel, debtor]
+  );
+
+  const [channel, setChannel] = useState<(typeof CHANNELS)[number]>(
+    (effectiveChannel as (typeof CHANNELS)[number]) ?? "email"
+  );
   const [templateId, setTemplateId] = useState("");
 
   const templates = useMemo(
@@ -55,6 +75,31 @@ export function ContactModal({
               </option>
             ))}
           </select>
+
+          {isFallback && originalSuggested && (
+            <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+              El canal sugerido es <strong>{channelLabel(originalSuggested)}</strong> pero falta
+              la información.{" "}
+              {effectiveChannel
+                ? `Se usará ${channelLabel(effectiveChannel)} como alternativa.`
+                : "No hay canales disponibles."}{" "}
+              Por favor agrégala en el perfil del deudor.
+            </p>
+          )}
+
+          {isFallback && !originalSuggested && effectiveChannel && (
+            <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+              No hay canal sugerido calculado. Se detectó{" "}
+              <strong>{channelLabel(effectiveChannel)}</strong> disponible. Re-segmenta
+              para actualizar el canal sugerido.
+            </p>
+          )}
+
+          {isFallback && !effectiveChannel && (
+            <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400">
+              Este deudor no tiene información de contacto. Agrega email o teléfono en su perfil.
+            </p>
+          )}
         </label>
 
         <label className="mt-4 block text-sm">
