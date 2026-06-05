@@ -576,7 +576,8 @@ model NotificationTemplate {
   updatedAt  DateTime       @updatedAt @map("updated_at")
   deletedAt  DateTime?      @map("deleted_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  workflowRules WorkflowRule[]
 
   @@unique([tenantId, name, channel])
   @@index([tenantId, channel])
@@ -614,16 +615,19 @@ model WorkflowRule {
   delayHours  Int             @default(0) @map("delay_hours")
   priority    Int             @default(100)
   isActive    Boolean         @default(true) @map("is_active")
+  templateId  String?         @map("template_id") @db.Uuid
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   deletedAt   DateTime?       @map("deleted_at")
 
-  tenant     Tenant              @relation(fields: [tenantId], references: [id])
-  portfolio  Portfolio?          @relation(fields: [portfolioId], references: [id])
+  tenant     Tenant                @relation(fields: [tenantId], references: [id])
+  portfolio  Portfolio?            @relation(fields: [portfolioId], references: [id])
+  template   NotificationTemplate? @relation(fields: [templateId], references: [id])
   executions WorkflowExecution[]
 
   @@index([tenantId, isActive])
   @@index([tenantId, portfolioId, isActive])
+  @@index([templateId])
   @@map("workflow_rules")
 }
 

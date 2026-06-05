@@ -60,6 +60,10 @@ export class CreateWorkflowRuleDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  template_id?: string | null;
 }
 
 export class UpdateWorkflowRuleDto {
@@ -97,4 +101,8 @@ export class UpdateWorkflowRuleDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  template_id?: string | null;
 }

@@ -58,6 +58,7 @@ export interface WorkflowRule {
   delayHours: number;
   priority: number;
   isActive: boolean;
+  templateId?: string | null;
 }
 
 export interface Debtor {

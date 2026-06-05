@@ -360,7 +360,8 @@ export class WorkflowsService {
         channel: dto.channel,
         delayHours: dto.delay_hours ?? 0,
         priority: dto.priority ?? 100,
-        isActive: dto.is_active ?? true
+        isActive: dto.is_active ?? true,
+        templateId: dto.template_id ?? null
       }
     });
 
@@ -379,7 +380,8 @@ export class WorkflowsService {
         channel: dto.channel,
         delayHours: dto.delay_hours,
         priority: dto.priority,
-        isActive: dto.is_active
+        isActive: dto.is_active,
+        ...(dto.template_id !== undefined && { templateId: dto.template_id })
       }
     });
     if (rule.portfolioId) {

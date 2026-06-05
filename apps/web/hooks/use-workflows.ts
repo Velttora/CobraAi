@@ -16,6 +16,7 @@ export type WorkflowRule = {
   delayHours: number;
   priority: number;
   isActive: boolean;
+  templateId?: string | null;
 };
 
 export type WorkflowPackageSummary = {
@@ -166,6 +167,7 @@ export function useCreateWorkflowRule(portfolioId?: string) {
       delay_hours?: number;
       priority?: number;
       condition?: Record<string, unknown>;
+      template_id?: string | null;
     }) =>
       postApi<ApiItemResponse<WorkflowRule>>(client, "/api/v1/workflows/rules", {
         condition: {},
@@ -194,6 +196,7 @@ export function useUpdateWorkflowRule(portfolioId?: string) {
       channel?: string;
       delay_hours?: number;
       priority?: number;
+      template_id?: string | null;
     }) => patchApi<ApiItemResponse<WorkflowRule>>(client, `/api/v1/workflows/rules/${id}`, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["workflow-rules", portfolioId] });

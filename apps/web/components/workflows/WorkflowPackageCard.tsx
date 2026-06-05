@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   formatWorkflowChannel,
@@ -8,6 +8,10 @@ import {
   type WorkflowPackageSummary
 } from "../../hooks/use-workflows";
 import { cn } from "../../lib/utils";
+import {
+  describeWorkflowRule,
+  sortRulesByDebtorLifecycle
+} from "../../lib/workflow-rules";
 
 export type WorkflowPackageCardProps = {
   pkg: WorkflowPackageSummary;
@@ -29,6 +33,11 @@ export function WorkflowPackageCard({
   const [expanded, setExpanded] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
   const detailQuery = useWorkflowPackage(pkg.id, expanded);
+  const packageRules = useMemo(
+    () =>
+      sortRulesByDebtorLifecycle(detailQuery.data?.data.rules ?? []),
+    [detailQuery.data?.data.rules]
+  );
 
   async function handleApply(overwrite = false): Promise<void> {
     try {
@@ -83,19 +92,20 @@ export function WorkflowPackageCard({
 
       {expanded && detailQuery.data?.data ? (
         <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
-          {detailQuery.data.data.rules.map((rule) => (
-            <li className="text-slate-600 dark:text-slate-400" key={rule.name}>
-              <span className="font-medium text-slate-800 dark:text-slate-200">
-                {rule.name}
-              </span>
-              <span className="block">
-                {rule.trigger} → {rule.action}
-                {rule.channel
-                  ? ` · ${formatWorkflowChannel(rule.channel)}`
-                  : ""}
-              </span>
-            </li>
-          ))}
+          {packageRules.map((rule) => {
+            const { when, does, timing } = describeWorkflowRule(rule);
+            return (
+              <li className="text-slate-600 dark:text-slate-400" key={rule.name}>
+                <span className="font-medium text-slate-800 dark:text-slate-200">
+                  {rule.name}
+                </span>
+                <span className="block">
+                  {when} → {does}
+                  {timing ? ` · ${timing}` : ""}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
 
