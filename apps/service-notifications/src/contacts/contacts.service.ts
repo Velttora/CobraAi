@@ -124,6 +124,9 @@ export class ContactsService {
     const debtor = debt.debtor;
     const at = input.scheduled_at ? new Date(input.scheduled_at) : new Date();
 
+    // Sin servicio de SMS activo, todo mensaje SMS se envía por WhatsApp.
+    input = { ...input, channel: this.resolveMessageChannel(input.channel) };
+
     const compliance = await this.compliance.checkBeforeSend({
       tenantId,
       debtor,
@@ -228,6 +231,16 @@ export class ContactsService {
       });
       throw err;
     }
+  }
+
+  /** Mientras FEATURE_SMS_ENABLED no esté activo, SMS se trata como WhatsApp. */
+  private resolveMessageChannel(channel: ContactChannel): ContactChannel {
+    const smsEnabled =
+      this.config.get<string>("FEATURE_SMS_ENABLED") === "true";
+    if (!smsEnabled && channel === "sms") {
+      return "whatsapp";
+    }
+    return channel;
   }
 
   private async dispatchChannel(

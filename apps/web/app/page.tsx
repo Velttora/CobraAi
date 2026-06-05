@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "CobraAI — Cobranza inteligente para LATAM",
     description:
-      "Recupera más con automatización, WhatsApp, email, SMS y voz IA. Paquetes de reglas listos para aplicar.",
+      "Recupera más con automatización, WhatsApp, email y voz IA. Paquetes de reglas listos para aplicar.",
     locale: "es_CO",
     type: "website"
   }

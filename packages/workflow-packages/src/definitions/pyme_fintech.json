@@ -1,7 +1,7 @@
 {
   "id": "pyme_fintech",
   "name": "PyME / Fintech",
-  "description": "Cobranza digital ágil con WhatsApp y SMS como canales principales, ideal para volúmenes medios.",
+  "description": "Cobranza digital ágil con WhatsApp como canal principal, ideal para volúmenes medios.",
   "profile": "Pensado para fintechs, neobancos y PyMEs con cartera diversificada y comunicación omnicanal.",
   "rules": [
     {
@@ -41,11 +41,11 @@
       "priority": 30
     },
     {
-      "name": "Aging 31-60 — SMS",
+      "name": "Aging 31-60 — WhatsApp",
       "trigger": "schedule",
       "condition": { "aging_bucket": "d31_60" },
       "action": "send_notification",
-      "channel": "sms",
+      "channel": "whatsapp",
       "delay_hours": 0,
       "priority": 25
     },

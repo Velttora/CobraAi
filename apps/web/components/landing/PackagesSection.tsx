@@ -4,7 +4,7 @@ const PACKAGES = [
     name: "Empresa grande",
     rules: 8,
     uplift: "+35% recuperación B2B",
-    channels: ["email", "sms", "voice (stub)"],
+    channels: ["email", "whatsapp", "voice (stub)"],
     description: "Formal, escalonado, con voz IA en aging 60+ y escalamiento humano."
   },
   {
@@ -12,15 +12,15 @@ const PACKAGES = [
     name: "PyME / Fintech",
     rules: 7,
     uplift: "+41% en 90 días",
-    channels: ["whatsapp", "email", "sms"],
-    description: "Digital-first: WhatsApp prioritario, SMS en aging medio."
+    channels: ["whatsapp", "email"],
+    description: "Digital-first: WhatsApp prioritario en todo el ciclo de aging."
   },
   {
     id: "cartera_personas",
     name: "Cartera personas",
     rules: 8,
     uplift: "+33% promesas cumplidas",
-    channels: ["sms", "whatsapp", "voice (stub)"],
+    channels: ["whatsapp", "voice (stub)"],
     description: "Alto volumen consumo: contacto frecuente y escalamiento legal."
   }
 ];

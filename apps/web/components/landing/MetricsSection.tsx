@@ -22,7 +22,7 @@ const ROI_CASES = [
   {
     title: "Crédito consumo — 45.000 deudores",
     uplift: "+33% promesas cumplidas",
-    detail: "Paquete cartera_personas + SMS + escalamiento"
+    detail: "Paquete cartera_personas + WhatsApp + escalamiento"
   }
 ];
 

@@ -644,11 +644,11 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
       {
         tenantId: tenant.id,
         portfolioId: portfolioCustom.id,
-        name: "Aging 90+ — SMS urgente",
+        name: "Aging 90+ — WhatsApp urgente",
         trigger: WorkflowTrigger.schedule,
         condition: { aging_bucket: ["d91_180", "d180_plus"] },
         action: WorkflowAction.send_notification,
-        channel: "sms",
+        channel: "whatsapp",
         delayHours: 0,
         priority: 30,
         isActive: true

@@ -15,7 +15,11 @@ import {
   useWorkflowRules,
   type WorkflowRule
 } from "../../hooks/use-workflows";
-import { featureFlags } from "../../lib/feature-flags";
+import {
+  featureFlags,
+  resolveMessageChannel,
+  sanitizeChannelText
+} from "../../lib/feature-flags";
 import { renderTemplatePreview } from "../../lib/template-preview";
 import {
   describeWorkflowRule,
@@ -52,7 +56,7 @@ const TEMPLATE_CHANNELS = [
   { value: "sms", label: "SMS" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "voice", label: "Voz (guion)" }
-] as const;
+].filter((c) => c.value !== "sms" || featureFlags.sms);
 
 const DEFAULT_TEMPLATE_CONTENT =
   "Hola {{nombre}}, su saldo es {{monto}}. Pague en {{link_pago}}.";
@@ -234,7 +238,7 @@ export function WorkflowRulesManager({
                 key={rule.id}
               >
                 <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Editando: {rule.name}
+                  Editando: {sanitizeChannelText(rule.name)}
                 </p>
                 <RuleFormFields form={editForm} hidesTrigger onChange={setEditForm} />
                 <div className="mt-4 flex gap-2">
@@ -477,7 +481,9 @@ function RuleSummary({
   const { when, does, timing } = describeWorkflowRule(rule);
   return (
     <>
-      <p className="font-medium text-slate-900 dark:text-slate-100">{rule.name}</p>
+      <p className="font-medium text-slate-900 dark:text-slate-100">
+        {sanitizeChannelText(rule.name)}
+      </p>
       <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
         <span className="text-slate-500">{when}</span>
         <span className="mx-1.5 text-slate-400">→</span>
@@ -520,10 +526,14 @@ function RuleTemplateEditor({
 
   const [form, setForm] = useState<TemplateForm>(() =>
     template
-      ? { name: template.name, channel: template.channel, content: template.content }
+      ? {
+          name: template.name,
+          channel: resolveMessageChannel(template.channel),
+          content: template.content
+        }
       : {
-          name: rule.name,
-          channel: rule.channel ?? "email",
+          name: sanitizeChannelText(rule.name),
+          channel: resolveMessageChannel(rule.channel) ?? "email",
           content: DEFAULT_TEMPLATE_CONTENT
         }
   );

@@ -1,12 +1,11 @@
 const CHANNELS = [
   { name: "WhatsApp", detail: "Mensajes con opt-in y plantillas aprobadas" },
   { name: "Email", detail: "Secuencias formales para B2B y recordatorios" },
-  { name: "SMS", detail: "Urgencia en aging alto con horarios controlados" },
   { name: "Voz IA (stub)", detail: "Llamadas automatizadas — listas cuando el servicio esté activo" }
 ];
 
 const CHANNEL_STATS = [
-  { value: "4", label: "Canales integrados" },
+  { value: "3", label: "Canales integrados" },
   { value: "98%", label: "Cumplimiento horario" },
   { value: "3×", label: "Tasa de respuesta vs. email solo" },
   { value: "0", label: "Integraciones duplicadas" }

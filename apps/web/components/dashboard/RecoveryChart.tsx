@@ -12,15 +12,15 @@ import {
 } from "recharts";
 import type { Debt } from "../../lib/types";
 import { toNumber } from "../../lib/types";
+import { resolveMessageChannel } from "../../lib/feature-flags";
 import { formatCurrency } from "../../lib/formatters";
 import { Skeleton } from "../shared/Skeleton";
 
-const CHANNELS = ["whatsapp", "voice", "email", "sms"] as const;
+const CHANNELS = ["whatsapp", "voice", "email"] as const;
 const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
   voice: "Voz",
-  email: "Email",
-  sms: "SMS"
+  email: "Email"
 };
 
 function buildChartData(debts: Debt[]) {
@@ -39,7 +39,9 @@ function buildChartData(debts: Debt[]) {
       row[channel] = debts
         .filter((debt) => {
           const created = debt.createdAt.slice(0, 7);
-          const ch = (debt.bestChannel ?? "whatsapp").toLowerCase();
+          const ch = resolveMessageChannel(
+            (debt.bestChannel ?? "whatsapp").toLowerCase()
+          );
           return created === month && ch === channel;
         })
         .reduce((sum, debt) => sum + toNumber(debt.amountOutstanding), 0);

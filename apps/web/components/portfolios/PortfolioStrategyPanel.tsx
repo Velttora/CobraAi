@@ -12,6 +12,7 @@ import {
   type WorkflowRule,
   type WorkflowPackageSummary
 } from "../../hooks/use-workflows";
+import { sanitizeChannelText } from "../../lib/feature-flags";
 import {
   describeWorkflowRule,
   partitionPortfolioRules
@@ -151,7 +152,7 @@ export function PortfolioStrategyPanel({
                       key={rule.id}
                     >
                       <span className="min-w-0">
-                        <span className="block font-medium">{rule.name}</span>
+                        <span className="block font-medium">{sanitizeChannelText(rule.name)}</span>
                         <span className="mt-0.5 block text-xs text-slate-500">
                           {when} → {does}
                           {timing ? ` · ${timing}` : ""}
@@ -187,7 +188,7 @@ export function PortfolioStrategyPanel({
                       key={rule.id}
                     >
                       <span className="min-w-0 text-slate-500">
-                        <span className="block font-medium">{rule.name}</span>
+                        <span className="block font-medium">{sanitizeChannelText(rule.name)}</span>
                         <span className="mt-0.5 block text-xs">
                           {when} → {does}
                           {timing ? ` · ${timing}` : ""}

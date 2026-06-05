@@ -93,7 +93,7 @@ describe("describeWorkflowRule", () => {
     expect(desc.timing).toBe("1 hora después");
   });
 
-  it("traduce score muy bajo (< 40)", () => {
+  it("traduce score muy bajo (< 40) y mapea SMS a WhatsApp sin servicio SMS", () => {
     const desc = describeWorkflowRule({
       trigger: "score_updated",
       condition: { ai_score: { lt: 40 } },
@@ -101,7 +101,8 @@ describe("describeWorkflowRule", () => {
       channel: "sms"
     });
     expect(desc.when).toBe("Cuando el score de cobro queda muy bajo (menos de 40)");
-    expect(desc.does).toBe("Envía un SMS");
+    // Sin NEXT_PUBLIC_ENABLE_SMS, los SMS se muestran como WhatsApp.
+    expect(desc.does).toBe("Envía un WhatsApp");
   });
 
   it("traduce aging schedule y voz", () => {

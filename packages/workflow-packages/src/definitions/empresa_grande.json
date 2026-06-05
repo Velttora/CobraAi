@@ -40,11 +40,11 @@
       "priority": 25
     },
     {
-      "name": "Aging 90+ — SMS urgente",
+      "name": "Aging 90+ — WhatsApp urgente",
       "trigger": "schedule",
       "condition": { "aging_bucket": ["d91_180", "d180_plus"] },
       "action": "send_notification",
-      "channel": "sms",
+      "channel": "whatsapp",
       "delay_hours": 0,
       "priority": 20
     },

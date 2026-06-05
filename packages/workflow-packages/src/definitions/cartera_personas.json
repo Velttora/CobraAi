@@ -5,11 +5,11 @@
   "profile": "Créditos personales, microcrédito y carteras retail con muchos deudores de ticket medio-bajo.",
   "rules": [
     {
-      "name": "Bienvenida — SMS",
+      "name": "Bienvenida — WhatsApp",
       "trigger": "debt_created",
       "condition": { "status": "new" },
       "action": "send_notification",
-      "channel": "sms",
+      "channel": "whatsapp",
       "delay_hours": 0,
       "priority": 10
     },
@@ -23,11 +23,11 @@
       "priority": 20
     },
     {
-      "name": "Score bajo sin WhatsApp — SMS",
+      "name": "Score bajo — WhatsApp",
       "trigger": "score_updated",
       "condition": { "ai_score": { "lt": 40 } },
       "action": "send_notification",
-      "channel": "sms",
+      "channel": "whatsapp",
       "delay_hours": 2,
       "priority": 25
     },
@@ -59,11 +59,11 @@
       "priority": 5
     },
     {
-      "name": "Promesa rota — SMS + tarea",
+      "name": "Promesa rota — WhatsApp + tarea",
       "trigger": "promise_broken",
       "condition": {},
       "action": "create_task",
-      "channel": "sms",
+      "channel": "whatsapp",
       "delay_hours": 0,
       "priority": 5
     },

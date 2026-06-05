@@ -1,3 +1,4 @@
+import { resolveMessageChannel } from "./feature-flags";
 import type { WorkflowRule } from "./types";
 
 export type PortfolioAutomationStatus = "none" | "package" | "custom" | undefined;
@@ -275,8 +276,9 @@ function whenSuffix(condition: Record<string, unknown>): string {
 function describeDoes(rule: RuleDescribable): string {
   switch (rule.action) {
     case "send_notification": {
-      const channel = rule.channel ? CHANNEL_LABEL[rule.channel] : undefined;
-      if (rule.channel === "voice") return "Hace una llamada con IA";
+      const resolved = resolveMessageChannel(rule.channel);
+      const channel = resolved ? CHANNEL_LABEL[resolved] : undefined;
+      if (resolved === "voice") return "Hace una llamada con IA";
       if (channel) return `Envía un ${channel}`;
       return "Envía una notificación";
     }

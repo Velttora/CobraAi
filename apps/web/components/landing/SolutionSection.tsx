@@ -22,7 +22,7 @@ const FEATURES = [
   },
   {
     title: "Omnicanal nativo",
-    body: "WhatsApp, email, SMS y voz IA en un solo motor de ejecución."
+    body: "WhatsApp, email y voz IA en un solo motor de ejecución."
   },
   {
     title: "Pipeline por trimestre",

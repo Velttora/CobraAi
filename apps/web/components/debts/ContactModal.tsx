@@ -7,8 +7,12 @@ import {
   resolveContactChannel,
   type DebtorContactSnapshot
 } from "../../lib/contact-channels";
+import { featureFlags, resolveMessageChannel } from "../../lib/feature-flags";
 
-const CHANNELS = ["email", "sms", "whatsapp", "voice"] as const;
+const ALL_CHANNELS = ["email", "sms", "whatsapp", "voice"] as const;
+const CHANNELS = ALL_CHANNELS.filter(
+  (c) => c !== "sms" || featureFlags.sms
+);
 
 export function ContactModal({
   debtId,
@@ -133,7 +137,7 @@ export function ContactModal({
               void createContact
                 .mutateAsync({
                   debt_id: debtId,
-                  channel,
+                  channel: resolveMessageChannel(channel),
                   ...(templateId ? { template_id: templateId } : {})
                 })
                 .then(() => onClose());

@@ -7,6 +7,10 @@ import {
   useWorkflowPackage,
   type WorkflowPackageSummary
 } from "../../hooks/use-workflows";
+import {
+  resolveMessageChannel,
+  sanitizeChannelText
+} from "../../lib/feature-flags";
 import { cn } from "../../lib/utils";
 import {
   describeWorkflowRule,
@@ -97,7 +101,7 @@ export function WorkflowPackageCard({
             return (
               <li className="text-slate-600 dark:text-slate-400" key={rule.name}>
                 <span className="font-medium text-slate-800 dark:text-slate-200">
-                  {rule.name}
+                  {sanitizeChannelText(rule.name)}
                 </span>
                 <span className="block">
                   {when} → {does}
@@ -131,12 +135,15 @@ export function WorkflowPackageCard({
 }
 
 function PackageBadges({ pkg }: { pkg: WorkflowPackageSummary }) {
+  const channels = Array.from(
+    new Set(pkg.channels.map((channel) => resolveMessageChannel(channel)))
+  );
   return (
     <div className="mt-3 flex flex-wrap gap-1.5">
       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
         {pkg.rules_count} reglas
       </span>
-      {pkg.channels.map((channel) => (
+      {channels.map((channel) => (
         <span
           className={cn(
             "rounded-full px-2 py-0.5 text-xs capitalize",
