@@ -1,7 +1,10 @@
 "use client";
 
 import { Package } from "lucide-react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useTemplates } from "../../hooks/use-notifications";
 import {
   usePortfolio,
   useUpdatePortfolioStrategy
@@ -32,7 +35,16 @@ export function PortfolioStrategyPanel({
   const packagesQuery = useWorkflowPackages();
   const packages = packagesQuery.data?.data ?? [];
   const toggleRule = useToggleWorkflowRule(portfolioId);
+  const templatesQuery = useTemplates();
+  const templateById = useMemo(
+    () => new Map((templatesQuery.data?.data.items ?? []).map((t) => [t.id, t])),
+    [templatesQuery.data?.data.items]
+  );
   const rules = (portfolio?.workflowRules ?? []) as WorkflowRule[];
+
+  const [pendingStrategy, setPendingStrategy] = useState<"none" | "custom" | undefined>(undefined);
+  const hasUnsavedStrategy =
+    pendingStrategy !== undefined && pendingStrategy !== portfolio?.automationStatus;
 
   const { activeRules, inactiveRules } = partitionPortfolioRules(
     rules,
@@ -54,15 +66,15 @@ export function PortfolioStrategyPanel({
     toast.success("Paquete aplicado al portafolio");
   }
 
-  async function applyQuickStrategy(
-    strategy: "none" | "custom"
-  ): Promise<void> {
+  async function saveQuickStrategy(): Promise<void> {
+    if (!pendingStrategy) return;
     try {
-      const response = await updateStrategy.mutateAsync({ strategy });
+      const response = await updateStrategy.mutateAsync({ strategy: pendingStrategy });
       if (response.data.confirm_required) {
         toast.error("Confirma el reemplazo de reglas existentes");
         return;
       }
+      setPendingStrategy(undefined);
       toast.success("Estrategia actualizada");
     } catch {
       toast.error("No se pudo actualizar la estrategia");
@@ -88,9 +100,12 @@ export function PortfolioStrategyPanel({
         </div>
 
         <StrategyQuickActions
-          automationStatus={portfolio?.automationStatus}
-          onCustom={() => void applyQuickStrategy("custom")}
-          onNone={() => void applyQuickStrategy("none")}
+          automationStatus={pendingStrategy ?? portfolio?.automationStatus}
+          hasUnsaved={hasUnsavedStrategy}
+          isSaving={updateStrategy.isPending}
+          onCancel={() => setPendingStrategy(undefined)}
+          onSave={() => void saveQuickStrategy()}
+          onSelect={setPendingStrategy}
         />
       </article>
 
@@ -146,6 +161,7 @@ export function PortfolioStrategyPanel({
               ) : (
                 activeRules.map((rule) => {
                   const { when, does, timing } = describeWorkflowRule(rule);
+                  const hasTemplate = Boolean(rule.templateId && templateById.has(rule.templateId));
                   return (
                     <li
                       className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
@@ -157,6 +173,20 @@ export function PortfolioStrategyPanel({
                           {when} → {does}
                           {timing ? ` · ${timing}` : ""}
                         </span>
+                        {rule.action === "send_notification" && (
+                          hasTemplate ? (
+                            <span className="mt-0.5 block text-xs font-medium text-emerald-600">
+                              Mensaje configurado
+                            </span>
+                          ) : (
+                            <Link
+                              className="mt-0.5 block text-xs font-medium text-[#D85A30] hover:underline"
+                              href="/settings"
+                            >
+                              Sin mensaje · configurar
+                            </Link>
+                          )
+                        )}
                       </span>
                       <button
                         className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800"
@@ -182,6 +212,7 @@ export function PortfolioStrategyPanel({
               <ul className="mt-3 space-y-2">
                 {inactiveRules.map((rule) => {
                   const { when, does, timing } = describeWorkflowRule(rule);
+                  const hasTemplate = Boolean(rule.templateId && templateById.has(rule.templateId));
                   return (
                     <li
                       className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-950"
@@ -193,6 +224,20 @@ export function PortfolioStrategyPanel({
                           {when} → {does}
                           {timing ? ` · ${timing}` : ""}
                         </span>
+                        {rule.action === "send_notification" && (
+                          hasTemplate ? (
+                            <span className="mt-0.5 block text-xs font-medium text-emerald-600">
+                              Mensaje configurado
+                            </span>
+                          ) : (
+                            <Link
+                              className="mt-0.5 block text-xs font-medium text-[#D85A30] hover:underline"
+                              href="/settings"
+                            >
+                              Sin mensaje · configurar
+                            </Link>
+                          )
+                        )}
                       </span>
                       <button
                         className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 text-xs text-slate-600"
@@ -232,37 +277,44 @@ export function PortfolioStrategyPanel({
 
 function StrategyQuickActions({
   automationStatus,
-  onNone,
-  onCustom
+  hasUnsaved,
+  isSaving,
+  onSelect,
+  onSave,
+  onCancel
 }: {
   automationStatus?: string;
-  onNone: () => void;
-  onCustom: () => void;
+  hasUnsaved: boolean;
+  isSaving: boolean;
+  onSelect: (strategy: "none" | "custom") => void;
+  onSave: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <div className="mt-4 flex flex-wrap gap-2">
-      <button
-        className={`rounded-lg border px-3 py-2 text-sm ${
-          automationStatus === "none"
-            ? "border-[#D85A30] bg-[#D85A30]/5"
-            : "border-slate-200 dark:border-slate-700"
-        }`}
-        onClick={onNone}
-        type="button"
-      >
-        Sin automatización
-      </button>
-      <button
-        className={`rounded-lg border px-3 py-2 text-sm ${
-          automationStatus === "custom"
-            ? "border-[#D85A30] bg-[#D85A30]/5"
-            : "border-slate-200 dark:border-slate-700"
-        }`}
-        onClick={onCustom}
-        type="button"
-      >
-        Reglas personalizadas
-      </button>
+    <div className="mt-4 space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <button
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            automationStatus === "none"
+              ? "border-[#D85A30] bg-[#D85A30]/5"
+              : "border-slate-200 dark:border-slate-700"
+          }`}
+          onClick={() => onSelect("none")}
+          type="button"
+        >
+          Sin automatización
+        </button>
+        <Link
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            automationStatus === "custom"
+              ? "border-[#D85A30] bg-[#D85A30]/5"
+              : "border-slate-200 dark:border-slate-700"
+          }`}
+          href="/settings"
+        >
+          Reglas personalizadas
+        </Link>
+      </div>
     </div>
   );
 }

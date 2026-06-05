@@ -218,6 +218,20 @@ export async function applyPackageToPortfolio(
     throw error;
   }
 
+  // Capture template links from existing rules before deactivating them
+  const templateByNameChannel = new Map<string, string>();
+  if (existingActiveCount > 0) {
+    const existingRules = await prisma.workflowRule.findMany({
+      where: { tenantId, portfolioId, deletedAt: null, isActive: true },
+      select: { name: true, channel: true, templateId: true }
+    });
+    for (const rule of existingRules) {
+      if (rule.templateId) {
+        templateByNameChannel.set(`${rule.name}|${rule.channel ?? ""}`, rule.templateId);
+      }
+    }
+  }
+
   const rulesReplaced = await deactivatePortfolioRules(
     prisma,
     tenantId,
@@ -227,6 +241,23 @@ export async function applyPackageToPortfolio(
   await prisma.workflowRule.createMany({
     data: buildRuleRows(pkg, tenantId, portfolioId)
   });
+
+  // Re-link preserved templates to new rules by name+channel
+  if (templateByNameChannel.size > 0) {
+    const newRules = await prisma.workflowRule.findMany({
+      where: { tenantId, portfolioId, deletedAt: null, isActive: true },
+      select: { id: true, name: true, channel: true }
+    });
+    for (const rule of newRules) {
+      const templateId = templateByNameChannel.get(`${rule.name}|${rule.channel ?? ""}`);
+      if (templateId) {
+        await prisma.workflowRule.update({
+          where: { id: rule.id },
+          data: { templateId }
+        });
+      }
+    }
+  }
 
   await prisma.portfolio.update({
     where: { id: portfolioId },

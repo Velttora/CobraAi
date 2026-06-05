@@ -370,20 +370,31 @@ function RuleFormFields({
         <input
           className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
           min="0"
+          max="168"
           onChange={set("delay_hours")}
           type="number"
           value={form.delay_hours}
         />
+        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+          Horas de espera tras el disparador antes de ejecutar la acción. 0 = de
+          inmediato. Rango sugerido: 0–168 h (hasta 7 días).
+        </span>
       </label>
       <label className="text-sm">
         Prioridad
         <input
           className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
           min="0"
+          max="100"
           onChange={set("priority")}
           type="number"
           value={form.priority}
         />
+        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+          Define el orden cuando varias reglas aplican a la vez: el número más
+          bajo se ejecuta primero (0 = máxima prioridad). Por defecto 100. Rango
+          sugerido: 0–100.
+        </span>
       </label>
     </div>
   );

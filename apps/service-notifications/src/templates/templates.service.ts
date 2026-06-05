@@ -14,6 +14,22 @@ export class TemplatesService {
   }
 
   async create(tenantId: string, dto: CreateTemplateDto) {
+    const existing = await this.prisma.notificationTemplate.findFirst({
+      where: { tenantId, name: dto.name, channel: dto.channel }
+    });
+
+    if (existing) {
+      return this.prisma.notificationTemplate.update({
+        where: { id: existing.id },
+        data: {
+          content: dto.content,
+          variables: (dto.variables ?? existing.variables) as never,
+          isApproved: dto.is_approved ?? existing.isApproved,
+          deletedAt: null
+        }
+      });
+    }
+
     return this.prisma.notificationTemplate.create({
       data: {
         tenantId,
