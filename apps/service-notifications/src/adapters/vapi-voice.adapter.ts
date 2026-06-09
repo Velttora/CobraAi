@@ -160,14 +160,6 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
             ...(ctx.variables["first_message_override"]
               ? { firstMessage: ctx.variables["first_message_override"] }
               : {}),
-            model: {
-              messages: [
-                {
-                  role: "system",
-                  content: "REGLA ABSOLUTA: Habla ÚNICAMENTE en español colombiano. Para años y fechas SIEMPRE usa palabras en español: di 'dos mil veintiséis' NUNCA '2026'. Para montos di 'un millón quinientos mil pesos' NUNCA '$1.500.000'. Esta regla no tiene excepciones."
-                }
-              ]
-            },
             endCallFunctionEnabled: true,
             endCallPhrases: [
               "hasta luego", "que tenga buen día", "que tenga buenas noches",
