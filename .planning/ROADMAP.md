@@ -102,13 +102,13 @@
 - `sentimentScore` se persiste en `contact` al cerrar cada interacción
 - Tests unitarios (vitest) con OpenAI mockeado
 
-**Plans:** 4 plans (2 waves) — 3/4 complete
+**Plans:** 4 plans (2 waves) — 4/4 complete
 
 Plans:
 - [x] 05-01-PLAN.md — DebtorMemoryService + MemoryModule + extensión del contrato DebtorHistory (Wave 1)
 - [x] 05-02-PLAN.md — Integración WhatsApp: ConversationAgentService usa getUnifiedContext (Wave 2)
 - [x] 05-03-PLAN.md — Integración voz: loadVoiceCallHistory enriquecido con perfil unificado (Wave 2)
-- [ ] 05-04-PLAN.md — Hook refreshMemory tras cada llamada en vapi-webhook + persistir sentimentScore (Wave 2)
+- [x] 05-04-PLAN.md — Hook refreshMemory tras cada llamada en vapi-webhook + persistir sentimentScore (Wave 2)
 
 **Duración estimada:** 1 semana
 

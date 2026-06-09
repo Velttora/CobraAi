@@ -4,11 +4,11 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — Waves 1+2+3 completas (planes 05-01, 05-02, 05-03), plan 05-04 pendiente
-- **Completadas:** Phases 1, 2, 3
+- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — COMPLETA (4/4 planes: 05-01, 05-02, 05-03, 05-04)
+- **Completadas:** Phases 1, 2, 3, 5
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO).
-- **Last session:** 2026-06-09 — ejecutado plan 05-03 (voice agent unified memory integration — voz deja de estar ciega a otros canales)
+- **Last session:** 2026-06-09 — ejecutado plan 05-04 (Vapi webhook calls refreshMemory after each call — sentimentScore y emotionalProfile se populan desde ahora)
 
 ## Fases
 | # | Nombre | Estado |
@@ -17,7 +17,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 2 | Voice Agent Real (Vapi.ai) | ✅ completa |
 | 3 | LLM Conversational Agent (WA bidireccional) | ✅ completa |
 | 4 | Dashboard Conversaciones y Escalaciones | 🔲 pendiente |
-| 5 | Memoria Unificada del Deudor | 🔄 en progreso (3/4 planes completos — Waves 1+2+3 listas) |
+| 5 | Memoria Unificada del Deudor | ✅ completa (4/4 planes — sentimentScore + emotionalProfile activos) |
 | 6 | Email Bidireccional con Agente | 🔲 pendiente (requiere Phase 5) |
 
 ## Contexto acumulado
@@ -50,3 +50,4 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 - Phase 5: DebtorMemoryService en `src/memory/` con MemoryModule. `Debtor.emotionalProfile` (Json?) como living summary. DebtorHistory interface extendida con livingSummary/overallSentiment/paymentBehavior (opcionales, backward-compatible). parseProfile() helper como defensa contra Json malformado.
 - Phase 5 (Wave 2): ConversationAgentService inyecta DebtorMemoryService como 5° param; loadDebtorHistory eliminado; AgentModule importa MemoryModule. Patrón a replicar en ContactsModule (05-03) y WebhooksModule (05-04).
 - Phase 5 (Wave 3 — 05-03): ContactsService inyecta DebtorMemoryService como 10° param; loadVoiceCallHistory llama getUnifiedContext y agrega perfil_deudor/sentimiento_previo/comportamiento_pago a Vapi strategy_context.variables; ContactsModule importa MemoryModule. La voz ya no está ciega a otros canales.
+- Phase 5 (Wave 4 — 05-04): VapiWebhookHandler inyecta DebtorMemoryService como 7° param; saveTranscript devuelve debtorId (Promise<string | null>); contactId resuelto via findFirst tras updateMany; refreshMemory llamado en try/catch tras cada transcript guardado — sentimentScore y emotionalProfile activos. WebhooksModule importa MemoryModule.
