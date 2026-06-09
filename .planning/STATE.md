@@ -4,10 +4,11 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — ✅ planificada (4 planes, 2 waves), lista para ejecutar
+- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — Wave 1 completa (plan 05-01), planes 05-02/03/04 pendientes
 - **Completadas:** Phases 1, 2, 3
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO).
+- **Last session:** 2026-06-09 — ejecutado plan 05-01 (DebtorMemoryService foundation)
 
 ## Fases
 | # | Nombre | Estado |
@@ -16,7 +17,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 2 | Voice Agent Real (Vapi.ai) | ✅ completa |
 | 3 | LLM Conversational Agent (WA bidireccional) | ✅ completa |
 | 4 | Dashboard Conversaciones y Escalaciones | 🔲 pendiente |
-| 5 | Memoria Unificada del Deudor | 📋 planificada (4 planes, 2 waves) |
+| 5 | Memoria Unificada del Deudor | 🔄 en progreso (1/4 planes completo — Wave 1 listo) |
 | 6 | Email Bidireccional con Agente | 🔲 pendiente (requiere Phase 5) |
 
 ## Contexto acumulado
@@ -46,3 +47,4 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 - Voice: Vapi.ai (managed, no OpenAI Realtime — menos complejidad de orquestación)
 - LLM: GPT-4o-mini (balance costo/calidad para v1)
 - Adapter swap: solo cambiar `useClass` en `adapters.module.ts`, sin tocar `contacts.service.ts`
+- Phase 5: DebtorMemoryService en `src/memory/` con MemoryModule. `Debtor.emotionalProfile` (Json?) como living summary. DebtorHistory interface extendida con livingSummary/overallSentiment/paymentBehavior (opcionales, backward-compatible). parseProfile() helper como defensa contra Json malformado.
