@@ -270,6 +270,7 @@ model Tenant {
   workflowExecutions    WorkflowExecution[]
   auditLogs             AuditLog[]
   messages              Message[]
+  integrations          Integration[]
 
   @@map("tenants")
 }
@@ -650,6 +651,48 @@ model WorkflowExecution {
   @@index([tenantId, debtId])
   @@index([tenantId, ruleId])
   @@map("workflow_executions")
+}
+
+// ─── ERP Integrations ────────────────────────────────────────────────────────
+
+enum ErpType {
+  sap
+  siigo
+  world_office
+  helisa
+  aspel
+  contpaq
+  odoo
+  generic
+
+  @@map("erp_type")
+}
+
+model Integration {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id")
+  name           String
+  erpType        ErpType   @map("erp_type")
+  /// bcrypt hash of the plaintext API key issued at creation
+  apiKeyHash     String    @map("api_key_hash")
+  /// first 12 chars of the plaintext key — displayed in UI so the user can identify it
+  apiKeyPrefix   String    @map("api_key_prefix")
+  outboundUrl    String?   @map("outbound_url")
+  /// HMAC-SHA256 secret sent with every outbound webhook
+  outboundSecret String?   @map("outbound_secret")
+  /// JSON array of OutboundEvent strings
+  outboundEvents Json      @default("[]") @map("outbound_events")
+  isActive       Boolean   @default(true) @map("is_active")
+  lastEventAt    DateTime? @map("last_event_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, isActive])
+  @@index([apiKeyPrefix])
+  @@map("integrations")
 }
 
 model AuditLog {
