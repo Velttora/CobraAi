@@ -1,12 +1,12 @@
 # CobraAI — Roadmap: WhatsApp & Voice Agent
 
 > **Estado del proyecto:** Core MVP construido. Stubs de WA y Voz activos.
-> **Objetivo:** Reemplazar stubs con implementaciones reales + agente LLM conversacional.
+> **Goal:** Reemplazar stubs con implementaciones reales + agente LLM conversacional.
 
 ---
 
-## Phase 1 — WhatsApp Real (Twilio WA Business API)
-**Objetivo:** Envíos reales por WhatsApp + recepción de mensajes inbound.
+## Phase 1: WhatsApp Real (Twilio WA Business API)
+**Goal:** Envíos reales por WhatsApp + recepción de mensajes inbound.
 **Entrada:** `whatsapp.adapter.ts` es un stub que publica Kafka pero no envía nada.
 **Salida:** Los deudores reciben el mensaje en WhatsApp real; sus respuestas llegan al sistema.
 
@@ -23,8 +23,8 @@
 
 ---
 
-## Phase 2 — Voice Agent Real (Vapi.ai)
-**Objetivo:** Llamadas outbound reales con agente de IA en español colombiano.
+## Phase 2: Voice Agent Real (Vapi.ai)
+**Goal:** Llamadas outbound reales con agente de IA en español colombiano.
 **Entrada:** `voice.adapter.ts` es un stub que publica Kafka pero no llama a nadie.
 **Salida:** El sistema hace llamadas reales; se guarda transcript y outcome.
 
@@ -42,8 +42,8 @@
 
 ---
 
-## Phase 3 — LLM Conversational Agent (WhatsApp bidireccional)
-**Objetivo:** Responder automáticamente a mensajes de deudores por WhatsApp con LLM.
+## Phase 3: LLM Conversational Agent (WhatsApp bidireccional)
+**Goal:** Responder automáticamente a mensajes de deudores por WhatsApp con LLM.
 **Entrada:** `cobrai.whatsapp.message_received` evento llega al sistema pero nadie responde.
 **Salida:** Agente GPT-4o-mini responde en WhatsApp, detecta intents y actualiza estado de deuda.
 
@@ -65,8 +65,8 @@
 
 ---
 
-## Phase 4 — Dashboard Conversaciones y Escalaciones
-**Objetivo:** Visibilidad de conversaciones WA y transcripts de voz en el admin.
+## Phase 4: Dashboard Conversaciones y Escalaciones
+**Goal:** Visibilidad de conversaciones WA y transcripts de voz en el admin.
 **Entrada:** Datos en BD pero sin UI.
 **Salida:** Agentes humanos pueden ver, responder y gestionar escalaciones.
 
@@ -83,16 +83,61 @@
 
 ---
 
+## Phase 5: Memoria Unificada del Deudor
+**Goal:** Consolidar el histórico del deudor a través de TODOS los canales, con análisis y resumen vivo, para que cualquier agente se comunique con memoria y coherencia.
+**Entrada:** Conversaciones fragmentadas en silos por canal; `sentimentScore` nunca se calcula; el único resumen lo genera Vapi por llamada; la voz "ciega" al resto (solo lee conteos), el email sin memoria.
+**Salida:** Un `DebtorMemoryService` que recopila histórico cross-canal, lo analiza (sentimiento + intención + comportamiento de pago), mantiene un "resumen vivo" y lo sirve a los agentes de WhatsApp y voz.
+
+**Scope:**
+- `DebtorMemoryService` nuevo en service-notifications:
+  - **Recopila** cross-canal: contacts (todos los canales), mensajes de TODAS las conversaciones del deudor, promesas (pending/broken), transcripts de voz
+  - **Analiza** la última interacción con LLM (OpenAI gpt-4o-mini): sentimiento, intención, comportamiento de pago
+  - **Resume** incrementalmente: "resumen vivo" narrativo persistido en `Debtor.emotionalProfile` (Json, hoy sin uso)
+  - **Sirve** `getUnifiedContext(tenantId, debtorId)` → contexto consolidado para prompts
+  - `refreshMemory(tenantId, debtorId)` invocado tras cada interacción
+- Integración:
+  - `conversation-agent.service.ts` → reemplaza `loadDebtorHistory` por contexto unificado (WhatsApp)
+  - `contacts.service.ts loadVoiceCallHistory` → usa contexto unificado (la voz deja de estar ciega)
+  - `vapi-webhook.handler.ts` → `refreshMemory` tras cada llamada
+- `sentimentScore` se persiste en `contact` al cerrar cada interacción
+- Tests unitarios (vitest) con OpenAI mockeado
+
+**Duración estimada:** 1 semana
+
+---
+
+## Phase 6: Email Bidireccional con Agente
+**Goal:** Convertir el email en un canal conversacional bidireccional con agente, igual que WhatsApp, usando la memoria unificada de la Phase 5.
+**Entrada:** Email solo outbound (SendGrid); las respuestas del deudor no se capturan; el `ConversationAgentService` está cableado a WhatsApp.
+**Salida:** El deudor responde un email → el sistema lo captura → el agente responde automáticamente con contexto unificado.
+
+**Scope:**
+- **SendGrid Inbound Parse**: registro MX en `reply.fogging.org` (Cloudflare) → webhook
+- Webhook `POST /api/v1/webhooks/sendgrid-inbound` + `SendgridInboundHandler`:
+  - Parsea remitente + cuerpo, ubica al deudor por email, guarda mensaje inbound
+  - Publica `cobrai.email.message_received`
+- Generalizar `ConversationAgentService` a multi-canal (canal parametrizable: whatsapp | email) → responde por el adapter correcto
+- Kafka consumer: `cobrai.email.message_received` → agente responde por email
+- Opt-out por email (instrucción de exclusión, Ley 1266)
+- Tests unitarios + integración del webhook
+
+**Duración estimada:** 1 semana
+
+---
+
 ## Dependencias entre phases
 
 ```
 Phase 1 (WA real) ──→ Phase 3 (LLM agent) ──→ Phase 4 (Dashboard)
 Phase 2 (Voice real) ─────────────────────────→ Phase 4 (Dashboard)
+Phase 3 (LLM agent) ──→ Phase 5 (Memoria) ──→ Phase 6 (Email bidireccional)
 ```
 
 Phase 1 y 2 pueden ejecutarse en paralelo.
 Phase 3 requiere Phase 1 completa.
 Phase 4 requiere Phase 1, 2 y 3 completas.
+Phase 5 requiere Phase 3 completa (extiende el agente con memoria cross-canal).
+Phase 6 requiere Phase 5 completa (el agente de email usa la memoria unificada).
 
 ---
 
