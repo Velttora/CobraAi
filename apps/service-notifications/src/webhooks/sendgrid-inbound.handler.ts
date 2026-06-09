@@ -179,7 +179,11 @@ function cleanEmailBody(text: string): string {
     if (
       line.startsWith(">") ||
       /^[-_]{2,}$/.test(line) ||
+      // Cabeceras de cita estilo Outlook/Hotmail (EN/ES).
       /^(from|de|sent|enviado|reply-to|para|to|cc|asunto|subject):/i.test(line) ||
+      // Separador "----- Original Message -----" / "Mensaje original" (Yahoo, Outlook clásico).
+      /original message|mensaje original/i.test(line) ||
+      // Firmas de cliente móvil.
       /^(sent from|enviado desde|obtén outlook|get outlook)/i.test(line)
     ) {
       cutoff = i;
