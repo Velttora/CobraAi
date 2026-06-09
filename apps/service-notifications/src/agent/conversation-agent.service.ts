@@ -5,7 +5,8 @@ import { PrismaService } from "@cobrai/db";
 import { ConversationStatus } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
-import { buildSystemPrompt, type DebtorHistory } from "./prompts/cobrai-system.prompt";
+import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
+import { DebtorMemoryService } from "../memory/debtor-memory.service";
 
 export interface InboundMessagePayload {
   debtor_id: string;
@@ -47,7 +48,8 @@ export class ConversationAgentService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly kafka: KafkaService,
-    private readonly whatsapp: TwilioWhatsAppAdapter
+    private readonly whatsapp: TwilioWhatsAppAdapter,
+    private readonly debtorMemory: DebtorMemoryService
   ) {
     const apiKey = config.get<string>("OPENAI_API_KEY");
     this.openai = apiKey ? new OpenAI({ apiKey }) : null;
@@ -106,8 +108,8 @@ export class ConversationAgentService {
     });
     const chronological = history.reverse();
 
-    // 3. Cargar historial del deudor para contexto (Nivel 1)
-    const debtorHistory = await this.loadDebtorHistory(debtor_id, tenant_id, debt.id);
+    // 3. Cargar contexto unificado del deudor (cross-canal via DebtorMemoryService)
+    const unifiedContext = await this.debtorMemory.getUnifiedContext(tenant_id, debtor_id, debt.id);
 
     // 4. Construir messages para OpenAI
     const systemPrompt = buildSystemPrompt({
@@ -118,7 +120,7 @@ export class ConversationAgentService {
       dueDate: new Date(debt.dueDate).toLocaleDateString("es-CO"),
       paymentLink: `${this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "http://localhost:3001/pay"}/${debt.id}`,
       debtStatus: debt.status,
-      debtorHistory
+      debtorHistory: unifiedContext.debtorHistory
     });
 
     const chatMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -277,70 +279,6 @@ export class ConversationAgentService {
         // unrelated, plan_request, payment_confirmed — solo registrado en BD
         break;
     }
-  }
-
-  private async loadDebtorHistory(
-    debtorId: string,
-    tenantId: string,
-    debtId: string
-  ): Promise<DebtorHistory> {
-    const now = new Date();
-
-    // Contactos previos
-    const contacts = await this.prisma.contact.findMany({
-      where: { debtorId, tenantId, deletedAt: null, status: "completed" },
-      orderBy: { endedAt: "desc" },
-      take: 10
-    });
-
-    const lastContact = contacts[0];
-    const lastContactDaysAgo = lastContact?.endedAt
-      ? Math.floor((now.getTime() - new Date(lastContact.endedAt).getTime()) / 86400000)
-      : null;
-
-    // Promesas rotas
-    const brokenPromises = await this.prisma.promiseToPay.count({
-      where: { debtId, tenantId, status: "broken", deletedAt: null }
-    });
-
-    // Promesa pendiente
-    const pendingPromise = await this.prisma.promiseToPay.findFirst({
-      where: { debtId, tenantId, status: "pending", deletedAt: null },
-      orderBy: { promisedDate: "asc" }
-    });
-
-    // Resumen de última llamada Vapi
-    const lastVoiceMsg = await this.prisma.message.findFirst({
-      where: {
-        tenantId,
-        channel: "voice",
-        direction: "out",
-        deletedAt: null,
-        conversation: { debtorId, deletedAt: null }
-      },
-      orderBy: { sentAt: "desc" }
-    });
-
-    let callSummary: string | null = null;
-    if (lastVoiceMsg) {
-      try {
-        const parsed = JSON.parse(lastVoiceMsg.content) as Record<string, unknown>;
-        callSummary = String(parsed["summary"] ?? "").substring(0, 300) || null;
-      } catch { /* ignore */ }
-    }
-
-    return {
-      previousContactsCount: contacts.length,
-      brokenPromisesCount: brokenPromises,
-      lastOutcome: lastContact?.outcome ?? null,
-      lastContactDaysAgo,
-      preferredChannel: contacts.find(c => c.outcome === "promise_made")?.channel ?? null,
-      callSummary,
-      hasPromisePending: !!pendingPromise,
-      promisedDate: pendingPromise
-        ? new Date(pendingPromise.promisedDate).toLocaleDateString("es-CO")
-        : null
-    };
   }
 
   private extractText(content: string): string {

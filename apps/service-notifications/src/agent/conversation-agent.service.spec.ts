@@ -112,12 +112,29 @@ describe("ConversationAgentService", () => {
     mockDebtorFindFirst.mockResolvedValue(baseDebtor);
     mockMessageFindMany.mockResolvedValue([]);
     mockChatCreate.mockResolvedValue(makeAgentResponse({ intent: "unrelated", response: "Hola, le informamos..." }));
+    mockDebtorMemory.getUnifiedContext.mockResolvedValue({
+      debtorHistory: {
+        previousContactsCount: 0,
+        brokenPromisesCount: 0,
+        lastOutcome: null,
+        lastContactDaysAgo: null,
+        preferredChannel: null,
+        callSummary: null,
+        hasPromisePending: false,
+        promisedDate: null,
+        livingSummary: null,
+        overallSentiment: null,
+        paymentBehavior: null
+      },
+      emotionalProfile: null
+    });
 
     service = new ConversationAgentService(
       makeConfig(),
       mockPrisma as never,
       mockKafka as never,
-      mockWhatsapp as never
+      mockWhatsapp as never,
+      mockDebtorMemory as never
     );
   });
 
