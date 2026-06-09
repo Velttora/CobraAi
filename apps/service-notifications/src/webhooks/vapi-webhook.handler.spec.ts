@@ -5,6 +5,7 @@ function makePrisma() {
   return {
     contact: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirst: vi.fn().mockResolvedValue({ id: "contact-uuid-1" }),
     },
     debt: {
       findFirst: vi.fn().mockResolvedValue({
@@ -77,6 +78,8 @@ describe("VapiWebhookHandler", () => {
   let email: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let compliance: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let debtorMemory: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,6 +90,10 @@ describe("VapiWebhookHandler", () => {
     email = { sendTemplate: vi.fn().mockResolvedValue({ message_id: "email-sid", status: "sent" }) };
     // Por defecto todos los canales habilitados; cada test puede sobreescribir.
     compliance = { isChannelEligible: vi.fn().mockResolvedValue({ allowed: true }) };
+    debtorMemory = {
+      refreshMemory: vi.fn().mockResolvedValue(undefined),
+      getUnifiedContext: vi.fn(),
+    };
     const config = { get: vi.fn().mockReturnValue("http://localhost:3001/pay"), getOrThrow: vi.fn() };
     handler = new VapiWebhookHandler(
       prisma as any,
@@ -95,6 +102,7 @@ describe("VapiWebhookHandler", () => {
       email as any,
       compliance as any,
       config as any,
+      debtorMemory as any,
     );
   });
 
@@ -410,6 +418,44 @@ describe("VapiWebhookHandler", () => {
       // Fecha estimada: notes guarda el texto literal y lo marca para revisión
       expect(createCall?.data?.notes).toContain("el siguiente mes");
       expect(createCall?.data?.notes).toContain("revisar");
+    });
+
+    it("llama refreshMemory con debtorId y contactId tras guardar transcript", async () => {
+      await handler.handleEndOfCall(makePayload());
+
+      expect(debtorMemory.refreshMemory).toHaveBeenCalledWith(
+        "tenant-uuid-1",
+        "debtor-uuid-1",
+        "contact-uuid-1",
+      );
+    });
+
+    it("un error en refreshMemory NO rompe el webhook (sigue publicando Kafka)", async () => {
+      debtorMemory.refreshMemory.mockRejectedValueOnce(new Error("OpenAI down"));
+
+      await expect(handler.handleEndOfCall(makePayload())).resolves.toBeUndefined();
+
+      expect(kafka.publish).toHaveBeenCalledWith(
+        "cobrai.voice.call_completed",
+        expect.any(String),
+        expect.objectContaining({ outcome: "promise_made" }),
+      );
+    });
+
+    it("no llama a refreshMemory cuando no hay transcript", async () => {
+      const payload = makePayload({
+        call: {
+          id: "call-no-transcript-2",
+          status: "ended",
+          endedReason: "customer-did-not-answer",
+          metadata: { debt_id: "debt-1", tenant_id: "tenant-1" },
+        },
+        transcript: undefined,
+      });
+
+      await handler.handleEndOfCall(payload);
+
+      expect(debtorMemory.refreshMemory).not.toHaveBeenCalled();
     });
   });
 });
