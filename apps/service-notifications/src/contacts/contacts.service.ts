@@ -20,6 +20,8 @@ import { ComplianceService } from "@cobrai/compliance";
 import {
   buildMessageContent,
   decimalToNumber,
+  fechaEspanol,
+  montoEspanol,
   phonesFromDebtor,
   renderTemplate
 } from "../common/utils/api.utils";
@@ -291,7 +293,7 @@ export class ContactsService {
       case "voice": {
         const phone = phonesFromDebtor(debtor.phones)[0];
         if (!phone) throw new BadRequestException("Deudor sin teléfono");
-        const callHistory = await this.loadVoiceCallHistory(debtor.id, tenantId, debt.id);
+        const callHistory = await this.loadVoiceCallHistory(debtor.id, tenantId, debt.id, debtor.name, String(decimalToNumber(debt.amountOutstanding)), new Date(debt.dueDate).toISOString());
         const result = await this.voice.initiateCall({
           debt_id: debt.id,
           debtor_phone: phone,
@@ -368,8 +370,13 @@ export class ContactsService {
   private async loadVoiceCallHistory(
     debtorId: string,
     tenantId: string,
-    debtId: string
+    debtId: string,
+    nombre: string,
+    montoRaw: string,
+    dueDateIso: string
   ): Promise<Record<string, string>> {
+    const monto = montoEspanol(montoRaw);
+    const fecha = fechaEspanol(dueDateIso);
     const contacts = await this.prisma.contact.findMany({
       where: { debtorId, tenantId, deletedAt: null, status: "completed" },
       orderBy: { endedAt: "desc" },
@@ -393,14 +400,14 @@ export class ContactsService {
 
     let firstMessage: string;
     if (count === 0) {
-      firstMessage = `Hola, ¿es usted {{nombre}}? Le habla Carlos de {{empresa}}. Le llamo porque tiene una deuda de {{monto}} con fecha límite el {{fecha_vencimiento}}. ¿Cómo podemos ayudarle a resolver esta situación?`;
+      firstMessage = `Hola, ¿es usted ${nombre}? Le habla Carlos de CobraAI. Le llamo porque tiene una deuda de ${monto} con fecha límite el ${fecha}. ¿Cómo podemos ayudarle a resolver esta situación?`;
     } else if (pendingPromise) {
-      const fechaPromesa = new Date(pendingPromise.promisedDate).toLocaleDateString("es-CO", { day: "numeric", month: "long" });
-      firstMessage = `Hola {{nombre}}, le llama Carlos de {{empresa}}. Le contacto porque usted prometió realizar un pago el ${fechaPromesa} y quería confirmar si pudo realizarlo.`;
+      const fechaPromesa = fechaEspanol(new Date(pendingPromise.promisedDate).toISOString());
+      firstMessage = `Hola ${nombre}, le llama Carlos de CobraAI. Le contacto porque usted prometió realizar un pago el ${fechaPromesa} y quería confirmar si pudo realizarlo.`;
     } else if (brokenCount > 0) {
-      firstMessage = `Hola {{nombre}}, soy Carlos de {{empresa}}. Hemos hablado anteriormente sobre su deuda de {{monto}}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
+      firstMessage = `Hola ${nombre}, soy Carlos de CobraAI. Hemos hablado anteriormente sobre su deuda de ${monto}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
     } else {
-      firstMessage = `Hola {{nombre}}, soy Carlos de {{empresa}}. Le llamo de nuevo respecto a su deuda de {{monto}} con vencimiento el {{fecha_vencimiento}}. ¿Tiene un momento para hablar?`;
+      firstMessage = `Hola ${nombre}, soy Carlos de CobraAI. Le llamo de nuevo respecto a su deuda de ${monto} con vencimiento el ${fecha}. ¿Tiene un momento para hablar?`;
     }
 
     return {
