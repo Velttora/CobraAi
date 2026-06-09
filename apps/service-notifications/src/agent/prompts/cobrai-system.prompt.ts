@@ -19,6 +19,10 @@ export interface DebtorHistory {
   callSummary: string | null;        // resumen de la última llamada Vapi
   hasPromisePending: boolean;
   promisedDate: string | null;
+  // new fields from unified memory (Phase 5)
+  livingSummary?: string | null;      // emotionalProfile.summary
+  overallSentiment?: string | null;   // emotionalProfile.sentiment
+  paymentBehavior?: string | null;    // emotionalProfile.paymentBehavior
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
@@ -89,6 +93,14 @@ function buildHistorySection(h: DebtorHistory): string {
 
     if (h.preferredChannel) {
       lines.push(`- Canal preferido detectado: ${h.preferredChannel}`);
+    }
+
+    if (h.livingSummary) {
+      lines.push(`- Perfil del deudor (historial consolidado): "${h.livingSummary}"`);
+    }
+
+    if (h.overallSentiment) {
+      lines.push(`- Sentimiento general: ${h.overallSentiment}${h.paymentBehavior ? ` — comportamiento de pago: ${h.paymentBehavior}` : ""}`);
     }
   }
 
