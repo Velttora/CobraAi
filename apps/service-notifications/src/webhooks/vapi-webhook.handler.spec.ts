@@ -12,6 +12,12 @@ function makePrisma() {
         amountOutstanding: 1500000,
         debtor: { name: "Gustavo Moreno", phones: ["573233682536"] }
       }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
+    promiseToPay: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "promise-uuid-1" }),
+      update: vi.fn().mockResolvedValue({ id: "promise-uuid-1" }),
     },
     conversation: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -234,6 +240,103 @@ describe("VapiWebhookHandler", () => {
           data: expect.objectContaining({ conversationId: "conv-existing" }),
         }),
       );
+    });
+
+    it("registra promesa aunque el cliente cuelgue, si structuredData.promised es true", async () => {
+      // Caso real: el deudor dice 'el siguiente mes' y luego cuelga él mismo.
+      // structuredData manda sobre el endedReason → debe ser promise_made.
+      const payload = makePayload({
+        call: {
+          id: "call-promise-hangup",
+          status: "ended",
+          startedAt: "2026-05-25T10:00:00Z",
+          endedAt: "2026-05-25T10:02:30Z",
+          endedReason: "customer-ended-call",
+          metadata: { debt_id: "debt-uuid-1", tenant_id: "tenant-uuid-1" },
+        },
+        analysis: {
+          successEvaluation: "false",
+          structuredData: {
+            intent: "promise_to_pay",
+            promised: true,
+            promise_date: "2099-07-09",
+            promise_timeframe_text: "el siguiente mes",
+            promise_amount: 0,
+          },
+        },
+        transcript: undefined,
+      });
+
+      await handler.handleEndOfCall(payload);
+
+      // Outcome es promise_made pese a customer-ended-call
+      expect(prisma.contact.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ outcome: "promise_made" }),
+        }),
+      );
+
+      // Crea la promesa con la fecha calculada y el saldo total (promise_amount era 0)
+      expect(prisma.promiseToPay.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tenantId: "tenant-uuid-1",
+            debtId: "debt-uuid-1",
+            amount: 1500000,
+            status: "pending",
+          }),
+        }),
+      );
+
+      // Marca la deuda como promised
+      expect(prisma.debt.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: "promised" }),
+        }),
+      );
+
+      // Publica el evento de promesa
+      expect(kafka.publish).toHaveBeenCalledWith(
+        "cobrai.debt.promise_registered",
+        "tenant-uuid-1",
+        expect.objectContaining({
+          debt_id: "debt-uuid-1",
+          channel: "voice",
+          promise_date: "2099-07-09",
+        }),
+      );
+    });
+
+    it("cae a +1 mes cuando promise_date es invalida o pasada", async () => {
+      const payload = makePayload({
+        call: {
+          id: "call-bad-date",
+          status: "ended",
+          startedAt: "2026-05-25T10:00:00Z",
+          endedAt: "2026-05-25T10:02:30Z",
+          endedReason: "assistant-ended-call",
+          metadata: { debt_id: "debt-uuid-1", tenant_id: "tenant-uuid-1" },
+        },
+        analysis: {
+          successEvaluation: "true",
+          structuredData: {
+            intent: "promise_to_pay",
+            promised: true,
+            promise_date: "", // Vapi no pudo calcular
+            promise_timeframe_text: "el siguiente mes",
+            promise_amount: 500000,
+          },
+        },
+        transcript: undefined,
+      });
+
+      await handler.handleEndOfCall(payload);
+
+      const createCall = prisma.promiseToPay.create.mock.calls[0]?.[0];
+      expect(createCall?.data?.amount).toBe(500000);
+      // La fecha debe ser futura (fallback +1 mes), no vacía
+      expect(createCall?.data?.promisedDate).toBeInstanceOf(Date);
+      expect(createCall?.data?.promisedDate.getTime()).toBeGreaterThan(Date.now());
     });
   });
 });

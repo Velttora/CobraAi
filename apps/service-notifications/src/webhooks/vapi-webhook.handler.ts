@@ -13,6 +13,15 @@ type ContactOutcome =
   | "wrong_number"
   | "callback_requested";
 
+/** Datos estructurados que Vapi extrae de la llamada (analysisPlan.structuredDataPlan). */
+export interface VapiStructuredData {
+  intent?: string;
+  promised?: boolean;
+  promise_date?: string;          // ISO YYYY-MM-DD calculado por Vapi
+  promise_timeframe_text?: string; // texto literal: "el siguiente mes"
+  promise_amount?: number;
+}
+
 export interface VapiWebhookPayload {
   message: {
     type: "end-of-call-report" | "status-update" | "transcript";
@@ -32,7 +41,7 @@ export interface VapiWebhookPayload {
     summary?: string;
     analysis?: {
       successEvaluation?: string; // 'true' | 'false'
-      structuredData?: Record<string, unknown>;
+      structuredData?: VapiStructuredData;
     };
   };
 }
@@ -99,8 +108,9 @@ export class VapiWebhookHandler {
       );
     }
 
-    // 3. Si hubo promesa de pago → enviar link por WhatsApp
+    // 3. Si hubo promesa de pago → registrar promesa con fecha y enviar link por WhatsApp
     if (outcome === "promise_made") {
+      await this.registerPromiseFromCall(tenantId, debtId, analysis?.structuredData);
       await this.sendPaymentLinkWhatsApp(tenantId, debtId);
     }
 
@@ -126,25 +136,127 @@ export class VapiWebhookHandler {
     endedReason?: string,
     analysis?: VapiWebhookPayload["message"]["analysis"],
   ): ContactOutcome {
-    if (!endedReason) return "no_answer";
+    // Casos sin conversación: el motivo de fin manda (no hay nada que analizar).
     switch (endedReason) {
-      case "customer-ended-call":
-        return "refused"; // cliente colgó sin promesa
-      case "assistant-ended-call":
-        return analysis?.successEvaluation === "true"
-          ? "promise_made"
-          : "refused";
       case "customer-did-not-answer":
         return "no_answer";
       case "voicemail":
         return "voicemail";
-      case "line-busy":
-        return "refused"; // no hay "busy" en ContactOutcome; lo mapeamos a refused
       case "error":
         return "no_answer"; // fallo técnico
+    }
+
+    // Hubo conversación: lo que el deudor dijo (structuredData) gana sobre quién colgó.
+    // Así, si promete pagar y luego cuelga él, se registra como promesa, no como rechazo.
+    const sd = analysis?.structuredData;
+    if (sd?.promised === true) return "promise_made";
+    if (sd?.intent) {
+      switch (sd.intent) {
+        case "promise_to_pay":
+          return "promise_made";
+        case "payment_confirmed":
+          return "payment_received";
+        case "plan_request":
+          return sd.promise_date ? "promise_made" : "callback_requested";
+        case "callback_requested":
+          return "callback_requested";
+        case "dispute":
+        case "opt_out":
+        case "refused":
+        case "no_commitment":
+          return "refused";
+      }
+    }
+
+    // Fallback sin datos estructurados: usa el motivo de fin.
+    if (!endedReason) return "no_answer";
+    switch (endedReason) {
+      case "customer-ended-call":
+        return "refused"; // colgó sin que se detectara promesa
+      case "assistant-ended-call":
+        return analysis?.successEvaluation === "true"
+          ? "promise_made"
+          : "refused";
+      case "line-busy":
+        return "refused"; // no hay "busy" en ContactOutcome; lo mapeamos a refused
       default:
         return "refused";
     }
+  }
+
+  /**
+   * Registra la promesa de pago detectada en la llamada: crea PromiseToPay,
+   * marca la deuda como "promised" y publica el evento. Esto conecta lo que el
+   * deudor dijo por voz ("el siguiente mes") con el resto del sistema.
+   */
+  private async registerPromiseFromCall(
+    tenantId: string,
+    debtId: string,
+    structuredData?: VapiStructuredData,
+  ): Promise<void> {
+    const promisedDate = this.resolvePromiseDate(structuredData);
+
+    // Monto: el que prometió, o el saldo total si no especificó uno distinto.
+    let amount = structuredData?.promise_amount ?? 0;
+    if (!amount || amount <= 0) {
+      const debt = await this.prisma.debt.findFirst({
+        where: { id: debtId, tenantId },
+        select: { amountOutstanding: true },
+      });
+      amount = debt ? Number(debt.amountOutstanding) : 0;
+    }
+
+    // No duplicar si ya hay una promesa pendiente para esta deuda.
+    const existing = await this.prisma.promiseToPay.findFirst({
+      where: { debtId, tenantId, status: "pending", deletedAt: null },
+    });
+    if (existing) {
+      await this.prisma.promiseToPay.update({
+        where: { id: existing.id },
+        data: { amount, promisedDate },
+      });
+    } else {
+      await this.prisma.promiseToPay.create({
+        data: { tenantId, debtId, amount, promisedDate, status: "pending" },
+      });
+    }
+
+    await this.prisma.debt.updateMany({
+      where: { id: debtId, tenantId },
+      data: { status: "promised" },
+    });
+
+    await this.kafka.publish("cobrai.debt.promise_registered", tenantId, {
+      debt_id: debtId,
+      channel: "voice",
+      promise_date: promisedDate.toISOString().slice(0, 10),
+      promise_amount: amount,
+    });
+
+    this.logger.log(
+      `Promesa de pago registrada desde llamada: debt=${debtId} ` +
+        `fecha=${promisedDate.toISOString().slice(0, 10)} monto=${amount} ` +
+        `(dijo: "${structuredData?.promise_timeframe_text ?? "—"}")`,
+    );
+  }
+
+  /**
+   * Resuelve la fecha de promesa. Usa la fecha ISO que Vapi calculó a partir de
+   * lo que dijo el deudor; si falta o es inválida/pasada, cae a +1 mes (cubre
+   * el caso típico "el siguiente mes").
+   */
+  private resolvePromiseDate(structuredData?: VapiStructuredData): Date {
+    const raw = structuredData?.promise_date?.trim();
+    if (raw) {
+      const parsed = new Date(raw);
+      // Aceptar solo fechas válidas y no más de un día en el pasado.
+      if (!isNaN(parsed.getTime()) && parsed.getTime() > Date.now() - 86_400_000) {
+        return parsed;
+      }
+    }
+    const fallback = new Date();
+    fallback.setMonth(fallback.getMonth() + 1);
+    return fallback;
   }
 
   private async sendPaymentLinkWhatsApp(tenantId: string, debtId: string): Promise<void> {
