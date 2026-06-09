@@ -4,11 +4,11 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 5 COMPLETA + verificada (gsd-verifier PASSED 14/14). Siguiente: Phase 6 (Email Bidireccional) — por planificar
-- **Completadas:** Phases 1, 2, 3, 5
+- **Fase activa:** Phase 6 (Email Bidireccional con Agente) — Plan 06-01 COMPLETO; continuar con 06-02
+- **Completadas:** Phases 1, 2, 3, 5; Phase 6 Plan 01 (reply_to wired in EmailAdapter)
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO).
-- **Last session:** 2026-06-09 — ejecutado plan 05-04 (Vapi webhook calls refreshMemory after each call — sentimentScore y emotionalProfile se populan desde ahora)
+- **Last session:** 2026-06-09 — ejecutado plan 06-01 (EmailAdapter.sendTemplate pasa reply_to: { email } al body v3 de SendGrid vía conditional spread)
 
 ## Fases
 | # | Nombre | Estado |
@@ -18,7 +18,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 3 | LLM Conversational Agent (WA bidireccional) | ✅ completa |
 | 4 | Dashboard Conversaciones y Escalaciones | 🔲 pendiente |
 | 5 | Memoria Unificada del Deudor | ✅ completa (4/4 planes — sentimentScore + emotionalProfile activos) |
-| 6 | Email Bidireccional con Agente | 🔲 pendiente (requiere Phase 5) |
+| 6 | Email Bidireccional con Agente | 🔄 en progreso (1/4 planes completos) |
 
 ## Contexto acumulado
 - `packages/ports/src/whatsapp.port.ts` — contrato WhatsAppPort
@@ -51,3 +51,4 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 - Phase 5 (Wave 2): ConversationAgentService inyecta DebtorMemoryService como 5° param; loadDebtorHistory eliminado; AgentModule importa MemoryModule. Patrón a replicar en ContactsModule (05-03) y WebhooksModule (05-04).
 - Phase 5 (Wave 3 — 05-03): ContactsService inyecta DebtorMemoryService como 10° param; loadVoiceCallHistory llama getUnifiedContext y agrega perfil_deudor/sentimiento_previo/comportamiento_pago a Vapi strategy_context.variables; ContactsModule importa MemoryModule. La voz ya no está ciega a otros canales.
 - Phase 5 (Wave 4 — 05-04): VapiWebhookHandler inyecta DebtorMemoryService como 7° param; saveTranscript devuelve debtorId (Promise<string | null>); contactId resuelto via findFirst tras updateMany; refreshMemory llamado en try/catch tras cada transcript guardado — sentimentScore y emotionalProfile activos. WebhooksModule importa MemoryModule.
+- Phase 6 (Wave 1 — 06-01): reply_to ya existía en SendEmailTemplateInput del port; faltaba pasarlo en EmailAdapter. Conditional spread ...(input.reply_to ? { reply_to: { email } } : {}) garantiza que la clave esté completamente ausente del JSON cuando es falsy (SendGrid v3 rechaza reply_to: undefined). global.fetch mock en spec restaurado en afterEach para evitar leak.

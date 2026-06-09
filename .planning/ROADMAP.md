@@ -132,7 +132,7 @@ Plans:
 **Plans:** 4 plans (3 waves)
 
 Plans:
-- [ ] 06-01-PLAN.md — EmailAdapter pasa reply_to al body v3 de SendGrid (emails outbound repliables) (Wave 1)
+- [x] 06-01-PLAN.md — EmailAdapter pasa reply_to al body v3 de SendGrid (emails outbound repliables) (Wave 1)
 - [ ] 06-02-PLAN.md — SendgridInboundHandler + endpoint POST sendgrid-inbound (captura inbound, opt-out, loop-prevention, publica cobrai.email.message_received) (Wave 1)
 - [ ] 06-03-PLAN.md — ConversationAgentService multi-canal (responde por EmailAdapter/WhatsApp según channel) (Wave 2)
 - [ ] 06-04-PLAN.md — Kafka consumer despacha cobrai.email.message_received al agente (cierra el lazo bidireccional) (Wave 3)
