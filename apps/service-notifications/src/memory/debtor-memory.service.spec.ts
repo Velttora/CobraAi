@@ -90,7 +90,8 @@ describe("DebtorMemoryService", () => {
     await service.refreshMemory("org1", "d1");
 
     expect(mockPrisma.debtor.update).toHaveBeenCalledOnce();
-    const callArg = mockPrisma.debtor.update.mock.calls[0][0] as { data: { emotionalProfile: Record<string, unknown> } };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArg = mockPrisma.debtor.update.mock.calls[0]![0]! as { data: { emotionalProfile: Record<string, unknown> } };
     const profile = callArg.data.emotionalProfile as Record<string, unknown>;
     expect(profile).toMatchObject({
       sentiment: "positivo",
@@ -113,7 +114,7 @@ describe("DebtorMemoryService", () => {
 
     expect(mockChatCreate).not.toHaveBeenCalled();
     expect(mockPrisma.debtor.update).toHaveBeenCalledOnce();
-    const callArg = mockPrisma.debtor.update.mock.calls[0][0] as { data: { emotionalProfile: Record<string, unknown> } };
+    const callArg = mockPrisma.debtor.update.mock.calls[0]![0]! as { data: { emotionalProfile: Record<string, unknown> } };
     const profile = callArg.data.emotionalProfile as Record<string, unknown>;
     expect(profile).toMatchObject({ sentiment: "neutral", sentimentScore: 0 });
   });
@@ -138,7 +139,7 @@ describe("DebtorMemoryService", () => {
 
     await service.refreshMemory("org1", "d1");
 
-    const callArg = mockPrisma.debtor.update.mock.calls[0][0] as { data: { emotionalProfile: Record<string, unknown> } };
+    const callArg = mockPrisma.debtor.update.mock.calls[0]![0]! as { data: { emotionalProfile: Record<string, unknown> } };
     expect((callArg.data.emotionalProfile as Record<string, unknown>).interactionCount).toBe(4);
   });
 
