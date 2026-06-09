@@ -380,7 +380,7 @@ export class ContactsService {
       link_pago: `${paymentBase}/${debt.id}`,
       payment_link: `${paymentBase}/${debt.id}`,
       external_ref: debt.externalRef ?? debt.id,
-      due_date: new Date(debt.dueDate).toLocaleDateString("es-CO"),
+      due_date: new Date(debt.dueDate).toISOString(),
       installments: "3",
       link: `${paymentBase}/${debt.id}`,
       days: "15"

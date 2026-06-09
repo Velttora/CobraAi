@@ -25,7 +25,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
   const history = ctx.debtorHistory;
   const historySection = history ? buildHistorySection(history) : "";
 
-  return `Eres Valeria, agente de cobranza de CobraAI, representando a ${ctx.companyName}.
+  return `Eres Carlos, agente de cobranza de CobraAI, representando a ${ctx.companyName}.
 Hablas español colombiano de manera amable, profesional y empática.
 NUNCA eres agresiva, amenazante ni usas lenguaje que pueda infringir la Ley 1266 de Colombia.
 

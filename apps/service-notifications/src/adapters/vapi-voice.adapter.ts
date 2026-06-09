@@ -14,6 +14,57 @@ interface VapiCallResponse {
   status: string;
 }
 
+const MESES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+];
+const UNIDADES_ORD = [
+  "", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
+  "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete",
+  "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés",
+  "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho",
+  "veintinueve", "treinta", "treinta y uno"
+];
+
+function anioEspanol(y: number): string {
+  const milesNombres = ["", "mil", "dos mil", "tres mil"];
+  const centenas = ["", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos",
+    "seiscientos", "setecientos", "ochocientos", "novecientos"];
+  const decenas = ["", "", "veinte", "treinta", "cuarenta", "cincuenta",
+    "sesenta", "setenta", "ochenta", "noventa"];
+  const uni = ["", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve",
+    "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete",
+    "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés",
+    "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"];
+  const miles = Math.floor(y / 1000);
+  const resto = y % 1000;
+  const parts: string[] = [];
+  if (miles > 0) parts.push(milesNombres[miles] ?? `${miles} mil`);
+  const c = Math.floor(resto / 100);
+  const r = resto % 100;
+  if (c > 0) parts.push(r === 0 && c === 1 ? "cien" : (centenas[c] ?? ""));
+  if (r > 0 && r < 30) parts.push(uni[r] ?? "");
+  else if (r >= 30) {
+    const d = Math.floor(r / 10);
+    const u = r % 10;
+    parts.push(u > 0 ? `${decenas[d]} y ${uni[u]}` : (decenas[d] ?? ""));
+  }
+  return parts.filter(Boolean).join(" ");
+}
+
+/** Convierte fecha ISO o Date a palabras españolas completas para TTS.
+ *  Ej: "2026-06-15" → "quince de junio de dos mil veintiséis"
+ */
+function fechaEspanol(raw: string | Date | undefined): string {
+  if (!raw) return "";
+  const d = typeof raw === "string" ? new Date(raw) : raw;
+  if (isNaN(d.getTime())) return String(raw);
+  const dia = UNIDADES_ORD[d.getUTCDate()] ?? String(d.getUTCDate());
+  const mes = MESES[d.getUTCMonth()] ?? "";
+  const anio = anioEspanol(d.getUTCFullYear());
+  return `${dia} de ${mes} de ${anio}`;
+}
+
 /** Convierte número a texto en español para que Vapi lo lea correctamente.
  *  Ej: 1500000 → "un millón quinientos mil pesos colombianos"
  */
@@ -106,12 +157,21 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
             name: ctx.variables["nombre"] ?? ctx.variables["debtor_name"],
           },
           assistantOverrides: {
+            endCallFunctionEnabled: true,
+            endCallPhrases: [
+              "hasta luego", "que tenga buen día", "que tenga buenas noches",
+              "que tenga buenas tardes", "adiós", "chao", "hasta pronto"
+            ],
+            transcriber: {
+              provider: "deepgram",
+              language: "es"
+            },
             variableValues: {
               nombre: ctx.variables["nombre"] ?? "cliente",
               monto: montoEspanol(ctx.variables["monto"] ?? ctx.variables["amount"] ?? "0"),
               empresa: ctx.variables["empresa"] ?? "CobraAI",
-              fecha_vencimiento: ctx.variables["due_date"] ?? "",
-              // No pasar link_pago — se envía por WhatsApp al terminar la llamada
+              fecha_vencimiento: fechaEspanol(ctx.variables["due_date"]),
+              agente_nombre: "Carlos"
             },
           },
           metadata: {
