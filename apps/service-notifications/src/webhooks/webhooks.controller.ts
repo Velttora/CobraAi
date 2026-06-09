@@ -1,16 +1,19 @@
-import { Body, Controller, ForbiddenException, Headers, HttpCode, Post } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Headers, HttpCode, Post, UseInterceptors } from "@nestjs/common";
+import { NoFilesInterceptor } from "@nestjs/platform-express";
 import { successResponse } from "../common/utils/api.utils";
 import { WebhooksService } from "./webhooks.service";
 import { TwilioWaWebhookHandler } from "./twilio-wa-webhook.handler";
 import { validateTwilioSignature } from "./twilio-signature.validator";
 import { VapiWebhookHandler, type VapiWebhookPayload } from "./vapi-webhook.handler";
+import { SendgridInboundHandler } from "./sendgrid-inbound.handler";
 
 @Controller("v1/webhooks")
 export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,
     private readonly twilioWaHandler: TwilioWaWebhookHandler,
-    private readonly vapiHandler: VapiWebhookHandler
+    private readonly vapiHandler: VapiWebhookHandler,
+    private readonly sendgridInboundHandler: SendgridInboundHandler
   ) {}
 
   @Post("sendgrid")
@@ -64,5 +67,22 @@ export class WebhooksController {
       await this.vapiHandler.handleEndOfCall(body);
     }
     return { received: true };
+  }
+
+  /**
+   * Webhook de SendGrid Inbound Parse para emails entrantes del deudor.
+   * SendGrid envía multipart/form-data — NoFilesInterceptor activa multer para poblar @Body.
+   * Body tipado como Record<string,string> para evitar que forbidNonWhitelisted rechace
+   * los campos extra de SendGrid (charsets, attachment-info, etc.).
+   */
+  @Post("sendgrid-inbound")
+  @HttpCode(200)
+  @UseInterceptors(NoFilesInterceptor())
+  async sendgridInbound(
+    @Body() body: Record<string, string>
+  ): Promise<string> {
+    await this.sendgridInboundHandler.handleInbound(body as never);
+    // SendGrid espera respuesta 200 vacía
+    return "";
   }
 }
