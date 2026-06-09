@@ -35,6 +35,9 @@ const mockKafka = { publish: vi.fn().mockResolvedValue(undefined) };
 const mockWhatsapp = {
   sendTemplate: vi.fn().mockResolvedValue({ message_id: "wm1", status: "sent" })
 };
+const mockEmail = {
+  sendTemplate: vi.fn().mockResolvedValue({ message_id: "em1", status: "sent" })
+};
 
 const mockDebtorMemory = {
   getUnifiedContext: vi.fn(),
@@ -134,7 +137,8 @@ describe("ConversationAgentService", () => {
       mockPrisma as never,
       mockKafka as never,
       mockWhatsapp as never,
-      mockDebtorMemory as never
+      mockDebtorMemory as never,
+      mockEmail as never
     );
   });
 
@@ -262,5 +266,48 @@ describe("ConversationAgentService", () => {
     await service.processInboundMessage(basePayload);
 
     expect(mockDebtorMemory.getUnifiedContext).toHaveBeenCalledWith("org1", "debtor1", "debt1");
+  });
+
+  it("channel email → llama EmailAdapter con reply_to, NO llama WhatsApp", async () => {
+    await service.processInboundMessage({
+      ...basePayload,
+      phone: "juan@test.com",
+      channel: "email"
+    });
+
+    expect(mockEmail.sendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "juan@test.com",
+        reply_to: "reply@reply.fogging.org"
+      })
+    );
+    expect(mockWhatsapp.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("channel whatsapp (default) → llama WhatsApp, NO llama EmailAdapter", async () => {
+    await service.processInboundMessage(basePayload); // sin channel
+
+    expect(mockWhatsapp.sendTemplate).toHaveBeenCalled();
+    expect(mockEmail.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("opt_out por email → revoca consent de email (no whatsapp)", async () => {
+    mockChatCreate.mockResolvedValueOnce(
+      makeAgentResponse({ intent: "opt_out", response: "" })
+    );
+
+    await service.processInboundMessage({
+      ...basePayload,
+      phone: "juan@test.com",
+      channel: "email"
+    });
+
+    expect(mockConsentUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ channel: "email" })
+      })
+    );
+    expect(mockEmail.sendTemplate).not.toHaveBeenCalled();
+    expect(mockWhatsapp.sendTemplate).not.toHaveBeenCalled();
   });
 });
