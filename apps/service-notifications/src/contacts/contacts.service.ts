@@ -291,6 +291,7 @@ export class ContactsService {
       case "voice": {
         const phone = phonesFromDebtor(debtor.phones)[0];
         if (!phone) throw new BadRequestException("Deudor sin teléfono");
+        const callHistory = await this.loadVoiceCallHistory(debtor.id, tenantId, debt.id);
         const result = await this.voice.initiateCall({
           debt_id: debt.id,
           debtor_phone: phone,
@@ -301,7 +302,7 @@ export class ContactsService {
             language: template?.language ?? "es",
             segment: debt.aiSegment ?? "medium",
             preferred_channel: "voice",
-            variables
+            variables: { ...variables, ...callHistory }
           }
         });
         return {
@@ -362,6 +363,54 @@ export class ContactsService {
         sentAt: new Date()
       }
     });
+  }
+
+  private async loadVoiceCallHistory(
+    debtorId: string,
+    tenantId: string,
+    debtId: string
+  ): Promise<Record<string, string>> {
+    const contacts = await this.prisma.contact.findMany({
+      where: { debtorId, tenantId, deletedAt: null, status: "completed" },
+      orderBy: { endedAt: "desc" },
+      take: 10
+    });
+
+    const pendingPromise = await this.prisma.promiseToPay.findFirst({
+      where: { debtId, tenantId, status: "pending", deletedAt: null },
+      orderBy: { promisedDate: "asc" }
+    });
+
+    const brokenCount = await this.prisma.promiseToPay.count({
+      where: { debtId, tenantId, status: "broken", deletedAt: null }
+    });
+
+    const count = contacts.length;
+    const lastContact = contacts[0];
+    const daysAgo = lastContact?.endedAt
+      ? Math.floor((Date.now() - new Date(lastContact.endedAt).getTime()) / 86400000)
+      : null;
+
+    let firstMessage: string;
+    if (count === 0) {
+      firstMessage = `Hola, ¿es usted {{nombre}}? Le habla Carlos de {{empresa}}. Le llamo porque tiene una deuda de {{monto}} con fecha límite el {{fecha_vencimiento}}. ¿Cómo podemos ayudarle a resolver esta situación?`;
+    } else if (pendingPromise) {
+      const fechaPromesa = new Date(pendingPromise.promisedDate).toLocaleDateString("es-CO", { day: "numeric", month: "long" });
+      firstMessage = `Hola {{nombre}}, le llama Carlos de {{empresa}}. Le contacto porque usted prometió realizar un pago el ${fechaPromesa} y quería confirmar si pudo realizarlo.`;
+    } else if (brokenCount > 0) {
+      firstMessage = `Hola {{nombre}}, soy Carlos de {{empresa}}. Hemos hablado anteriormente sobre su deuda de {{monto}}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
+    } else {
+      firstMessage = `Hola {{nombre}}, soy Carlos de {{empresa}}. Le llamo de nuevo respecto a su deuda de {{monto}} con vencimiento el {{fecha_vencimiento}}. ¿Tiene un momento para hablar?`;
+    }
+
+    return {
+      es_seguimiento: count > 0 ? "true" : "false",
+      contactos_previos: String(count),
+      dias_ultimo_contacto: daysAgo !== null ? String(daysAgo) : "",
+      tiene_promesa_pendiente: pendingPromise ? "true" : "false",
+      promesas_rotas: String(brokenCount),
+      first_message_override: firstMessage
+    };
   }
 
   private buildVariables(

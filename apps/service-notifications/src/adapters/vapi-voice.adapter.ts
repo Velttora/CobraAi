@@ -157,6 +157,9 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
             name: ctx.variables["nombre"] ?? ctx.variables["debtor_name"],
           },
           assistantOverrides: {
+            ...(ctx.variables["first_message_override"]
+              ? { firstMessage: ctx.variables["first_message_override"] }
+              : {}),
             endCallFunctionEnabled: true,
             endCallPhrases: [
               "hasta luego", "que tenga buen día", "que tenga buenas noches",
