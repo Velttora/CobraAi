@@ -5,6 +5,7 @@ import { ComplianceService } from "@cobrai/compliance";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
+import { DebtorMemoryService } from "../memory/debtor-memory.service";
 
 type ContactOutcome =
   | "promise_made"
@@ -59,6 +60,7 @@ export class VapiWebhookHandler {
     private readonly email: EmailAdapter,
     private readonly compliance: ComplianceService,
     private readonly config: ConfigService,
+    private readonly debtorMemory: DebtorMemoryService,
   ) {}
 
   async handleEndOfCall(payload: VapiWebhookPayload): Promise<void> {
@@ -101,9 +103,17 @@ export class VapiWebhookHandler {
       },
     });
 
-    // 2. Guardar transcript en tabla messages si llega
+    // Resolver el id del contact recién cerrado (updateMany no devuelve ids — Landmine 1)
+    const closedContact = await this.prisma.contact.findFirst({
+      where: { tenantId, debtId, channel: "voice", status: "completed" },
+      orderBy: { endedAt: "desc" },
+      select: { id: true },
+    });
+
+    // 2. Guardar transcript en tabla messages si llega; capturar debtorId para refreshMemory
+    let debtorId: string | null = null;
     if (transcript) {
-      await this.saveTranscript(
+      debtorId = await this.saveTranscript(
         tenantId,
         debtId,
         call.id,
@@ -112,14 +122,29 @@ export class VapiWebhookHandler {
       );
     }
 
-    // 3. Si hubo promesa de pago → registrar promesa y entregar link por el
+    // 3. Refrescar memoria del deudor — nunca bloquea el webhook (Landmine 2)
+    if (debtorId) {
+      try {
+        await this.debtorMemory.refreshMemory(
+          tenantId,
+          debtorId,
+          closedContact?.id ?? undefined,
+        );
+      } catch (err) {
+        this.logger.error(
+          `refreshMemory failed for debt ${debtId}: ${String(err)}`,
+        );
+      }
+    }
+
+    // 4. Si hubo promesa de pago → registrar promesa y entregar link por el
     //    canal configurado (WhatsApp si está habilitado, si no email).
     if (outcome === "promise_made") {
       await this.registerPromiseFromCall(tenantId, debtId, analysis?.structuredData);
       await this.deliverPaymentLink(tenantId, debtId);
     }
 
-    // 4. Publicar cobrai.voice.call_completed
+    // 5. Publicar cobrai.voice.call_completed
     await this.kafka.publish("cobrai.voice.call_completed", tenantId, {
       call_id: call.id,
       debt_id: debtId,
@@ -422,13 +447,13 @@ export class VapiWebhookHandler {
     callId: string,
     transcript: string,
     summary?: string,
-  ): Promise<void> {
+  ): Promise<string | null> {
     // Buscar deudor de la deuda
     const debt = await this.prisma.debt.findFirst({
       where: { id: debtId, tenantId },
       select: { debtorId: true },
     });
-    if (!debt) return;
+    if (!debt) return null;
 
     // Buscar o crear conversación de voz
     let conv = await this.prisma.conversation.findFirst({
@@ -468,5 +493,7 @@ export class VapiWebhookHandler {
         sentAt: new Date(),
       },
     });
+
+    return debt.debtorId;
   }
 }
