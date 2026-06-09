@@ -165,7 +165,13 @@ export function ImportJobsProvider({
   );
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
-  const notifiedRef = useRef<Set<string>>(new Set());
+  const notifiedRef = useRef<Set<string>>(
+    new Set(
+      listImportJobs()
+        .filter((job) => job.snapshot && isImportJobFinished(job.snapshot.status))
+        .map((job) => jobKey(job.portfolioId, job.jobId))
+    )
+  );
   const pollFailRef = useRef<Map<string, number>>(new Map());
   const trackJob = useCallback((job: StoredImportJob) => {
     pollFailRef.current.delete(jobKey(job.portfolioId, job.jobId));

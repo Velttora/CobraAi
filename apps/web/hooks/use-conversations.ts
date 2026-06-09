@@ -95,7 +95,8 @@ export function useConversationThread(conversationId: string) {
         `/api/v1/conversations/${conversationId}/messages`
       ),
     enabled: Boolean(conversationId),
-    refetchInterval: 15_000 // poll cada 15s para mensajes nuevos
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false
   });
 }
 
@@ -109,7 +110,8 @@ export function useEscalations() {
         client,
         "/api/v1/conversations/escalations"
       ),
-    refetchInterval: 30_000 // poll cada 30s para badge
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false
   });
 }
 

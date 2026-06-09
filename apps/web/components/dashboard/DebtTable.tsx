@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   formatAgingBucket,
   formatCurrency
@@ -27,6 +27,74 @@ const columns: { key: SortField; label: string }[] = [
   { key: "amount_outstanding", label: "Monto" },
   { key: "due_date", label: "Vencimiento" }
 ];
+
+const DebtRow = memo(function DebtRow({
+  debt,
+  pipelineMode
+}: {
+  debt: Debt;
+  pipelineMode: boolean;
+}) {
+  const deferred = debt.status === "future" || debt.status === "upcoming";
+  const daysUntil = deferred
+    ? getDaysUntilCollection(
+        new Date(debt.dueDate),
+        debt.scheduledCollectionDate
+          ? new Date(debt.scheduledCollectionDate)
+          : undefined
+      )
+    : null;
+
+  return (
+    <tr
+      className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-950"
+      key={debt.id}
+    >
+      <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
+        {debt.debtor?.name ?? "—"}
+      </td>
+      <td className="px-4 py-3 tabular-nums">
+        {formatCurrency(toNumber(debt.amountOutstanding), debt.currency)}
+      </td>
+      <td className="px-4 py-3">
+        {new Date(debt.dueDate).toLocaleDateString("es-CO")}
+      </td>
+      <td className="min-w-[160px] px-4 py-3">
+        {deferred ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <DebtScoresCell
+            priorityScore={debt.priorityScore}
+            recoveryScore={debt.aiScore}
+          />
+        )}
+      </td>
+      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+        {formatAgingBucket(debt.agingBucket)}
+      </td>
+      <td className="px-4 py-3">
+        <StatusBadge status={debt.status} />
+      </td>
+      {pipelineMode ? (
+        <td className="px-4 py-3 text-slate-500">
+          {daysUntil !== null && daysUntil > 0 ? `En ${daysUntil} días` : "—"}
+        </td>
+      ) : null}
+      <td className="px-4 py-3">
+        <Link
+          className="inline-flex items-center gap-1 text-[#D85A30] hover:underline"
+          href={`/debts/${debt.id}` as Route}
+          title={
+            deferred ? "Esta cuenta aún no está disponible para gestión" : undefined
+          }
+        >
+          Ver
+          <ExternalLink className="h-3.5 w-3.5" />
+        </Link>
+      </td>
+    </tr>
+  );
+});
 
 const SORT_PRESETS: { value: string; label: string }[] = [
   { value: "priority_score:desc", label: "Prioridad de hoy ↓" },
@@ -149,75 +217,9 @@ export function DebtTable({
                 </td>
               </tr>
             ) : (
-              filtered.map((debt) => {
-                const deferred =
-                  debt.status === "future" || debt.status === "upcoming";
-                const daysUntil = deferred
-                  ? getDaysUntilCollection(
-                      new Date(debt.dueDate),
-                      debt.scheduledCollectionDate
-                        ? new Date(debt.scheduledCollectionDate)
-                        : undefined
-                    )
-                  : null;
-
-                return (
-                <tr
-                  className="border-b border-slate-100 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-950"
-                  key={debt.id}
-                >
-                  <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
-                    {debt.debtor?.name ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums">
-                    {formatCurrency(
-                      toNumber(debt.amountOutstanding),
-                      debt.currency
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {new Date(debt.dueDate).toLocaleDateString("es-CO")}
-                  </td>
-                  <td className="px-4 py-3 min-w-[160px]">
-                    {deferred ? (
-                      <span className="text-slate-400">—</span>
-                    ) : (
-                      <DebtScoresCell
-                        priorityScore={debt.priorityScore}
-                        recoveryScore={debt.aiScore}
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                    {formatAgingBucket(debt.agingBucket)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={debt.status} />
-                  </td>
-                  {pipelineMode ? (
-                    <td className="px-4 py-3 text-slate-500">
-                      {daysUntil !== null && daysUntil > 0
-                        ? `En ${daysUntil} días`
-                        : "—"}
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-3">
-                    <Link
-                      className="inline-flex items-center gap-1 text-[#D85A30] hover:underline"
-                      href={`/debts/${debt.id}` as Route}
-                      title={
-                        deferred
-                          ? "Esta cuenta aún no está disponible para gestión"
-                          : undefined
-                      }
-                    >
-                      Ver
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </tr>
-              );
-              })
+              filtered.map((debt) => (
+                <DebtRow debt={debt} key={debt.id} pipelineMode={pipelineMode} />
+              ))
             )}
           </tbody>
         </table>

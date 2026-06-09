@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/nextjs";
 import { DashboardView } from "../../../components/dashboard/DashboardView";
 import { useRedirectFromDashboardWhenNoPortfolios } from "../../../hooks/use-landing-redirect";
 import { usePortfolios } from "../../../hooks/use-portfolios";
+import DashboardLoading from "../loading";
 
 export default function DashboardPage(): React.ReactElement {
   const { isLoaded, orgId } = useAuth();
@@ -18,7 +19,7 @@ export default function DashboardPage(): React.ReactElement {
     portfoliosQuery.isLoading ||
     (portfoliosQuery.isSuccess && total === 0)
   ) {
-    return <p className="text-sm text-slate-500">Cargando…</p>;
+    return <DashboardLoading />;
   }
 
   return <DashboardView />;

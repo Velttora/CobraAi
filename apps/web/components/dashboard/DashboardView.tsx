@@ -1,13 +1,22 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AlertFeed } from "./AlertFeed";
 import { DebtTable } from "./DebtTable";
 import { KPICard } from "./KPICard";
 import { PortfolioProjectionView } from "./PortfolioProjectionView";
-import { RecoveryChart } from "./RecoveryChart";
-import { SegmentDonut } from "./SegmentDonut";
+import { Skeleton } from "../shared/Skeleton";
+
+const RecoveryChart = dynamic(
+  () => import("./RecoveryChart").then((m) => ({ default: m.RecoveryChart })),
+  { loading: () => <Skeleton className="h-72 w-full rounded-xl" /> }
+);
+const SegmentDonut = dynamic(
+  () => import("./SegmentDonut").then((m) => ({ default: m.SegmentDonut })),
+  { loading: () => <Skeleton className="h-64 w-full rounded-xl" /> }
+);
 import { useDebts } from "../../hooks/use-debts";
 import { usePortfolios } from "../../hooks/use-portfolios";
 import { useConversations } from "../../hooks/use-conversations";
@@ -43,7 +52,7 @@ export function DashboardView() {
   const allDebts = metricsQuery.data?.data.items ?? [];
   const metrics = useMemo(() => computeDashboardMetrics(allDebts), [allDebts]);
 
-  const loading = tableQuery.isLoading || metricsQuery.isLoading;
+  const metricsLoading = metricsQuery.isLoading;
   const error = tableQuery.error ?? metricsQuery.error;
 
   // KPI: % promesas WA (convs con status=open que tuvieron promise_to_pay)
@@ -131,21 +140,21 @@ export function DashboardView() {
             <KPICard
               hint="vs. mes anterior (estimado)"
               label="Tasa de recuperación"
-              loading={loading}
+              loading={metricsLoading}
               trend={{ value: "+2.1%", positive: true }}
               value={formatMetricRecoveryRate(metrics.recoveryRate)}
             />
             <KPICard
               hint="Meta mensual $50M"
               label="Monto recuperado"
-              loading={loading}
+              loading={metricsLoading}
               trend={{ value: "68% meta", positive: true }}
               value={formatMetricAmount(metrics.recoveredAmount, metrics.currency)}
             />
             <KPICard
               hint="Benchmark industria: 45 días"
               label="DSO promedio"
-              loading={loading}
+              loading={metricsLoading}
               trend={{
                 value: metrics.dsoAverage > 45 ? "+ sobre meta" : "En meta",
                 positive: metrics.dsoAverage <= 45
@@ -156,7 +165,7 @@ export function DashboardView() {
               alert={metrics.highRiskCount > 0}
               hint={`${metrics.highRiskCount} en riesgo alto/crítico`}
               label="Cuentas activas"
-              loading={loading}
+              loading={metricsLoading}
               value={String(metrics.activeAccounts)}
             />
             <KPICard
