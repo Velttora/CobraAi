@@ -1,8 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { PrismaService } from "@cobrai/db";
+import { PrismaService, type ContactChannel } from "@cobrai/db";
+import { ComplianceService } from "@cobrai/compliance";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
+import { EmailAdapter } from "../adapters/email.adapter";
 
 type ContactOutcome =
   | "promise_made"
@@ -54,6 +56,8 @@ export class VapiWebhookHandler {
     private readonly prisma: PrismaService,
     private readonly kafka: KafkaService,
     private readonly whatsapp: TwilioWhatsAppAdapter,
+    private readonly email: EmailAdapter,
+    private readonly compliance: ComplianceService,
     private readonly config: ConfigService,
   ) {}
 
@@ -108,10 +112,11 @@ export class VapiWebhookHandler {
       );
     }
 
-    // 3. Si hubo promesa de pago → registrar promesa con fecha y enviar link por WhatsApp
+    // 3. Si hubo promesa de pago → registrar promesa y entregar link por el
+    //    canal configurado (WhatsApp si está habilitado, si no email).
     if (outcome === "promise_made") {
       await this.registerPromiseFromCall(tenantId, debtId, analysis?.structuredData);
-      await this.sendPaymentLinkWhatsApp(tenantId, debtId);
+      await this.deliverPaymentLink(tenantId, debtId);
     }
 
     // 4. Publicar cobrai.voice.call_completed
@@ -195,6 +200,7 @@ export class VapiWebhookHandler {
     structuredData?: VapiStructuredData,
   ): Promise<void> {
     const promisedDate = this.resolvePromiseDate(structuredData);
+    const exactDate = this.hasExactDate(structuredData);
 
     // Monto: el que prometió, o el saldo total si no especificó uno distinto.
     let amount = structuredData?.promise_amount ?? 0;
@@ -206,6 +212,11 @@ export class VapiWebhookHandler {
       amount = debt ? Number(debt.amountOutstanding) : 0;
     }
 
+    // Guardar el texto literal del deudor ("próximo mes") para trazabilidad:
+    // si la fecha es aproximada, un operador puede ver qué dijo exactamente.
+    const timeframe = structuredData?.promise_timeframe_text?.trim();
+    const notes = this.buildPromiseNotes(timeframe, exactDate);
+
     // No duplicar si ya hay una promesa pendiente para esta deuda.
     const existing = await this.prisma.promiseToPay.findFirst({
       where: { debtId, tenantId, status: "pending", deletedAt: null },
@@ -213,11 +224,11 @@ export class VapiWebhookHandler {
     if (existing) {
       await this.prisma.promiseToPay.update({
         where: { id: existing.id },
-        data: { amount, promisedDate },
+        data: { amount, promisedDate, notes },
       });
     } else {
       await this.prisma.promiseToPay.create({
-        data: { tenantId, debtId, amount, promisedDate, status: "pending" },
+        data: { tenantId, debtId, amount, promisedDate, status: "pending", notes },
       });
     }
 
@@ -241,53 +252,168 @@ export class VapiWebhookHandler {
   }
 
   /**
-   * Resuelve la fecha de promesa. Usa la fecha ISO que Vapi calculó a partir de
-   * lo que dijo el deudor; si falta o es inválida/pasada, cae a +1 mes (cubre
-   * el caso típico "el siguiente mes").
+   * Parsea la fecha ISO que Vapi calculó a partir de lo que dijo el deudor.
+   * Devuelve null si falta, es inválida o está en el pasado (más de un día).
+   */
+  private parseVapiDate(structuredData?: VapiStructuredData): Date | null {
+    const raw = structuredData?.promise_date?.trim();
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    if (isNaN(parsed.getTime()) || parsed.getTime() <= Date.now() - 86_400_000) {
+      return null;
+    }
+    return parsed;
+  }
+
+  /** true si Vapi logró calcular una fecha exacta (no caímos al fallback). */
+  private hasExactDate(structuredData?: VapiStructuredData): boolean {
+    return this.parseVapiDate(structuredData) !== null;
+  }
+
+  /**
+   * Resuelve la fecha de promesa. Usa la fecha que Vapi calculó; si falta o es
+   * inválida/pasada, cae a +1 mes (cubre el caso típico "el siguiente mes").
    */
   private resolvePromiseDate(structuredData?: VapiStructuredData): Date {
-    const raw = structuredData?.promise_date?.trim();
-    if (raw) {
-      const parsed = new Date(raw);
-      // Aceptar solo fechas válidas y no más de un día en el pasado.
-      if (!isNaN(parsed.getTime()) && parsed.getTime() > Date.now() - 86_400_000) {
-        return parsed;
-      }
-    }
+    const exact = this.parseVapiDate(structuredData);
+    if (exact) return exact;
     const fallback = new Date();
     fallback.setMonth(fallback.getMonth() + 1);
     return fallback;
   }
 
-  private async sendPaymentLinkWhatsApp(tenantId: string, debtId: string): Promise<void> {
+  /**
+   * Construye la nota de la promesa con el texto literal del deudor. Cuando la
+   * fecha es estimada (Vapi no la calculó), lo marca para revisión manual.
+   */
+  private buildPromiseNotes(timeframe: string | undefined, exactDate: boolean): string {
+    if (!timeframe) {
+      return exactDate
+        ? "Promesa registrada por llamada de voz."
+        : "Promesa por llamada de voz — sin fecha clara, estimada a +1 mes (revisar).";
+    }
+    return exactDate
+      ? `Promesa por llamada de voz — el deudor dijo: "${timeframe}".`
+      : `Promesa por llamada de voz — el deudor dijo: "${timeframe}" — fecha estimada a +1 mes (revisar).`;
+  }
+
+  /**
+   * Entrega el enlace de pago por el canal que la configuración del deudor
+   * permita. No asume WhatsApp: prueba los canales de texto en orden de
+   * preferencia (bestChannel → WhatsApp → email) y usa el primero que esté
+   * habilitado (opt-in/consentimiento/sin opt-out). Si ninguno es elegible,
+   * publica un evento para que el sistema lo resuelva por otra vía.
+   */
+  private async deliverPaymentLink(tenantId: string, debtId: string): Promise<void> {
     const debt = await this.prisma.debt.findFirst({
       where: { id: debtId, tenantId },
-      select: { debtorId: true, amountOutstanding: true, debtor: { select: { name: true, phones: true } } },
+      select: {
+        amountOutstanding: true,
+        debtor: {
+          select: {
+            id: true,
+            name: true,
+            phones: true,
+            email: true,
+            bestChannel: true,
+          },
+        },
+      },
     });
     if (!debt) return;
 
-    const phones = (debt.debtor.phones ?? []) as string[];
-    const phone = phones[0];
-    if (!phone) return;
-
-    const baseUrl = this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "https://cobrai.app/pay";
+    const baseUrl =
+      this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "https://cobrai.app/pay";
     const link = `${baseUrl}/${debtId}`;
     const monto = Number(debt.amountOutstanding).toLocaleString("es-CO");
     const nombre = debt.debtor.name.split(" ")[0] ?? "cliente";
+    const phones = (debt.debtor.phones ?? []) as string[];
+    const phone = phones[0];
+    const email = debt.debtor.email;
 
-    await this.whatsapp.sendTemplate({
-      to: `+${phone}`,
-      tenant_id: tenantId,
-      template_id: "link_pago",
-      variables: {
-        nombre,
-        monto,
-        link_pago: link,
-        body: `Hola ${nombre}, gracias por su compromiso de pago 🙏. Aquí le enviamos el enlace para realizar su pago de $${monto} COP:\n\n${link}\n\nCualquier duda estamos a su disposición.`,
-      },
+    const candidates = this.paymentLinkChannelOrder(
+      debt.debtor.bestChannel,
+      phone,
+      email,
+    );
+
+    for (const channel of candidates) {
+      const eligible = await this.compliance.isChannelEligible({
+        tenantId,
+        debtorId: debt.debtor.id,
+        channel,
+      });
+      if (!eligible.allowed) {
+        this.logger.debug(
+          `Canal ${channel} no habilitado para link de pago (deuda ${debtId}): ${eligible.reason}`,
+        );
+        continue;
+      }
+
+      if (channel === "whatsapp" && phone) {
+        await this.whatsapp.sendTemplate({
+          to: `+${phone}`,
+          tenant_id: tenantId,
+          template_id: "link_pago",
+          variables: {
+            nombre,
+            monto,
+            link_pago: link,
+            body: `Hola ${nombre}, gracias por su compromiso de pago 🙏. Aquí le enviamos el enlace para realizar su pago de $${monto} COP:\n\n${link}\n\nCualquier duda estamos a su disposición.`,
+          },
+        });
+        this.logger.log(`Link de pago enviado por WhatsApp a ${phone} (deuda ${debtId})`);
+        return;
+      }
+
+      if (channel === "email" && email) {
+        await this.email.sendTemplate({
+          to: email,
+          template_id: "link_pago",
+          tenant_id: tenantId,
+          variables: {
+            nombre,
+            monto,
+            link_pago: link,
+            subject: "Enlace de pago — CobraAI",
+            body: `Hola ${nombre},\n\nGracias por su compromiso de pago. Aquí está el enlace para realizar su pago de $${monto} COP:\n\n${link}\n\nCualquier duda estamos a su disposición.`,
+          },
+        });
+        this.logger.log(`Link de pago enviado por email a ${email} (deuda ${debtId})`);
+        return;
+      }
+    }
+
+    // Ningún canal de texto habilitado: no se pudo entregar el enlace.
+    this.logger.warn(
+      `No se pudo entregar el link de pago para deuda ${debtId}: sin canal elegible`,
+    );
+    await this.kafka.publish("cobrai.payment_link.delivery_failed", tenantId, {
+      debt_id: debtId,
+      reason: "no_eligible_channel",
     });
+  }
 
-    this.logger.log(`Link de pago enviado por WA a ${phone} para deuda ${debtId}`);
+  /**
+   * Orden de canales de texto para entregar un enlace, según preferencia del
+   * deudor (bestChannel) y disponibilidad de dato de contacto. SMS queda fuera
+   * mientras FEATURE_SMS_ENABLED esté apagado.
+   */
+  private paymentLinkChannelOrder(
+    bestChannel: ContactChannel | null,
+    phone?: string,
+    email?: string | null,
+  ): ContactChannel[] {
+    const order: ContactChannel[] = [];
+    const add = (c: ContactChannel) => {
+      if (order.includes(c)) return;
+      if (c === "whatsapp" && phone) order.push(c);
+      else if (c === "email" && email) order.push(c);
+    };
+    if (bestChannel === "whatsapp" || bestChannel === "email") add(bestChannel);
+    add("whatsapp");
+    add("email");
+    return order;
   }
 
   private async saveTranscript(

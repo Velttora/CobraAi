@@ -10,7 +10,13 @@ function makePrisma() {
       findFirst: vi.fn().mockResolvedValue({
         debtorId: "debtor-uuid-1",
         amountOutstanding: 1500000,
-        debtor: { name: "Gustavo Moreno", phones: ["573233682536"] }
+        debtor: {
+          id: "debtor-uuid-1",
+          name: "Gustavo Moreno",
+          phones: ["573233682536"],
+          email: "gustavo@example.com",
+          bestChannel: null,
+        }
       }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
@@ -65,15 +71,31 @@ describe("VapiWebhookHandler", () => {
   let handler: VapiWebhookHandler;
   let prisma: ReturnType<typeof makePrisma>;
   let kafka: ReturnType<typeof makeKafka>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let whatsapp: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let email: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let compliance: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
     prisma = makePrisma();
     kafka = makeKafka();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const whatsapp = { sendTemplate: vi.fn().mockResolvedValue({ message_id: "wa-sid", status: "sent" }) };
+    whatsapp = { sendTemplate: vi.fn().mockResolvedValue({ message_id: "wa-sid", status: "sent" }) };
+    email = { sendTemplate: vi.fn().mockResolvedValue({ message_id: "email-sid", status: "sent" }) };
+    // Por defecto todos los canales habilitados; cada test puede sobreescribir.
+    compliance = { isChannelEligible: vi.fn().mockResolvedValue({ allowed: true }) };
     const config = { get: vi.fn().mockReturnValue("http://localhost:3001/pay"), getOrThrow: vi.fn() };
-    handler = new VapiWebhookHandler(prisma as any, kafka as any, whatsapp as any, config as any);
+    handler = new VapiWebhookHandler(
+      prisma as any,
+      kafka as any,
+      whatsapp as any,
+      email as any,
+      compliance as any,
+      config as any,
+    );
   });
 
   describe("handleEndOfCall", () => {
@@ -288,6 +310,11 @@ describe("VapiWebhookHandler", () => {
         }),
       );
 
+      // Fecha exacta (Vapi la calculó): notes guarda el texto literal sin marca de revisión
+      const promiseData = prisma.promiseToPay.create.mock.calls[0]?.[0]?.data;
+      expect(promiseData?.notes).toContain("el siguiente mes");
+      expect(promiseData?.notes).not.toContain("revisar");
+
       // Marca la deuda como promised
       expect(prisma.debt.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -304,6 +331,49 @@ describe("VapiWebhookHandler", () => {
           channel: "voice",
           promise_date: "2099-07-09",
         }),
+      );
+    });
+
+    it("entrega el link por WhatsApp cuando está habilitado", async () => {
+      await handler.handleEndOfCall(makePayload());
+
+      expect(compliance.isChannelEligible).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: "whatsapp", debtorId: "debtor-uuid-1" }),
+      );
+      expect(whatsapp.sendTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({ to: "+573233682536", template_id: "link_pago" }),
+      );
+      expect(email.sendTemplate).not.toHaveBeenCalled();
+    });
+
+    it("usa email como alterno cuando WhatsApp no está habilitado", async () => {
+      // WhatsApp no elegible (sin opt-in), email sí.
+      compliance.isChannelEligible.mockImplementation(
+        async ({ channel }: { channel: string }) =>
+          channel === "whatsapp"
+            ? { allowed: false, reason: "whatsapp_not_opted_in" }
+            : { allowed: true },
+      );
+
+      await handler.handleEndOfCall(makePayload());
+
+      expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+      expect(email.sendTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({ to: "gustavo@example.com", template_id: "link_pago" }),
+      );
+    });
+
+    it("publica delivery_failed cuando ningún canal está habilitado", async () => {
+      compliance.isChannelEligible.mockResolvedValue({ allowed: false, reason: "opt_out_global" });
+
+      await handler.handleEndOfCall(makePayload());
+
+      expect(whatsapp.sendTemplate).not.toHaveBeenCalled();
+      expect(email.sendTemplate).not.toHaveBeenCalled();
+      expect(kafka.publish).toHaveBeenCalledWith(
+        "cobrai.payment_link.delivery_failed",
+        "tenant-uuid-1",
+        expect.objectContaining({ debt_id: "debt-uuid-1", reason: "no_eligible_channel" }),
       );
     });
 
@@ -337,6 +407,9 @@ describe("VapiWebhookHandler", () => {
       // La fecha debe ser futura (fallback +1 mes), no vacía
       expect(createCall?.data?.promisedDate).toBeInstanceOf(Date);
       expect(createCall?.data?.promisedDate.getTime()).toBeGreaterThan(Date.now());
+      // Fecha estimada: notes guarda el texto literal y lo marca para revisión
+      expect(createCall?.data?.notes).toContain("el siguiente mes");
+      expect(createCall?.data?.notes).toContain("revisar");
     });
   });
 });

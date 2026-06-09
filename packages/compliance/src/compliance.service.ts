@@ -106,6 +106,59 @@ export class ComplianceService {
     });
   }
 
+  /**
+   * Verifica si un canal está habilitado para el deudor según su CONFIGURACIÓN:
+   * opt-out global/canal, opt-in de WhatsApp y consentimiento requerido por país.
+   *
+   * A diferencia de checkContact, NO evalúa horario ni frecuencia. Está pensado
+   * para mensajes transaccionales que el propio deudor solicitó —por ejemplo el
+   * enlace de pago tras acordar en una llamada—, donde sí debemos respetar el
+   * consentimiento y el opt-out, pero no las ventanas de contacto proactivo.
+   */
+  async isChannelEligible(input: {
+    tenantId: string;
+    debtorId: string;
+    channel: ContactCheckInput["channel"];
+    country?: string;
+  }): Promise<ContactCheckResult> {
+    const debtor = await this.prisma.debtor.findFirst({
+      where: {
+        id: input.debtorId,
+        tenantId: input.tenantId,
+        deletedAt: null
+      }
+    });
+
+    if (!debtor) {
+      return { allowed: false, reason: "debtor_not_found" };
+    }
+
+    if (this.optOut.isGlobalOptOut(debtor)) {
+      return { allowed: false, reason: "opt_out_global" };
+    }
+    if (this.optOut.isChannelOptOut(debtor, input.channel)) {
+      return { allowed: false, reason: "opt_out_channel" };
+    }
+    if (input.channel === "whatsapp" && !debtor.whatsappOptIn) {
+      return { allowed: false, reason: "whatsapp_not_opted_in" };
+    }
+
+    const country = input.country ?? countryFromAddress(debtor.address);
+    const rules = resolveCountryRules(country);
+    if (
+      rules.requireExplicitConsent &&
+      !(await this.consent.hasActiveConsent(
+        input.tenantId,
+        input.debtorId,
+        input.channel
+      ))
+    ) {
+      return { allowed: false, reason: "no_consent" };
+    }
+
+    return { allowed: true };
+  }
+
   private async isFrequencyBlocked(
     tenantId: string,
     debtorId: string,
