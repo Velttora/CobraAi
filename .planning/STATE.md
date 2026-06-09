@@ -4,7 +4,7 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — COMPLETA (4/4 planes: 05-01, 05-02, 05-03, 05-04)
+- **Fase activa:** Phase 5 COMPLETA + verificada (gsd-verifier PASSED 14/14). Siguiente: Phase 6 (Email Bidireccional) — por planificar
 - **Completadas:** Phases 1, 2, 3, 5
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO).
