@@ -4,11 +4,11 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — Wave 1 completa (plan 05-01), planes 05-02/03/04 pendientes
+- **Fase activa:** Phase 5 (Memoria Unificada del Deudor) — Waves 1+2 completas (planes 05-01, 05-02), planes 05-03/04 pendientes
 - **Completadas:** Phases 1, 2, 3
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO).
-- **Last session:** 2026-06-09 — ejecutado plan 05-01 (DebtorMemoryService foundation)
+- **Last session:** 2026-06-09 — ejecutado plan 05-02 (WhatsApp agent unified memory integration)
 
 ## Fases
 | # | Nombre | Estado |
@@ -17,7 +17,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 2 | Voice Agent Real (Vapi.ai) | ✅ completa |
 | 3 | LLM Conversational Agent (WA bidireccional) | ✅ completa |
 | 4 | Dashboard Conversaciones y Escalaciones | 🔲 pendiente |
-| 5 | Memoria Unificada del Deudor | 🔄 en progreso (1/4 planes completo — Wave 1 listo) |
+| 5 | Memoria Unificada del Deudor | 🔄 en progreso (2/4 planes completos — Waves 1+2 listas) |
 | 6 | Email Bidireccional con Agente | 🔲 pendiente (requiere Phase 5) |
 
 ## Contexto acumulado
@@ -48,3 +48,4 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 - LLM: GPT-4o-mini (balance costo/calidad para v1)
 - Adapter swap: solo cambiar `useClass` en `adapters.module.ts`, sin tocar `contacts.service.ts`
 - Phase 5: DebtorMemoryService en `src/memory/` con MemoryModule. `Debtor.emotionalProfile` (Json?) como living summary. DebtorHistory interface extendida con livingSummary/overallSentiment/paymentBehavior (opcionales, backward-compatible). parseProfile() helper como defensa contra Json malformado.
+- Phase 5 (Wave 2): ConversationAgentService inyecta DebtorMemoryService como 5° param; loadDebtorHistory eliminado; AgentModule importa MemoryModule. Patrón a replicar en ContactsModule (05-03) y WebhooksModule (05-04).

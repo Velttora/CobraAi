@@ -105,8 +105,8 @@
 **Plans:** 4 plans (2 waves)
 
 Plans:
-- [ ] 05-01-PLAN.md — DebtorMemoryService + MemoryModule + extensión del contrato DebtorHistory (Wave 1)
-- [ ] 05-02-PLAN.md — Integración WhatsApp: ConversationAgentService usa getUnifiedContext (Wave 2)
+- [x] 05-01-PLAN.md — DebtorMemoryService + MemoryModule + extensión del contrato DebtorHistory (Wave 1)
+- [x] 05-02-PLAN.md — Integración WhatsApp: ConversationAgentService usa getUnifiedContext (Wave 2)
 - [ ] 05-03-PLAN.md — Integración voz: loadVoiceCallHistory enriquecido con perfil unificado (Wave 2)
 - [ ] 05-04-PLAN.md — Hook refreshMemory tras cada llamada en vapi-webhook + persistir sentimentScore (Wave 2)
 
