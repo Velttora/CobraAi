@@ -38,7 +38,7 @@ export class EmailAdapter implements EmailPort {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email: input.to }], dynamic_template_data: input.variables }],
+        personalizations: [{ to: [{ email: input.to }] }],
         from: { email: from },
         ...(input.reply_to ? { reply_to: { email: input.reply_to } } : {}),
         subject,

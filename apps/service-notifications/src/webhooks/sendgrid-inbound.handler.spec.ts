@@ -129,6 +129,63 @@ describe("SendgridInboundHandler", () => {
     expect(publishCall?.body).toBe("Pago el viernes.");
   });
 
+  it("limpia el formato real de Gmail (CRLF + 'On … wrote:')", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
+
+    await handler.handleInbound({
+      from: "Gustavo Moreno <juan@test.com>",
+      to: "abc@reply.fogging.org",
+      text:
+        "Puedo en 25 dias\r\n\r\nOn Tue, Jun 9, 2026, 11:49 AM gustavo moreno <noreply@fogging.org> wrote:\r\n> Le recordamos su saldo pendiente..."
+    });
+
+    const publishCall = mockPublish.mock.calls[0]?.[2];
+    expect(publishCall?.body).toBe("Puedo en 25 dias");
+  });
+
+  it("limpia formato Outlook/Hotmail (separador + De:/Enviado:)", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
+
+    await handler.handleInbound({
+      from: "Gustavo <juan@test.com>",
+      to: "abc@reply.fogging.org",
+      text:
+        "Pago la próxima semana\r\n\r\n________________________________\r\nDe: CobraAI <noreply@fogging.org>\r\nEnviado: martes, 9 de junio de 2026 11:49 a. m.\r\nPara: Gustavo\r\nAsunto: Sobre su deuda"
+    });
+
+    expect(mockPublish.mock.calls[0]?.[2]?.body).toBe("Pago la próxima semana");
+  });
+
+  it("limpia formato Apple Mail ('On …, at …, … wrote:')", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
+
+    await handler.handleInbound({
+      from: "Gustavo <juan@test.com>",
+      to: "abc@reply.fogging.org",
+      text:
+        "De acuerdo, gracias\n\nOn Jun 9, 2026, at 11:49 AM, CobraAI <noreply@fogging.org> wrote:\n> Le recordamos..."
+    });
+
+    expect(mockPublish.mock.calls[0]?.[2]?.body).toBe("De acuerdo, gracias");
+  });
+
+  it("limpia formato '----- Original Message -----' (Yahoo/Outlook clásico)", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
+
+    await handler.handleInbound({
+      from: "Gustavo <juan@test.com>",
+      to: "abc@reply.fogging.org",
+      text:
+        "Confirmo el pago\n\n----- Original Message -----\nFrom: CobraAI\nSubject: deuda"
+    });
+
+    expect(mockPublish.mock.calls[0]?.[2]?.body).toBe("Confirmo el pago");
+  });
+
   it("conversación no existe → crea nueva con channel=email y status=open", async () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce(null);
