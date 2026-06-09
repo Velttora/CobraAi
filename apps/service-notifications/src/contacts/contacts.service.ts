@@ -27,6 +27,7 @@ import {
 } from "../common/utils/api.utils";
 import { KafkaService } from "../kafka/kafka.service";
 import { WaterfallService } from "../orchestrator/waterfall.service";
+import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import type { CreateContactDto } from "./dto/contact.dto";
 
 export type ContactRequestPayload = {
@@ -51,7 +52,8 @@ export class ContactsService {
     private readonly voice: VapiVoiceAdapter,
     private readonly kafka: KafkaService,
     private readonly waterfall: WaterfallService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly debtorMemory: DebtorMemoryService
   ) {}
 
   async list(tenantId: string, debtId?: string, channel?: ContactChannel) {
@@ -377,6 +379,10 @@ export class ContactsService {
   ): Promise<Record<string, string>> {
     const monto = montoEspanol(montoRaw);
     const fecha = fechaEspanol(dueDateIso);
+
+    // Unified debtor context — enriches Vapi variables with cross-channel profile
+    const ctx = await this.debtorMemory.getUnifiedContext(tenantId, debtorId);
+
     const contacts = await this.prisma.contact.findMany({
       where: { debtorId, tenantId, deletedAt: null, status: "completed" },
       orderBy: { endedAt: "desc" },
@@ -416,7 +422,11 @@ export class ContactsService {
       dias_ultimo_contacto: daysAgo !== null ? String(daysAgo) : "",
       tiene_promesa_pendiente: pendingPromise ? "true" : "false",
       promesas_rotas: String(brokenCount),
-      first_message_override: firstMessage
+      first_message_override: firstMessage,
+      // Unified debtor profile from cross-channel memory
+      perfil_deudor: ctx.emotionalProfile?.summary ?? "",
+      sentimiento_previo: ctx.emotionalProfile?.sentiment ?? "neutral",
+      comportamiento_pago: ctx.emotionalProfile?.paymentBehavior ?? "desconocido"
     };
   }
 
