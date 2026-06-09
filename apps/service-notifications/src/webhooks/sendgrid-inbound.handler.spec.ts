@@ -129,6 +129,21 @@ describe("SendgridInboundHandler", () => {
     expect(publishCall?.body).toBe("Pago el viernes.");
   });
 
+  it("limpia el formato real de Gmail (CRLF + 'On … wrote:')", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
+
+    await handler.handleInbound({
+      from: "Gustavo Moreno <juan@test.com>",
+      to: "abc@reply.fogging.org",
+      text:
+        "Puedo en 25 dias\r\n\r\nOn Tue, Jun 9, 2026, 11:49 AM gustavo moreno <noreply@fogging.org> wrote:\r\n> Le recordamos su saldo pendiente..."
+    });
+
+    const publishCall = mockPublish.mock.calls[0]?.[2];
+    expect(publishCall?.body).toBe("Puedo en 25 dias");
+  });
+
   it("conversación no existe → crea nueva con channel=email y status=open", async () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce(null);

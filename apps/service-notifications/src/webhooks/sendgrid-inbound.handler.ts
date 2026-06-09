@@ -162,15 +162,42 @@ function stripHtmlTags(html: string): string {
     .substring(0, 2000);
 }
 
+/**
+ * Quita el historial citado y firmas de una respuesta de email, dejando solo el
+ * texto nuevo. Robusto ante CRLF (Gmail) y encabezados de cita multi-línea
+ * ("On <fecha>, <nombre> <email> wrote:" partido en varias líneas).
+ */
 function cleanEmailBody(text: string): string {
-  const lines = text.split("\n");
-  const cutoff = lines.findIndex(
-    (l) =>
-      /^[-_]{3,}/.test(l) ||
-      /^On .+ wrote:/i.test(l) ||
-      /^El .+ escribi(ó|o):/i.test(l) ||
-      /^Le \w+ \d+ .+ a las/i.test(l) ||
-      l.startsWith(">")
-  );
-  return (cutoff > 0 ? lines.slice(0, cutoff) : lines).join("\n").trim();
+  // 1. Normalizar saltos de línea (Gmail/Outlook usan CRLF).
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+
+  let cutoff = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = (lines[i] ?? "").trim();
+
+    // Marcadores de corte de una sola línea.
+    if (
+      line.startsWith(">") ||
+      /^[-_]{2,}$/.test(line) ||
+      /^(from|de|sent|enviado|reply-to|para|to|cc|asunto|subject):/i.test(line) ||
+      /^(sent from|enviado desde|obtén outlook|get outlook)/i.test(line)
+    ) {
+      cutoff = i;
+      break;
+    }
+
+    // Encabezado de cita "On … wrote:" / "El … escribió:" / "Le … a las …:",
+    // que Gmail suele partir en 2–3 líneas → mirar una ventana de 3 líneas.
+    if (/^(on |el |le )/i.test(line)) {
+      const block = lines.slice(i, i + 3).join(" ");
+      if (/(wrote:|escribi(ó|o):|a las\b.*:|\bwrote\b|<[^>]+@[^>]+>)/i.test(block)) {
+        cutoff = i;
+        break;
+      }
+    }
+  }
+
+  const cleaned = (cutoff >= 0 ? lines.slice(0, cutoff) : lines).join("\n").trim();
+  // Si la heurística dejó todo vacío (mensaje raro), devolver el texto original.
+  return cleaned || text.trim();
 }
