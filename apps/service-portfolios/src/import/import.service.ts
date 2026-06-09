@@ -6,7 +6,11 @@ import Redis from "ioredis";
 import { DebtsService } from "../debts/debts.service";
 import { KafkaService } from "../kafka/kafka.service";
 import { PortfoliosService } from "../portfolios/portfolios.service";
-import { CsvParserService, type ImportRow } from "./csv-parser.service";
+import {
+  CsvParserService,
+  type ImportRow,
+  type ParseResult
+} from "./csv-parser.service";
 import { PdfParserService } from "./pdf-parser.service";
 import { XlsxParserService } from "./xlsx-parser.service";
 
@@ -97,7 +101,10 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
   }): Promise<ImportJobState> {
     await this.portfoliosService.findOne(input.tenantId, input.portfolioId);
 
-    const rows = await this.parseFile(input.buffer, input.filename);
+    const { rows, warnings } = await this.parseFile(
+      input.buffer,
+      input.filename
+    );
     const jobId = randomUUID();
     const state = this.createInitialState({
       jobId,
@@ -105,6 +112,10 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
       portfolioId: input.portfolioId,
       rowCount: rows.length
     });
+    // Avisos no fatales (p. ej. columnas no reconocidas) visibles en el job.
+    if (warnings.length > 0) {
+      state.errors = warnings.map((w) => `[Aviso] ${w}`);
+    }
     await this.persistJob(state);
 
     const payload: ImportQueuePayload = {
@@ -273,12 +284,20 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async parseFile(buffer: Buffer, filename: string): Promise<ImportRow[]> {
+  private async parseFile(
+    buffer: Buffer,
+    filename: string
+  ): Promise<ParseResult> {
     const lower = filename.toLowerCase();
     if (lower.endsWith(".csv")) {
       try {
         return this.csvParser.parseCsv(buffer, "utf-8");
-      } catch {
+      } catch (error) {
+        // Reintenta con latin1 solo si parece un problema de codificación.
+        const msg = error instanceof Error ? error.message : String(error);
+        if (/No se reconocieron columnas|no tiene filas/.test(msg)) {
+          throw error;
+        }
         return this.csvParser.parseCsv(buffer, "latin1");
       }
     }
@@ -290,11 +309,12 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
       });
     }
     if (lower.endsWith(".pdf")) {
-      return this.pdfParser.parse(buffer, {
+      const rows = await this.pdfParser.parse(buffer, {
         email: this.config.get<string>("IMPORT_DEFAULT_EMAIL"),
         phone: this.config.get<string>("IMPORT_DEFAULT_PHONE"),
         name: this.config.get<string>("IMPORT_DEFAULT_DEBTOR_NAME")
       });
+      return { rows, warnings: [] };
     }
     throw new Error("Formato no soportado. Use CSV, XLSX o PDF.");
   }

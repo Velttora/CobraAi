@@ -1,22 +1,25 @@
 import { Injectable } from "@nestjs/common";
 import ExcelJS from "exceljs";
-import { type ImportRow } from "./csv-parser.service";
-import { normalizeHeader } from "./column-map";
+import { type ImportRow, type ParseResult } from "./csv-parser.service";
+import {
+  buildColumnMapping,
+  metadataKeyFor,
+  REQUIRED_FIELDS,
+} from "./column-map";
+import { buildImportRow } from "./row-builder";
+import { parseAmount, parseDate } from "./value-parsers";
 
 /**
- * Detecta y parsea archivos Excel en dos formatos:
+ * Parser de archivos Excel multi-ERP. Detecta dos estructuras:
  *
- * 1. Formato SIMPLE (headers en fila 1): columnas con los mismos nombres que el CSV.
- * 2. Formato CARTERA ("RELACION DE CUENTAS POR COBRAR"):
- *    - Secciones por empresa deudora (celdas combinadas repiten el nombre en toda la fila)
- *    - Columnas fijas: A=Fecha Factura, B=Fecha Radicado, C=No.Fact.,
- *                     D=Vencimiento, E=Valor, F=Retefuente, G=ICA,
- *                     H=Abonos, I=Tt.CxC (monto neto)
- *    - Sin columnas de contacto → se aplican valores por defecto
+ * 1. Formato CARTERA ("RELACION DE CUENTAS POR COBRAR"): secciones por empresa
+ *    con columnas fijas posicionales y sin encabezados estándar.
+ * 2. Formato por ENCABEZADOS (la mayoría de ERPs: SAP, Siigo, Odoo, Helisa…):
+ *    se localiza la fila de encabezados (aunque haya títulos arriba) y se mapea
+ *    cada columna al esquema canónico con `buildColumnMapping`.
  */
 @Injectable()
 export class XlsxParserService {
-  // Marcadores que identifican el formato cartera en las primeras filas
   private static readonly CARTERA_MARKERS = [
     "relacion de cuentas",
     "cuentas por cobrar",
@@ -26,7 +29,6 @@ export class XlsxParserService {
     "tt.cxc",
   ];
 
-  // Palabras que indican que una fila NO es un header de sección ni dato
   private static readonly SKIP_ROW_STRINGS = [
     "fecha factura",
     "fecha radicado",
@@ -39,22 +41,21 @@ export class XlsxParserService {
   async parse(
     buffer: Buffer,
     defaults: { email?: string; phone?: string; name?: string } = {}
-  ): Promise<ImportRow[]> {
+  ): Promise<ParseResult> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer);
     const sheet = workbook.worksheets[0];
-    if (!sheet) return [];
+    if (!sheet) return { rows: [], warnings: [] };
 
     if (this.isCarteraFormat(sheet)) {
-      return this.parseCartera(sheet, defaults);
+      return { rows: this.parseCartera(sheet, defaults), warnings: [] };
     }
-    return this.parseSimple(sheet);
+    return this.parseByHeaders(sheet);
   }
 
   // ── Detección de formato ─────────────────────────────────────────────────
 
   private isCarteraFormat(sheet: ExcelJS.Worksheet): boolean {
-    // Revisa las primeras 10 filas buscando marcadores del formato cartera
     for (let r = 1; r <= Math.min(10, sheet.rowCount); r++) {
       const row = sheet.getRow(r);
       for (let c = 1; c <= 10; c++) {
@@ -72,7 +73,96 @@ export class XlsxParserService {
     return false;
   }
 
-  // ── Parser formato cartera ───────────────────────────────────────────────
+  // ── Parser por encabezados (genérico multi-ERP) ──────────────────────────
+
+  private parseByHeaders(sheet: ExcelJS.Worksheet): ParseResult {
+    const header = this.detectHeaderRow(sheet);
+    const mapping = buildColumnMapping(header.headers);
+
+    if (mapping.missingRequired.length > 0) {
+      const detected = header.headers.filter((h) => h.trim().length > 0);
+      throw new Error(
+        `No se reconocieron columnas para: ${mapping.missingRequired.join(
+          ", "
+        )}. Encabezados detectados: ${detected.join(" | ") || "(ninguno)"}. ` +
+          "Renombra las columnas o usa la plantilla de CobraAI."
+      );
+    }
+
+    const warnings: string[] = [];
+    if (mapping.unmapped.length > 0) {
+      warnings.push(
+        `Columnas no reconocidas (guardadas como metadata): ${mapping.unmapped
+          .map((u) => u.header)
+          .join(", ")}`
+      );
+    }
+
+    const rows: ImportRow[] = [];
+    for (let r = header.rowNumber + 1; r <= sheet.rowCount; r++) {
+      const excelRow = sheet.getRow(r);
+      const mapped = this.mapRow(excelRow, header.headers, mapping);
+      if (mapped) rows.push(mapped);
+    }
+
+    return { rows, warnings };
+  }
+
+  /**
+   * Localiza la fila de encabezados escaneando las primeras filas y eligiendo
+   * la que mapea más columnas (muchos ERPs ponen títulos/metadatos arriba).
+   */
+  private detectHeaderRow(sheet: ExcelJS.Worksheet): {
+    rowNumber: number;
+    headers: string[];
+  } {
+    const maxScan = Math.min(15, sheet.rowCount);
+    let best = { rowNumber: 1, headers: [] as string[], score: -1 };
+
+    for (let r = 1; r <= maxScan; r++) {
+      const headers = this.readRowStrings(sheet.getRow(r));
+      if (headers.every((h) => h.trim().length === 0)) continue;
+      const mapping = buildColumnMapping(headers);
+      const matched = mapping.byIndex.size;
+      const requiredHit = REQUIRED_FIELDS.filter((f) =>
+        [...mapping.byIndex.values()].includes(f)
+      ).length;
+      const score = matched + requiredHit * 3;
+      if (score > best.score) {
+        best = { rowNumber: r, headers, score };
+      }
+    }
+
+    return { rowNumber: best.rowNumber, headers: best.headers };
+  }
+
+  private mapRow(
+    excelRow: ExcelJS.Row,
+    headers: string[],
+    mapping: ReturnType<typeof buildColumnMapping>
+  ): ImportRow | null {
+    const fields: Record<string, unknown> = {};
+    const metadata: Record<string, string> = {};
+
+    for (let i = 0; i < headers.length; i++) {
+      const cell = excelRow.getCell(i + 1);
+      const raw = this.rawValue(cell);
+      const field = mapping.byIndex.get(i);
+      if (field) {
+        fields[field] = raw;
+      } else if (headers[i]?.trim()) {
+        const text =
+          raw instanceof Date ? parseDate(raw) : String(raw ?? "").trim();
+        if (text) {
+          metadata[metadataKeyFor(headers[i]!).replace(/^metadata_/, "")] = text;
+        }
+      }
+    }
+
+    return buildImportRow(fields, metadata);
+  }
+
+  // ── Parser formato cartera (posicional) ──────────────────────────────────
 
   private parseCartera(
     sheet: ExcelJS.Worksheet,
@@ -82,20 +172,12 @@ export class XlsxParserService {
     let currentDebtor = defaults.name ?? "";
 
     sheet.eachRow((row) => {
-      // Col A(1): Fecha Factura texto "dd/mm/yyyy" | o nombre empresa (merged)
-      // Col B(2): Fecha Radicado Date              | o nombre empresa (merged)
-      // Col C(3): No. Fact.  → external_ref
-      // Col D(4): Vencimiento (Date) → due_date
-      // Col I(9): Tt. C x C (number) → amount
       const a = this.rawValue(row.getCell(1));
       const b = this.rawValue(row.getCell(2));
       const c = this.rawValue(row.getCell(3));
       const d = this.rawValue(row.getCell(4));
       const i = this.rawValue(row.getCell(9));
 
-      // Header de sección: celdas combinadas → col A y B tienen el mismo texto
-      // Excluir explícitamente fechas (dd/mm/yyyy o ISO) para que no se confundan
-      // con nombres de empresa cuando ambas columnas almacenan la misma fecha como texto.
       if (
         typeof a === "string" &&
         typeof b === "string" &&
@@ -110,14 +192,13 @@ export class XlsxParserService {
         return;
       }
 
-      // Fila de dato: col A o B tiene fecha, col C tiene ref de factura
       if (
         (this.isDateLike(a) || this.isDateLike(b)) &&
         typeof c === "string" &&
         c.trim().length > 0
       ) {
-        const amount = typeof i === "number" ? i : 0;
-        if (amount <= 0) return;
+        const amount = typeof i === "number" ? i : parseAmount(i);
+        if (Number.isNaN(amount) || amount <= 0) return;
 
         const invoiceDateSrc = this.isDateLike(a) ? a : b;
 
@@ -128,8 +209,8 @@ export class XlsxParserService {
           debtor_phone: defaults.phone,
           amount,
           currency: "COP",
-          due_date: this.formatDate(d),
-          invoice_date: this.formatDate(invoiceDateSrc),
+          due_date: parseDate(d),
+          invoice_date: parseDate(invoiceDateSrc),
         });
       }
     });
@@ -137,75 +218,32 @@ export class XlsxParserService {
     return rows;
   }
 
-  // ── Parser formato simple (headers en fila 1) ───────────────────────────
-
-  private parseSimple(sheet: ExcelJS.Worksheet): ImportRow[] {
-    const headers: string[] = [];
-    sheet.getRow(1).eachCell((cell, col) => {
-      headers[col] = normalizeHeader(String(cell.value ?? "").trim());
-    });
-
-    const rows: ImportRow[] = [];
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const record: Record<string, string> = {};
-      row.eachCell((cell, col) => {
-        const key = headers[col];
-        if (key) record[key] = String(this.rawValue(cell) ?? "").trim();
-      });
-
-      if (!record["debtor_name"] && !record["amount"]) return; // fila vacía
-
-      rows.push(this.mapSimpleRow(record));
-    });
-    return rows;
-  }
-
-  private mapSimpleRow(row: Record<string, string>): ImportRow {
-    const amount = Number(row["amount"]);
-    if (!row["debtor_name"] || !row["amount"] || !row["currency"] || !row["due_date"]) {
-      throw new Error(
-        "Fila incompleta: debtor_name, amount, currency, due_date son requeridos"
-      );
-    }
-    if (Number.isNaN(amount) || amount <= 0) {
-      throw new Error("amount debe ser un número positivo");
-    }
-
-    const metadata: Record<string, string> = {};
-    for (const [key, value] of Object.entries(row)) {
-      if (key.startsWith("metadata_")) {
-        metadata[key.replace(/^metadata_/, "")] = value;
-      }
-    }
-
-    return {
-      external_ref: row["external_ref"],
-      debtor_name: row["debtor_name"],
-      debtor_tax_id: row["debtor_tax_id"],
-      debtor_phone: row["debtor_phone"],
-      debtor_email: row["debtor_email"],
-      amount,
-      currency: row["currency"].toUpperCase(),
-      due_date: row["due_date"],
-      scheduled_collection_date: row["scheduled_collection_date"] || undefined,
-      payment_terms_days: row["payment_terms_days"]
-        ? Number(row["payment_terms_days"])
-        : undefined,
-      invoice_date: row["invoice_date"] || undefined,
-      debtor_type: row["debtor_type"],
-      address_city: row["address_city"],
-      address_country: row["address_country"],
-      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-    };
-  }
-
   // ── Helpers ──────────────────────────────────────────────────────────────
+
+  private readRowStrings(row: ExcelJS.Row): string[] {
+    const out: string[] = [];
+    const count = row.cellCount || 0;
+    for (let c = 1; c <= count; c++) {
+      const raw = this.rawValue(row.getCell(c));
+      out[c - 1] = raw == null ? "" : String(raw).trim();
+    }
+    return out;
+  }
+
+  private cellText(v: unknown): string {
+    if (v == null) return "";
+    if (v instanceof Date) return parseDate(v);
+    return String(v).trim();
+  }
 
   private rawValue(cell: ExcelJS.Cell): unknown {
     const v = cell.value;
     if (v !== null && typeof v === "object" && "result" in v) {
       return (v as ExcelJS.CellFormulaValue).result;
+    }
+    if (v !== null && typeof v === "object" && "text" in v) {
+      // Rich text / hyperlink
+      return (v as { text?: string }).text ?? "";
     }
     return v;
   }
@@ -219,20 +257,5 @@ export class XlsxParserService {
       );
     }
     return false;
-  }
-
-  private formatDate(v: unknown): string {
-    if (v instanceof Date) return v.toISOString().split("T")[0]!;
-    if (typeof v === "string") {
-      const dmy = v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (dmy) {
-        const [, d, m, y] = dmy;
-        return `${y}-${m!.padStart(2, "0")}-${d!.padStart(2, "0")}`;
-      }
-      const iso = v.trim().match(/^(\d{4}-\d{2}-\d{2})T/);
-      if (iso) return iso[1]!;
-      return v;
-    }
-    return "";
   }
 }

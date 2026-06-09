@@ -1,6 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import Papa from "papaparse";
-import { normalizeHeader } from "./column-map";
+import {
+  buildColumnMapping,
+  metadataKeyFor,
+  REQUIRED_FIELDS,
+} from "./column-map";
+import { buildImportRow } from "./row-builder";
 
 export type ImportRow = {
   external_ref?: string;
@@ -20,75 +25,105 @@ export type ImportRow = {
   metadata?: Record<string, string>;
 };
 
+/** Resultado de un parser: filas canónicas + avisos no fatales. */
+export type ParseResult = {
+  rows: ImportRow[];
+  warnings: string[];
+};
+
 @Injectable()
 export class CsvParserService {
-  parseCsv(buffer: Buffer, encoding: BufferEncoding = "utf-8"): ImportRow[] {
+  /**
+   * Parsea CSV de cualquier ERP: tolera líneas de título antes del header,
+   * detecta la fila de encabezados y mapea columnas al esquema canónico.
+   */
+  parseCsv(buffer: Buffer, encoding: BufferEncoding = "utf-8"): ParseResult {
     const text = buffer.toString(encoding);
-    const parsed = Papa.parse<Record<string, string>>(text, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (h) => normalizeHeader(h)
+    const parsed = Papa.parse<string[]>(text, {
+      header: false,
+      skipEmptyLines: "greedy",
     });
 
-    if (parsed.errors.length > 0) {
-      throw new Error(parsed.errors[0]?.message ?? "CSV inválido");
+    const grid = (parsed.data ?? []).filter(
+      (row) => Array.isArray(row) && row.some((c) => String(c ?? "").trim())
+    );
+    if (grid.length === 0) {
+      throw new Error("El archivo CSV no tiene filas con datos");
     }
 
-    return parsed.data.map((row) => this.mapImportRow(row));
+    const headerIndex = this.detectHeaderRow(grid);
+    const headers = (grid[headerIndex] ?? []).map((h) => String(h ?? "").trim());
+    const mapping = buildColumnMapping(headers);
+
+    if (mapping.missingRequired.length > 0) {
+      const detected = headers.filter((h) => h.length > 0);
+      throw new Error(
+        `No se reconocieron columnas para: ${mapping.missingRequired.join(
+          ", "
+        )}. Encabezados detectados: ${detected.join(" | ") || "(ninguno)"}. ` +
+          "Renombra las columnas o usa la plantilla de CobraAI."
+      );
+    }
+
+    const warnings: string[] = [];
+    if (mapping.unmapped.length > 0) {
+      warnings.push(
+        `Columnas no reconocidas (guardadas como metadata): ${mapping.unmapped
+          .map((u) => u.header)
+          .join(", ")}`
+      );
+    }
+
+    const rows: ImportRow[] = [];
+    for (let r = headerIndex + 1; r < grid.length; r++) {
+      const mapped = this.mapRow(grid[r] ?? [], headers, mapping);
+      if (mapped) rows.push(mapped);
+    }
+
+    return { rows, warnings };
   }
 
-  mapImportRow(row: Record<string, string>): ImportRow {
+  private detectHeaderRow(grid: string[][]): number {
+    const maxScan = Math.min(15, grid.length);
+    let bestIndex = 0;
+    let bestScore = -1;
+
+    for (let r = 0; r < maxScan; r++) {
+      const headers = (grid[r] ?? []).map((h) => String(h ?? "").trim());
+      if (headers.every((h) => h.length === 0)) continue;
+      const mapping = buildColumnMapping(headers);
+      const matched = mapping.byIndex.size;
+      const requiredHit = REQUIRED_FIELDS.filter((f) =>
+        [...mapping.byIndex.values()].includes(f)
+      ).length;
+      const score = matched + requiredHit * 3;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = r;
+      }
+    }
+
+    return bestIndex;
+  }
+
+  private mapRow(
+    cells: string[],
+    headers: string[],
+    mapping: ReturnType<typeof buildColumnMapping>
+  ): ImportRow | null {
+    const fields: Record<string, unknown> = {};
     const metadata: Record<string, string> = {};
-    for (const [key, value] of Object.entries(row)) {
-      if (key.startsWith("metadata_")) {
-        metadata[key.replace(/^metadata_/, "")] = value;
+
+    for (let i = 0; i < headers.length; i++) {
+      const value = String(cells[i] ?? "").trim();
+      const field = mapping.byIndex.get(i);
+      if (field) {
+        fields[field] = value;
+      } else if (headers[i] && value) {
+        metadata[metadataKeyFor(headers[i]!).replace(/^metadata_/, "")] = value;
       }
     }
 
-    const amount = Number(row.amount);
-    if (!row.debtor_name || !row.amount || !row.currency || !row.due_date) {
-      throw new Error("Fila incompleta: debtor_name, amount, currency, due_date requeridos");
-    }
-    if (Number.isNaN(amount) || amount <= 0) {
-      throw new Error("amount debe ser positivo");
-    }
-
-    const scheduled = row.scheduled_collection_date?.trim();
-    const invoice = row.invoice_date?.trim();
-    const termsRaw = row.payment_terms_days?.trim();
-
-    if (scheduled && invoice && new Date(scheduled) < new Date(row.due_date)) {
-      // scheduled puede ser posterior a due_date; solo validar formato
-    }
-    if (invoice && new Date(invoice) > new Date(row.due_date)) {
-      throw new Error("invoice_date no puede ser posterior a due_date");
-    }
-
-    let paymentTermsDays: number | undefined;
-    if (termsRaw) {
-      const terms = Number(termsRaw);
-      if (!Number.isInteger(terms) || terms < 1 || terms > 720) {
-        throw new Error("payment_terms_days debe ser entero entre 1 y 720");
-      }
-      paymentTermsDays = terms;
-    }
-
-    return {
-      external_ref: row.external_ref,
-      debtor_name: row.debtor_name,
-      debtor_tax_id: row.debtor_tax_id,
-      debtor_phone: row.debtor_phone,
-      debtor_email: row.debtor_email,
-      amount,
-      currency: row.currency.toUpperCase(),
-      due_date: row.due_date,
-      scheduled_collection_date: scheduled || undefined,
-      payment_terms_days: paymentTermsDays,
-      invoice_date: invoice || undefined,
-      debtor_type: row.debtor_type,
-      address_city: row.address_city,
-      address_country: row.address_country,
-      metadata
-    };
+    return buildImportRow(fields, metadata);
   }
 }

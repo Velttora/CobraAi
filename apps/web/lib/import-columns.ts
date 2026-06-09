@@ -45,8 +45,8 @@ export const IMPORT_COLUMNS: ImportColumnSpec[] = [
   {
     label: "Moneda",
     internal: "currency",
-    req: true,
-    desc: "COP, USD, EUR…"
+    req: false,
+    desc: "COP, USD, EUR… (COP por defecto)"
   },
   {
     label: "Vencimiento",

@@ -30,8 +30,8 @@ export function ImportTemplatePanel({
             Formato CSV / Excel de CobraAI
           </h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            Descarga el template, complétalo en Excel o Google Sheets y súbelo
-            abajo.
+            Detectamos las columnas automáticamente desde exports de SAP, Siigo,
+            Odoo, Helisa y más. ¿Dudas? Descarga el template y súbelo abajo.
           </p>
         </div>
         <a
