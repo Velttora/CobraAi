@@ -13,7 +13,8 @@ import {
 const CONSUMED_TOPICS = [
   "cobrai.contact.requested",
   "cobrai.whatsapp.message_received",
-  "cobrai.voice.call_completed"
+  "cobrai.voice.call_completed",
+  "cobrai.email.message_received"
 ] as const;
 
 @Injectable()
@@ -79,6 +80,11 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         );
         break;
       case "cobrai.whatsapp.message_received":
+        await this.agent.processInboundMessage(
+          payload as unknown as InboundMessagePayload
+        );
+        break;
+      case "cobrai.email.message_received":
         await this.agent.processInboundMessage(
           payload as unknown as InboundMessagePayload
         );

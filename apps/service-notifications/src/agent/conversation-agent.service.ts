@@ -1,20 +1,29 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import OpenAI from "openai";
-import { PrismaService } from "@cobrai/db";
-import { ConversationStatus } from "@cobrai/db";
+import { PrismaService, ConversationStatus, ContactChannel } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
+import { EmailAdapter } from "../adapters/email.adapter";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
+
+/** Reply-To address for outbound agent emails (fixed for v1). */
+const EMAIL_REPLY_TO = "reply@reply.fogging.org";
 
 export interface InboundMessagePayload {
   debtor_id: string;
   tenant_id: string;
   conversation_id: string;
+  /**
+   * For channel "whatsapp": the debtor's phone number (e.g. +573001234567).
+   * For channel "email": the debtor's email address (field reused for backward compatibility).
+   */
   phone: string;
   body: string;
   message_sid?: string;
+  /** Originating channel. Defaults to "whatsapp" when absent. */
+  channel?: "whatsapp" | "email";
 }
 
 interface AgentResponse {
@@ -49,7 +58,8 @@ export class ConversationAgentService {
     private readonly prisma: PrismaService,
     private readonly kafka: KafkaService,
     private readonly whatsapp: TwilioWhatsAppAdapter,
-    private readonly debtorMemory: DebtorMemoryService
+    private readonly debtorMemory: DebtorMemoryService,
+    private readonly email: EmailAdapter
   ) {
     const apiKey = config.get<string>("OPENAI_API_KEY");
     this.openai = apiKey ? new OpenAI({ apiKey }) : null;
@@ -166,7 +176,7 @@ export class ConversationAgentService {
         tenantId: tenant_id,
         conversationId: conversation_id,
         direction: "out",
-        channel: "whatsapp",
+        channel: payload.channel ?? "whatsapp",
         content: JSON.stringify({
           text: agentResponse.response,
           intent: agentResponse.intent,
@@ -177,14 +187,24 @@ export class ConversationAgentService {
       }
     });
 
-    // 6. Enviar respuesta por WhatsApp (excepto opt_out)
+    // 6. Enviar respuesta por el canal correcto (excepto opt_out)
     if (agentResponse.intent !== "opt_out") {
-      await this.whatsapp.sendTemplate({
-        to: phone,
-        template_id: "agent_response",
-        variables: { body: agentResponse.response },
-        tenant_id
-      });
+      if ((payload.channel ?? "whatsapp") === "email") {
+        await this.email.sendTemplate({
+          to: phone, // for email channel, "phone" carries the debtor's email address
+          template_id: "agent_response",
+          variables: { body: agentResponse.response },
+          tenant_id,
+          reply_to: EMAIL_REPLY_TO
+        });
+      } else {
+        await this.whatsapp.sendTemplate({
+          to: phone,
+          template_id: "agent_response",
+          variables: { body: agentResponse.response },
+          tenant_id
+        });
+      }
     }
 
     // 7. Acciones según intent
@@ -192,7 +212,8 @@ export class ConversationAgentService {
       tenant_id,
       debt_id: debt.id,
       debtor_id,
-      conversation_id
+      conversation_id,
+      channel: (payload.channel ?? "whatsapp") as ContactChannel
     });
   }
 
@@ -203,6 +224,7 @@ export class ConversationAgentService {
       debt_id: string;
       debtor_id: string;
       conversation_id: string;
+      channel: ContactChannel;
     }
   ): Promise<void> {
     switch (response.intent) {
@@ -227,7 +249,7 @@ export class ConversationAgentService {
           ctx.tenant_id,
           {
             debt_id: ctx.debt_id,
-            channel: "whatsapp",
+            channel: ctx.channel,
             promise_date: response.promise_date ?? null,
             promise_amount: response.promise_amount ?? null
           }
@@ -241,7 +263,7 @@ export class ConversationAgentService {
         });
         await this.kafka.publish("cobrai.debt.disputed", ctx.tenant_id, {
           debt_id: ctx.debt_id,
-          channel: "whatsapp"
+          channel: ctx.channel
         });
         break;
 
@@ -256,7 +278,7 @@ export class ConversationAgentService {
           {
             debt_id: ctx.debt_id,
             debtor_id: ctx.debtor_id,
-            channel: "whatsapp",
+            channel: ctx.channel,
             reason: "deudor_solicito_humano"
           }
         );
@@ -267,7 +289,7 @@ export class ConversationAgentService {
           where: {
             tenantId: ctx.tenant_id,
             debtorId: ctx.debtor_id,
-            channel: "whatsapp",
+            channel: ctx.channel,
             revokedAt: null,
             deletedAt: null
           },

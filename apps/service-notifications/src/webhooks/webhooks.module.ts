@@ -7,10 +7,11 @@ import { WebhooksController } from "./webhooks.controller";
 import { WebhooksService } from "./webhooks.service";
 import { TwilioWaWebhookHandler } from "./twilio-wa-webhook.handler";
 import { VapiWebhookHandler } from "./vapi-webhook.handler";
+import { SendgridInboundHandler } from "./sendgrid-inbound.handler";
 
 @Module({
   imports: [AdaptersModule, ComplianceModule, KafkaModule, MemoryModule],
   controllers: [WebhooksController],
-  providers: [WebhooksService, TwilioWaWebhookHandler, VapiWebhookHandler]
+  providers: [WebhooksService, TwilioWaWebhookHandler, VapiWebhookHandler, SendgridInboundHandler]
 })
 export class WebhooksModule {}
