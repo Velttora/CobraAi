@@ -67,8 +67,8 @@ describe("EmailAdapter", () => {
       });
 
       expect(fetchMock).toHaveBeenCalledOnce();
-      const callInit = fetchMock.mock.calls[0][1] as RequestInit;
-      const parsed = JSON.parse(callInit.body as string);
+      const callArgs = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = JSON.parse(callArgs[1].body as string);
       expect(parsed.reply_to).toEqual({ email: "reply@reply.fogging.org" });
     });
 
@@ -81,8 +81,8 @@ describe("EmailAdapter", () => {
       });
 
       expect(fetchMock).toHaveBeenCalledOnce();
-      const callInit = fetchMock.mock.calls[0][1] as RequestInit;
-      const parsed = JSON.parse(callInit.body as string);
+      const callArgs = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = JSON.parse(callArgs[1].body as string);
       expect("reply_to" in parsed).toBe(false);
     });
   });
