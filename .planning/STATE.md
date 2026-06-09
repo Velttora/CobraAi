@@ -4,7 +4,7 @@
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
-- **Fase activa:** Phase 6 (Email Bidireccional con Agente) — COMPLETA (4/4 planes ejecutados)
+- **Fase activa:** Phase 6 COMPLETA + verificada (gsd-verifier PASSED 13/13). Pendiente setup manual: registro MX en Cloudflare (reply.fogging.org → mx.sendgrid.net) + SendGrid Inbound Parse host, para prueba e2e real.
 - **Completadas:** Phases 1, 2, 3, 5, 6
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO). Lazo email bidireccional cerrado.
