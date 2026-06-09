@@ -36,6 +36,11 @@ const mockWhatsapp = {
   sendTemplate: vi.fn().mockResolvedValue({ message_id: "wm1", status: "sent" })
 };
 
+const mockDebtorMemory = {
+  getUnifiedContext: vi.fn(),
+  refreshMemory: vi.fn().mockResolvedValue(undefined)
+};
+
 function makeConfig(): ConfigService {
   const map: Record<string, string> = {
     OPENAI_API_KEY: "sk-test",
@@ -234,5 +239,11 @@ describe("ConversationAgentService", () => {
     const roles = callArgs?.messages.map((m) => m.role);
     expect(roles).toContain("assistant");
     expect(roles).toContain("user");
+  });
+
+  it("usa getUnifiedContext para construir el prompt", async () => {
+    await service.processInboundMessage(basePayload);
+
+    expect(mockDebtorMemory.getUnifiedContext).toHaveBeenCalledWith("org1", "debtor1", "debt1");
   });
 });
