@@ -12,13 +12,21 @@ export function parseWebOrigins(raw?: string): string[] {
   return ["http://localhost:3001", "http://localhost:3000"];
 }
 
+/** Hosts (apex + any subdomain) always allowed for CORS, regardless of WEB_ORIGIN. */
+const ALLOWED_HOST_SUFFIXES = ["cobraai.com.co"];
+
 export function isAllowedCorsOrigin(origin: string, allowed: string[]): boolean {
   if (allowed.includes(origin)) {
     return true;
   }
   try {
     const host = new URL(origin).hostname;
-    return host === "localhost" || host.endsWith(".vercel.app");
+    if (host === "localhost" || host.endsWith(".vercel.app")) {
+      return true;
+    }
+    return ALLOWED_HOST_SUFFIXES.some(
+      (suffix) => host === suffix || host.endsWith(`.${suffix}`)
+    );
   } catch {
     return false;
   }
