@@ -28,9 +28,15 @@ const mockPrisma = {
   debtor: { findFirst: mockDebtorFindFirst }
 };
 
-// ── WhatsApp mock ─────────────────────────────────────────────────────────────
+// ── Adapters + compliance mocks ───────────────────────────────────────────────
 const mockWhatsapp = {
   sendTemplate: vi.fn().mockResolvedValue({ message_id: "wm1", status: "sent" })
+};
+const mockEmail = {
+  sendTemplate: vi.fn().mockResolvedValue({ message_id: "em1", status: "sent" })
+};
+const mockCompliance = {
+  isChannelEligible: vi.fn().mockResolvedValue({ allowed: true })
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -41,7 +47,7 @@ const baseConv = {
   channel: ContactChannel.whatsapp,
   status: ConversationStatus.open,
   lastMessageAt: new Date(),
-  debtor: { id: "debtor1", name: "Juan", phones: ["+573001234567"] },
+  debtor: { id: "debtor1", name: "Juan", phones: ["+573001234567"], email: "juan@test.com" },
   messages: [
     {
       id: "m1",
@@ -61,9 +67,13 @@ describe("ConversationsService", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Restaurar default tras posibles mockImplementation en tests previos.
+    mockCompliance.isChannelEligible.mockResolvedValue({ allowed: true });
     service = new ConversationsService(
       mockPrisma as never,
-      mockWhatsapp as never
+      mockWhatsapp as never,
+      mockEmail as never,
+      mockCompliance as never
     );
   });
 
@@ -195,13 +205,61 @@ describe("ConversationsService", () => {
         data: expect.objectContaining({ direction: "out", channel: ContactChannel.whatsapp })
       })
     );
-    expect(result).toEqual({ sent: true });
+    expect(result).toEqual({ sent: true, channel: ContactChannel.whatsapp });
   });
 
-  it("reply → BadRequestException si canal no es whatsapp", async () => {
+  it("reply en conv de email responde por email con reply_to", async () => {
+    mockConversationFindFirst.mockResolvedValueOnce({
+      ...baseConv,
+      channel: ContactChannel.email
+    });
+
+    const result = await service.reply("org1", "conv1", "Gracias por su mensaje.");
+
+    expect(mockEmail.sendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "juan@test.com",
+        reply_to: "reply@reply.fogging.org"
+      })
+    );
+    expect(mockWhatsapp.sendTemplate).not.toHaveBeenCalled();
+    expect(result.channel).toBe(ContactChannel.email);
+  });
+
+  it("reply en conv de voz redirige al canal posible/configurado (whatsapp)", async () => {
     mockConversationFindFirst.mockResolvedValueOnce({
       ...baseConv,
       channel: ContactChannel.voice
+    });
+
+    const result = await service.reply("org1", "conv1", "Le respondo por aquí.");
+
+    // No se puede responder texto a una llamada → redirige a whatsapp (configurado)
+    expect(mockWhatsapp.sendTemplate).toHaveBeenCalled();
+    expect(result.channel).toBe(ContactChannel.whatsapp);
+  });
+
+  it("reply redirige a email cuando whatsapp no está habilitado", async () => {
+    mockConversationFindFirst.mockResolvedValueOnce(baseConv);
+    // WhatsApp no elegible (sin opt-in), email sí.
+    mockCompliance.isChannelEligible.mockImplementation(
+      async ({ channel }: { channel: ContactChannel }) =>
+        channel === ContactChannel.whatsapp
+          ? { allowed: false, reason: "whatsapp_not_opted_in" }
+          : { allowed: true }
+    );
+
+    const result = await service.reply("org1", "conv1", "Le escribo por correo.");
+
+    expect(mockEmail.sendTemplate).toHaveBeenCalled();
+    expect(result.channel).toBe(ContactChannel.email);
+  });
+
+  it("reply → BadRequestException si no hay canal configurado/elegible", async () => {
+    mockConversationFindFirst.mockResolvedValueOnce({
+      ...baseConv,
+      channel: ContactChannel.voice,
+      debtor: { id: "debtor1", name: "Juan", phones: [], email: null }
     });
 
     await expect(service.reply("org1", "conv1", "Hola")).rejects.toThrow(
