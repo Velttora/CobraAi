@@ -6,6 +6,7 @@ function makePrisma() {
     contact: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findFirst: vi.fn().mockResolvedValue({ id: "contact-uuid-1" }),
+      create: vi.fn().mockResolvedValue({ id: "contact-created-1" }),
     },
     debt: {
       findFirst: vi.fn().mockResolvedValue({
@@ -456,6 +457,22 @@ describe("VapiWebhookHandler", () => {
       await handler.handleEndOfCall(payload);
 
       expect(debtorMemory.refreshMemory).not.toHaveBeenCalled();
+    });
+
+    it("crea un contact de voz si no existía uno previo (updateMany count 0)", async () => {
+      prisma.contact.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await handler.handleEndOfCall(makePayload());
+
+      expect(prisma.contact.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            channel: "voice",
+            status: "completed",
+            debtorId: "debtor-uuid-1",
+          }),
+        }),
+      );
     });
   });
 });
