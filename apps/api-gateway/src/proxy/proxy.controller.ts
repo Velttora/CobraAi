@@ -18,6 +18,7 @@ const SERVICE_ROUTES: ServiceRoute[] = [
   { prefix: "/api/v1/templates", envKey: "SERVICE_NOTIFICATIONS_URL" },
   { prefix: "/api/v1/payments", envKey: "SERVICE_PAYMENTS_URL" },
   { prefix: "/api/v1/payment-links", envKey: "SERVICE_PAYMENTS_URL" },
+  { prefix: "/api/v1/integrations", envKey: "SERVICE_PORTFOLIOS_URL" },
   { prefix: "/api/v1/audit-logs", envKey: "SERVICE_PORTFOLIOS_URL" }
 ];
 
@@ -44,6 +45,8 @@ export class ProxyController {
     "api/v1/payments/*",
     "api/v1/payment-links",
     "api/v1/payment-links/*",
+    "api/v1/integrations",
+    "api/v1/integrations/*",
     "api/v1/audit-logs",
     "api/v1/audit-logs/*"
   ])

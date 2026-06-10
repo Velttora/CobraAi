@@ -8,6 +8,7 @@ import { useWorkflowPackages } from "../../../hooks/use-workflows";
 import { useWorkflowStats } from "../../../hooks/use-workflows";
 import { WorkflowPackageCard } from "../../../components/workflows/WorkflowPackageCard";
 import { WorkflowRulesManager } from "../../../components/workflows/WorkflowRulesManager";
+import { ErpIntegrations } from "../../../components/settings/ErpIntegrations";
 
 export default function SettingsPage(): React.ReactElement {
   const [portfolioId, setPortfolioId] = useState("");
@@ -108,6 +109,8 @@ export default function SettingsPage(): React.ReactElement {
       </article>
 
       <WorkflowRulesManager portfolioId={selectedPortfolioId} />
+
+      <ErpIntegrations />
     </section>
   );
 }
