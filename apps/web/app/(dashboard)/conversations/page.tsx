@@ -11,7 +11,7 @@ import {
 import { cn } from "../../../lib/utils";
 import { formatDateTime } from "../../../lib/formatters";
 
-type Tab = "all" | "whatsapp" | "voice";
+type Tab = "all" | "whatsapp" | "voice" | "email";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   open: {
@@ -68,13 +68,13 @@ export default function ConversationsPage() {
           Conversaciones
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Historial de mensajes WhatsApp y llamadas de voz
+          Historial de mensajes WhatsApp, llamadas de voz y email
         </p>
       </header>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
-        {(["all", "whatsapp", "voice"] as Tab[]).map((t) => (
+        {(["all", "whatsapp", "voice", "email"] as Tab[]).map((t) => (
           <button
             className={cn(
               "border-b-2 px-4 py-2 text-sm font-medium transition",
@@ -86,7 +86,7 @@ export default function ConversationsPage() {
             onClick={() => { setTab(t); setPage(1); }}
             type="button"
           >
-            {t === "all" ? "Todas" : t === "whatsapp" ? "WhatsApp" : "Voz"}
+            {t === "all" ? "Todas" : t === "whatsapp" ? "WhatsApp" : t === "voice" ? "Voz" : "Email"}
           </button>
         ))}
       </div>

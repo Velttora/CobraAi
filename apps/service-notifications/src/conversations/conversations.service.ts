@@ -11,6 +11,11 @@ import {
 } from "@cobrai/db";
 import { parseMessagePayload } from "../common/utils/api.utils";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
+import { EmailAdapter } from "../adapters/email.adapter";
+import { ComplianceService } from "@cobrai/compliance";
+
+/** Reply-To fijo para respuestas por email (hilo bidireccional, Phase 6). */
+const EMAIL_REPLY_TO = "reply@reply.fogging.org";
 
 @Injectable()
 export class ConversationsService {
@@ -18,7 +23,9 @@ export class ConversationsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly whatsapp: TwilioWhatsAppAdapter
+    private readonly whatsapp: TwilioWhatsAppAdapter,
+    private readonly email: EmailAdapter,
+    private readonly compliance: ComplianceService
   ) {}
 
   // ─── List conversations (paginada, filtrable) ────────────────────────────────
@@ -185,54 +192,115 @@ export class ConversationsService {
     };
   }
 
-  // ─── Human reply ─────────────────────────────────────────────────────────────
+  // ─── Human reply (multi-canal con redirección al canal configurado) ──────────
   async reply(tenantId: string, conversationId: string, body: string) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId, deletedAt: null },
-      include: { debtor: { select: { phones: true } } }
+      include: { debtor: { select: { id: true, phones: true, email: true } } }
     });
     if (!conv) throw new NotFoundException("Conversación no encontrada");
-    if (conv.channel !== ContactChannel.whatsapp) {
-      throw new BadRequestException(
-        "Respuesta manual solo soportada en WhatsApp"
-      );
+
+    const phones = (conv.debtor.phones as string[]) ?? [];
+    const phone = phones[0];
+    const email = conv.debtor.email;
+
+    // Canales de texto candidatos, en orden: el de la conversación primero; si no
+    // está configurado/habilitado, se redirige al alterno posible. Voz y SMS no
+    // admiten respuesta de texto manual (voz=llamada; SMS apagado por flag).
+    const preferred =
+      conv.channel === ContactChannel.email
+        ? ContactChannel.email
+        : ContactChannel.whatsapp;
+    const candidates = this.replyChannelOrder(preferred, phone, email);
+
+    let used: { channel: ContactChannel; status: "sent" | "failed" } | null = null;
+    for (const channel of candidates) {
+      const eligible = await this.compliance.isChannelEligible({
+        tenantId,
+        debtorId: conv.debtor.id,
+        channel
+      });
+      if (!eligible.allowed) {
+        this.logger.debug(
+          `Canal ${channel} no habilitado para reply (conv ${conversationId}): ${eligible.reason}`
+        );
+        continue;
+      }
+      if (channel === ContactChannel.whatsapp && phone) {
+        const r = await this.whatsapp.sendTemplate({
+          to: phone,
+          template_id: "manual_reply",
+          variables: { body },
+          tenant_id: tenantId
+        });
+        used = { channel, status: r.status };
+        break;
+      }
+      if (channel === ContactChannel.email && email) {
+        const r = await this.email.sendTemplate({
+          to: email,
+          template_id: "manual_reply",
+          variables: { body, subject: "Respuesta de su gestor — CobraAI" },
+          tenant_id: tenantId,
+          reply_to: EMAIL_REPLY_TO
+        });
+        used = { channel, status: r.status };
+        break;
+      }
     }
 
-    const phones = conv.debtor.phones as string[];
-    const phone = phones[0];
-    if (!phone) throw new BadRequestException("Deudor sin teléfono registrado");
-
-    const result = await this.whatsapp.sendTemplate({
-      to: phone,
-      template_id: "manual_reply",
-      variables: { body },
-      tenant_id: tenantId
-    });
+    if (!used) {
+      throw new BadRequestException(
+        "No hay un canal habilitado y configurado para responder a este deudor (WhatsApp o email)."
+      );
+    }
 
     await this.prisma.message.create({
       data: {
         tenantId,
         conversationId,
         direction: "out",
-        channel: ContactChannel.whatsapp,
+        channel: used.channel,
         content: JSON.stringify({ text: body, human_sent: true }),
-        status: result.status === "sent" ? "sent" : "failed",
+        status: used.status === "sent" ? "sent" : "failed",
         sentAt: new Date()
       }
     });
 
-    // Auto-resolve escalation cuando el agente responde
+    // Auto-resolve escalation cuando el agente humano responde
     if (conv.status === ConversationStatus.escalated) {
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: { status: ConversationStatus.open }
       });
       this.logger.log(
-        `Escalación resuelta automáticamente en conv ${conversationId}`
+        `Escalación resuelta en conv ${conversationId} (respondida por ${used.channel})`
       );
     }
 
-    return { sent: result.status === "sent" };
+    return { sent: used.status === "sent", channel: used.channel };
+  }
+
+  /**
+   * Orden de canales de texto para responder, según preferencia (el canal de la
+   * conversación) y disponibilidad de dato de contacto. La elegibilidad real
+   * (consent/opt-out/opt-in) la valida el caller con isChannelEligible.
+   */
+  private replyChannelOrder(
+    preferred: ContactChannel,
+    phone?: string,
+    email?: string | null
+  ): ContactChannel[] {
+    const order: ContactChannel[] = [];
+    const add = (c: ContactChannel) => {
+      if (order.includes(c)) return;
+      if (c === ContactChannel.whatsapp && phone) order.push(c);
+      else if (c === ContactChannel.email && email) order.push(c);
+    };
+    add(preferred);
+    add(ContactChannel.whatsapp);
+    add(ContactChannel.email);
+    return order;
   }
 
   // ─── Existing: getByDebtor ───────────────────────────────────────────────────

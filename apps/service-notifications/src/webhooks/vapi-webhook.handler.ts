@@ -87,7 +87,7 @@ export class VapiWebhookHandler {
     const successEval = analysis?.successEvaluation === "true";
 
     // 1. Actualizar contact record (el último contact de voz in_progress o scheduled para esta deuda)
-    await this.prisma.contact.updateMany({
+    const updated = await this.prisma.contact.updateMany({
       where: {
         tenantId,
         debtId,
@@ -103,12 +103,38 @@ export class VapiWebhookHandler {
       },
     });
 
-    // Resolver el id del contact recién cerrado (updateMany no devuelve ids — Landmine 1)
-    const closedContact = await this.prisma.contact.findFirst({
-      where: { tenantId, debtId, channel: "voice", status: "completed" },
-      orderBy: { endedAt: "desc" },
-      select: { id: true },
-    });
+    // Resolver el id del contact recién cerrado (updateMany no devuelve ids — Landmine 1).
+    // Si no existía un contact previo (llamada disparada fuera de executeContact),
+    // crear uno para que la llamada aparezca en /calls (lee de la tabla contacts).
+    let closedContact: { id: string } | null = null;
+    if (updated.count > 0) {
+      closedContact = await this.prisma.contact.findFirst({
+        where: { tenantId, debtId, channel: "voice", status: "completed" },
+        orderBy: { endedAt: "desc" },
+        select: { id: true },
+      });
+    } else {
+      const debtRow = await this.prisma.debt.findFirst({
+        where: { id: debtId, tenantId },
+        select: { debtorId: true },
+      });
+      if (debtRow) {
+        closedContact = await this.prisma.contact.create({
+          data: {
+            tenantId,
+            debtId,
+            debtorId: debtRow.debtorId,
+            channel: "voice",
+            status: "completed",
+            outcome,
+            durationSeconds: durationSecs,
+            startedAt: call.startedAt ? new Date(call.startedAt) : new Date(),
+            endedAt: call.endedAt ? new Date(call.endedAt) : new Date(),
+          },
+          select: { id: true },
+        });
+      }
+    }
 
     // 2. Guardar transcript en tabla messages si llega; capturar debtorId para refreshMemory
     let debtorId: string | null = null;

@@ -15,7 +15,10 @@ export default function ConversationDetailPage() {
   const thread = data?.data;
 
   const isEscalated = thread?.status === "escalated";
-  const isWhatsApp = thread?.channel === "whatsapp";
+  const isVoice = thread?.channel === "voice";
+  // El backend resuelve/redirige el canal (whatsapp/email) según configuración del
+  // deudor; permitimos responder en cualquier canal excepto SMS (deshabilitado).
+  const canReply = !!thread && thread.channel !== "sms";
 
   return (
     <section className="flex h-[calc(100vh-5rem)] flex-col">
@@ -55,17 +58,22 @@ export default function ConversationDetailPage() {
         messages={thread?.messages ?? []}
       />
 
-      {/* Reply input — solo WhatsApp */}
-      {isWhatsApp && !isLoading && (
+      {/* Reply input — el backend resuelve el canal (whatsapp/email); voz se redirige */}
+      {canReply && !isLoading && (
         <div className="shrink-0">
+          {isVoice && (
+            <p className="px-6 pt-3 text-xs text-slate-400">
+              Es una llamada de voz; tu respuesta se enviará por WhatsApp o email según la configuración del deudor.
+            </p>
+          )}
           <ReplyInput conversationId={id} />
         </div>
       )}
 
-      {!isWhatsApp && !isLoading && thread && (
+      {!canReply && !isLoading && thread && (
         <div className="shrink-0 border-t border-slate-200 bg-slate-50 px-6 py-3 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-xs text-slate-400">
-            Las conversaciones de voz no permiten respuesta manual
+            Este canal no permite respuesta manual
           </p>
         </div>
       )}

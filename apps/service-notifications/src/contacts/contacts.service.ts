@@ -263,13 +263,20 @@ export class ContactsService {
       case "email": {
         const to = debtor.email;
         if (!to) throw new BadRequestException("Deudor sin email");
+        // Sin template, construir un correo bien formado (no el fallback genérico).
+        const emailBody = template
+          ? body
+          : this.buildDefaultEmailBody(debtor, variables);
+        const subject = template
+          ? "Recordatorio CobraAI"
+          : `Recordatorio de pago — ${variables.empresa ?? "CobraAI"}`;
         const result = await this.email.sendTemplate({
           to,
           template_id: template?.id ?? "default",
-          variables: { ...variables, body, subject: "Recordatorio CobraAI" },
+          variables: { ...variables, body: emailBody, subject },
           tenant_id: tenantId
         });
-        return { messageId: result.message_id, status: result.status, body };
+        return { messageId: result.message_id, status: result.status, body: emailBody };
       }
       case "sms": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -318,6 +325,51 @@ export class ContactsService {
       default:
         throw new BadRequestException(`Canal no soportado: ${channel}`);
     }
+  }
+
+  /** Cuerpo HTML de email por defecto cuando no hay template aprobado (envío automático). */
+  private buildDefaultEmailBody(
+    debtor: Debtor,
+    variables: Record<string, string>
+  ): string {
+    const nombre = debtor.name.split(" ")[0] || "estimado/a";
+    const montoNum = Number(variables.amount ?? variables.monto ?? 0);
+    const monto =
+      Number.isFinite(montoNum) && montoNum > 0
+        ? `$${montoNum.toLocaleString("es-CO")} COP`
+        : (variables.amount ?? "su saldo pendiente");
+    const fecha = this.formatDateEs(variables.due_date);
+    const link =
+      variables.link_pago ?? variables.payment_link ?? variables.link ?? "";
+    const empresa = variables.empresa ?? "CobraAI";
+    const fechaLine = fecha ? ` con vencimiento el <strong>${fecha}</strong>` : "";
+    const linkBtn = link
+      ? `<p style="text-align:center;margin:24px 0"><a href="${link}" style="background:#1a73e8;color:#fff;padding:12px 28px;text-decoration:none;border-radius:6px;display:inline-block">Pagar ahora</a></p>`
+      : "";
+    return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto;color:#333">
+  <div style="background:#1a73e8;padding:18px 24px;border-radius:8px 8px 0 0"><h2 style="color:#fff;margin:0;font-size:18px">${empresa}</h2></div>
+  <div style="padding:24px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+    <p>Hola ${nombre},</p>
+    <p>Le escribimos de <strong>${empresa}</strong> para recordarle de manera cordial que registra un <strong>saldo pendiente de ${monto}</strong>${fechaLine}.</p>
+    <p>Queremos ayudarle a resolverlo de la forma más conveniente para usted.</p>
+    ${linkBtn}
+    <p style="font-size:13px;color:#666">Si ya realizó el pago, ignore este mensaje; puede tardar 24-48h en reflejarse.</p>
+    <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+    <p style="font-size:11px;color:#999">Gestión de cobranza conforme a la Ley 1266 de 2008 (Habeas Data). Si no desea recibir más comunicaciones, responda este correo solicitando su exclusión.</p>
+  </div>
+</div>`;
+  }
+
+  /** Formatea una fecha ISO a "15 de junio de 2026". Cadena vacía si es inválida. */
+  private formatDateEs(iso?: string): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const meses = [
+      "enero", "febrero", "marzo", "abril", "mayo", "junio",
+      "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+    ];
+    return `${d.getUTCDate()} de ${meses[d.getUTCMonth()]} de ${d.getUTCFullYear()}`;
   }
 
   private async recordConversationMessage(

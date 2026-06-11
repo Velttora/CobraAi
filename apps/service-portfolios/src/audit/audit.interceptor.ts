@@ -2,6 +2,7 @@ import {
   CallHandler,
   ExecutionContext,
   Injectable,
+  Logger,
   NestInterceptor
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
@@ -15,6 +16,7 @@ const SENSITIVE_GET = /^\/api\/v1\/debtors\/[^/]+$/;
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(AuditInterceptor.name);
   private audit: AuditService;
 
   constructor(private readonly prisma: PrismaService) {
@@ -33,17 +35,22 @@ export class AuditInterceptor implements NestInterceptor {
     if (method === "GET" && SENSITIVE_GET.test(path)) {
       return next.handle().pipe(
         tap(async () => {
-          const debtorId = (req.params as { id?: string }).id;
-          if (!debtorId) return;
-          await this.audit.logSensitiveAccess({
-            tenantId: req.tenantId!,
-            userId: req.userId,
-            resourceType: "debtor",
-            resourceId: debtorId,
-            action: "debtor.sensitive_read",
-            ipAddress: req.ip,
-            userAgent: String(req.headers["user-agent"] ?? "")
-          });
+          try {
+            const debtorId = (req.params as { id?: string }).id;
+            if (!debtorId) return;
+            await this.audit.logSensitiveAccess({
+              tenantId: req.tenantId!,
+              userId: req.userId,
+              resourceType: "debtor",
+              resourceId: debtorId,
+              action: "debtor.sensitive_read",
+              ipAddress: req.ip,
+              userAgent: String(req.headers["user-agent"] ?? "")
+            });
+          } catch (err) {
+            // Auditoría best-effort: nunca debe tumbar el request ni el proceso.
+            this.logger.warn(`Audit logSensitiveAccess falló: ${String(err)}`);
+          }
         })
       );
     }
@@ -54,27 +61,32 @@ export class AuditInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap(async (body: unknown) => {
-        const rawId =
-          (body as { data?: { id?: string } })?.data?.id ??
-          (req.params as { id?: string })?.id;
-        const resourceId =
-          typeof rawId === "string" && /^[0-9a-f-]{36}$/i.test(rawId)
-            ? rawId
-            : randomUUID();
+        try {
+          const rawId =
+            (body as { data?: { id?: string } })?.data?.id ??
+            (req.params as { id?: string })?.id;
+          const resourceId =
+            typeof rawId === "string" && /^[0-9a-f-]{36}$/i.test(rawId)
+              ? rawId
+              : randomUUID();
 
-        await this.audit.logAction({
-          tenantId: req.tenantId!,
-          userId: req.userId ?? null,
-          action: `${method} ${path}`,
-          resourceType: path.split("/")[3] ?? "unknown",
-          resourceId,
-          changes: {
-            body: req.body as object,
-            params: req.params as object
-          },
-          ipAddress: req.ip ?? null,
-          userAgent: String(req.headers["user-agent"] ?? "")
-        });
+          await this.audit.logAction({
+            tenantId: req.tenantId!,
+            userId: req.userId ?? null,
+            action: `${method} ${path}`,
+            resourceType: path.split("/")[3] ?? "unknown",
+            resourceId,
+            changes: {
+              body: req.body as object,
+              params: req.params as object
+            },
+            ipAddress: req.ip ?? null,
+            userAgent: String(req.headers["user-agent"] ?? "")
+          });
+        } catch (err) {
+          // Auditoría best-effort: nunca debe tumbar el request ni el proceso.
+          this.logger.warn(`Audit logAction falló: ${String(err)}`);
+        }
       })
     );
   }

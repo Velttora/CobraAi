@@ -14,7 +14,8 @@ const CONSUMED_TOPICS = [
   "cobrai.contact.requested",
   "cobrai.whatsapp.message_received",
   "cobrai.voice.call_completed",
-  "cobrai.email.message_received"
+  "cobrai.email.message_received",
+  "cobrai.escalation.requested"
 ] as const;
 
 @Injectable()
@@ -96,6 +97,19 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
           debt_id: String(payload["debt_id"] ?? ""),
           channel: "voice"
         } as ContactRequestPayload);
+        break;
+      case "cobrai.escalation.requested":
+        // El agente ya marcó la conversación como 'escalated' (visible en la
+        // bandeja de escalaciones). Aquí se registra de forma visible para ops y
+        // queda el punto de enganche para notificación proactiva al equipo.
+        this.logger.warn(
+          `⚠️ Escalación a humano — tenant=${tenantId} ` +
+            `debt=${String(payload["debt_id"] ?? "?")} ` +
+            `debtor=${String(payload["debtor_id"] ?? "?")} ` +
+            `canal=${String(payload["channel"] ?? "?")} ` +
+            `motivo=${String(payload["reason"] ?? "?")} — atender en la bandeja de escalaciones`
+        );
+        // TODO: notificación proactiva al equipo (email/Slack/push) cuando exista la integración.
         break;
       default:
         break;
