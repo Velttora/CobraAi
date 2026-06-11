@@ -267,18 +267,46 @@ export class ConversationsService {
   }
 
   // ─── Resolve escalation ──────────────────────────────────────────────────────
-  async resolveEscalation(tenantId: string, conversationId: string) {
+  async resolveEscalation(
+    tenantId: string,
+    conversationId: string,
+    outcome: "pending" | "promised",
+    note?: string
+  ) {
     const conv = await this.prisma.conversation.findFirst({
       where: { id: conversationId, tenantId, deletedAt: null }
     });
     if (!conv) throw new NotFoundException("Conversación no encontrada");
 
-    await this.prisma.conversation.update({
-      where: { id: conversationId },
-      data: { status: ConversationStatus.open }
-    });
+    const newStatus =
+      outcome === "pending" ? ConversationStatus.pending : ConversationStatus.open;
 
-    return { resolved: true };
+    const outcomeLabel =
+      outcome === "pending" ? "Pendiente de confirmación" : "Acuerdo registrado — vuelve a cola";
+
+    const systemText = note
+      ? `${outcomeLabel}. Nota: ${note}`
+      : outcomeLabel;
+
+    await this.prisma.$transaction([
+      this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { status: newStatus, lastMessageAt: new Date() }
+      }),
+      this.prisma.message.create({
+        data: {
+          tenantId,
+          conversationId,
+          direction: "out",
+          channel: conv.channel,
+          content: JSON.stringify({ text: systemText, system_event: "escalation_resolved" }),
+          status: "sent",
+          sentAt: new Date()
+        }
+      })
+    ]);
+
+    return { resolved: true, status: newStatus };
   }
 
   // ─── Messages list ───────────────────────────────────────────────────────────

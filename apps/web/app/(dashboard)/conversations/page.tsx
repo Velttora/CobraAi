@@ -95,6 +95,9 @@ export default function ConversationsPage() {
   const [portfolioId, setPortfolioId] = useState("");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") ?? "");
   const [voiceOutcome, setVoiceOutcome] = useState("");
+  const [resolveModal, setResolveModal] = useState<{ id: string } | null>(null);
+  const [resolveOutcome, setResolveOutcome] = useState<"pending" | "promised">("pending");
+  const [resolveNote, setResolveNote] = useState("");
   const resolve = useResolveEscalation();
 
   // Sync status filter from URL (e.g. from OpsDrawer navigation)
@@ -131,11 +134,19 @@ export default function ConversationsPage() {
     router.replace("/conversations");
   }
 
-  async function handleResolve(id: string, e: React.MouseEvent) {
+  function openResolveModal(id: string, e: React.MouseEvent) {
     e.preventDefault();
+    setResolveOutcome("pending");
+    setResolveNote("");
+    setResolveModal({ id });
+  }
+
+  async function handleResolveConfirm() {
+    if (!resolveModal) return;
     try {
-      await resolve.mutateAsync(id);
-      toast.success("Escalación resuelta");
+      await resolve.mutateAsync({ id: resolveModal.id, outcome: resolveOutcome, note: resolveNote || undefined });
+      toast.success(resolveOutcome === "pending" ? "Marcada como pendiente" : "Acuerdo registrado");
+      setResolveModal(null);
     } catch {
       toast.error("Error al resolver la escalación");
     }
@@ -408,7 +419,7 @@ export default function ConversationsPage() {
                             <button
                               className="text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-slate-100"
                               disabled={resolve.isPending}
-                              onClick={(e) => { void handleResolve(conv.id, e); }}
+                              onClick={(e) => { openResolveModal(conv.id, e); }}
                               type="button"
                             >
                               Resolver
@@ -448,6 +459,81 @@ export default function ConversationsPage() {
             >
               Siguiente
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal resolver escalación */}
+      {resolveModal && (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              Resolver escalación
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Indica el resultado del contacto con el deudor.
+            </p>
+
+            <fieldset className="mt-4 space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:border-[#D85A30] dark:border-slate-700 dark:hover:border-[#D85A30]">
+                <input
+                  checked={resolveOutcome === "pending"}
+                  className="mt-0.5 accent-[#D85A30]"
+                  onChange={() => setResolveOutcome("pending")}
+                  type="radio"
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Pendiente de confirmación</p>
+                  <p className="text-xs text-slate-500">Hubo acuerdo pero aún no se confirmó el pago. La cuenta queda en espera.</p>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:border-[#D85A30] dark:border-slate-700 dark:hover:border-[#D85A30]">
+                <input
+                  checked={resolveOutcome === "promised"}
+                  className="mt-0.5 accent-[#D85A30]"
+                  onChange={() => setResolveOutcome("promised")}
+                  type="radio"
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Acuerdo registrado</p>
+                  <p className="text-xs text-slate-500">El deudor se comprometió. La cuenta vuelve a la cola activa de gestión.</p>
+                </div>
+              </label>
+            </fieldset>
+
+            <label className="mt-4 block text-sm">
+              <span className="font-medium text-slate-700 dark:text-slate-300">Nota <span className="font-normal text-slate-400">(opcional)</span></span>
+              <textarea
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                onChange={(e) => setResolveNote(e.target.value)}
+                placeholder="Ej: Acordó pagar el viernes 14"
+                rows={2}
+                value={resolveNote}
+              />
+            </label>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29] disabled:opacity-50"
+                disabled={resolve.isPending}
+                onClick={() => { void handleResolveConfirm(); }}
+                type="button"
+              >
+                Confirmar
+              </button>
+              <button
+                className="rounded-md border border-slate-200 px-4 py-2 text-sm dark:border-slate-700"
+                disabled={resolve.isPending}
+                onClick={() => setResolveModal(null)}
+                type="button"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}

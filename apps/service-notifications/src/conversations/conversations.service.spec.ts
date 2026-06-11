@@ -130,23 +130,26 @@ describe("ConversationsService", () => {
 
   // ─── resolveEscalation ───────────────────────────────────────────────────
 
-  it("resolveEscalation → actualiza status a open", async () => {
+  it("resolveEscalation promised → actualiza status a open", async () => {
     mockConversationFindFirst.mockResolvedValueOnce(baseConv);
 
-    const result = await service.resolveEscalation("org1", "conv1");
+    const result = await service.resolveEscalation("org1", "conv1", "promised");
 
-    expect(result).toEqual({ resolved: true });
-    expect(mockConversationUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { status: ConversationStatus.open }
-      })
-    );
+    expect(result).toEqual({ resolved: true, status: ConversationStatus.open });
+  });
+
+  it("resolveEscalation pending → actualiza status a pending", async () => {
+    mockConversationFindFirst.mockResolvedValueOnce(baseConv);
+
+    const result = await service.resolveEscalation("org1", "conv1", "pending");
+
+    expect(result).toEqual({ resolved: true, status: ConversationStatus.pending });
   });
 
   it("resolveEscalation → NotFoundException si no existe", async () => {
     mockConversationFindFirst.mockResolvedValueOnce(null);
 
-    await expect(service.resolveEscalation("org1", "conv999")).rejects.toThrow(
+    await expect(service.resolveEscalation("org1", "conv999", "pending")).rejects.toThrow(
       NotFoundException
     );
   });

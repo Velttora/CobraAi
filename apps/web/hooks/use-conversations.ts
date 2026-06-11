@@ -153,11 +153,11 @@ export function useResolveEscalation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) =>
-      patchApi<{ success: boolean; data: { resolved: boolean } }>(
+    mutationFn: ({ id, outcome, note }: { id: string; outcome: "pending" | "promised"; note?: string }) =>
+      patchApi<{ success: boolean; data: { resolved: boolean; status: string } }>(
         client,
         `/api/v1/conversations/escalations/${id}/resolve`,
-        {}
+        { outcome, note }
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["escalations"] });

@@ -5,7 +5,8 @@ import {
   Param,
   Patch,
   Post,
-  Query
+  Query,
+  BadRequestException
 } from "@nestjs/common";
 import { successResponse } from "../common/utils/api.utils";
 import {
@@ -54,10 +55,15 @@ export class ConversationsController {
   @Patch("escalations/:id/resolve")
   async resolveEscalation(
     @ReqContext() ctx: RequestContext,
-    @Param("id") id: string
+    @Param("id") id: string,
+    @Body() body: { outcome?: string; note?: string }
   ) {
+    const outcome = body.outcome;
+    if (outcome !== "pending" && outcome !== "promised") {
+      throw new BadRequestException("outcome debe ser 'pending' o 'promised'");
+    }
     return successResponse(
-      await this.conversationsService.resolveEscalation(ctx.tenantId, id)
+      await this.conversationsService.resolveEscalation(ctx.tenantId, id, outcome, body.note)
     );
   }
 
