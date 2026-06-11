@@ -58,6 +58,7 @@ enum ContactChannel {
   email
   sms
   portal
+  internal
 
   @@map("contact_channel")
 }

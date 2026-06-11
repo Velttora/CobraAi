@@ -1,5 +1,6 @@
 "use client";
 
+import { AUDIT_ACTION_FILTER_OPTIONS, describeAuditLog } from "@cobrai/utils";
 import { useMemo, useState } from "react";
 import { useAuditLogs, useIsAdmin } from "../../../hooks/use-audit";
 import { useApiClient } from "../../../hooks/use-api-client";
@@ -12,15 +13,19 @@ export default function AuditPage(): React.ReactElement {
   const [action, setAction] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [page, setPage] = useState(1);
 
   const query = useAuditLogs({
     user_id: userId || undefined,
     action: action || undefined,
     from: from || undefined,
-    to: to || undefined
+    to: to || undefined,
+    page
   });
 
   const rows = query.data?.data.items ?? [];
+  const pagination = query.data?.data.pagination;
+  const totalPages = pagination?.total_pages ?? 1;
 
   const exportUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -61,7 +66,7 @@ export default function AuditPage(): React.ReactElement {
             Auditoría
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Registro de acciones, contactos, pagos y accesos sensibles.
+            Historial de contactos, cambios y accesos sensibles en tu organización.
           </p>
         </div>
         <button
@@ -75,27 +80,42 @@ export default function AuditPage(): React.ReactElement {
 
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-4">
         <label className="text-sm">
-          Usuario ID
+          Usuario (ID Clerk)
           <input
             className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-            onChange={(e) => setUserId(e.target.value)}
+            onChange={(e) => {
+              setUserId(e.target.value);
+              setPage(1);
+            }}
+            placeholder="user_..."
             value={userId}
           />
         </label>
         <label className="text-sm">
-          Acción
-          <input
+          Tipo de acción
+          <select
             className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-            onChange={(e) => setAction(e.target.value)}
-            placeholder="compliance.contact.blocked"
+            onChange={(e) => {
+              setAction(e.target.value);
+              setPage(1);
+            }}
             value={action}
-          />
+          >
+            {AUDIT_ACTION_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value || "all"} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="text-sm">
           Desde
           <input
             className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              setPage(1);
+            }}
             type="date"
             value={from}
           />
@@ -104,7 +124,10 @@ export default function AuditPage(): React.ReactElement {
           Hasta
           <input
             className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-            onChange={(e) => setTo(e.target.value)}
+            onChange={(e) => {
+              setTo(e.target.value);
+              setPage(1);
+            }}
             type="date"
             value={to}
           />
@@ -117,8 +140,8 @@ export default function AuditPage(): React.ReactElement {
             <tr>
               <th className="px-4 py-3">Fecha</th>
               <th className="px-4 py-3">Usuario</th>
-              <th className="px-4 py-3">Acción</th>
-              <th className="px-4 py-3">Recurso</th>
+              <th className="px-4 py-3">Qué pasó</th>
+              <th className="px-4 py-3">Sobre quién / qué</th>
               <th className="px-4 py-3">IP</th>
             </tr>
           </thead>
@@ -136,28 +159,68 @@ export default function AuditPage(): React.ReactElement {
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  className="border-t border-slate-100 dark:border-slate-800"
-                  key={row.id}
-                >
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {formatDateTime(row.createdAt)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.user?.email ?? row.userId ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">{row.action}</td>
-                  <td className="px-4 py-3">
-                    {row.resourceType} · {row.resourceId.slice(0, 8)}…
-                  </td>
-                  <td className="px-4 py-3">{row.ipAddress ?? "—"}</td>
-                </tr>
-              ))
+              rows.map((row) => {
+                const readable = describeAuditLog(row);
+                return (
+                  <tr
+                    className="border-t border-slate-100 dark:border-slate-800"
+                    key={row.id}
+                  >
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {formatDateTime(row.createdAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.user?.name ?? row.user?.email ?? row.userId ?? "Sistema"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        {readable.action}
+                      </p>
+                      {readable.detail ? (
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {readable.detail}
+                        </p>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                      {readable.resourceLabel}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-400">
+                      {row.ipAddress ?? "—"}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+
+      {pagination && pagination.total > pagination.limit ? (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500">
+            {pagination.total} registros · Página {pagination.page} de {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <button
+              className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              type="button"
+            >
+              Anterior
+            </button>
+            <button
+              className="rounded-md border border-slate-200 px-3 py-1 text-xs disabled:opacity-40 dark:border-slate-700"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              type="button"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -20,7 +20,8 @@ const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
   voice: "Voz",
   email: "Email",
-  sms: "SMS"
+  sms: "SMS",
+  internal: "Sistema"
 };
 
 const OUTCOME_LABELS: Record<string, { label: string; className: string }> = {
@@ -142,14 +143,12 @@ function EscalationsList({ items, loading }: { items: EscalationItem[]; loading:
               <p className="text-xs text-slate-400">{e.debt.portfolio.name}</p>
             )}
           </div>
-          {e.debt?.debtor && (
-            <Link
-              className="shrink-0 text-xs font-medium text-[#D85A30] hover:underline"
-              href={`/conversations?debtor=${e.debt.debtor.id}` as Route}
-            >
-              Ver conv.
-            </Link>
-          )}
+          <Link
+            className="shrink-0 text-xs font-medium text-[#D85A30] hover:underline"
+            href={"/conversations?status=escalated" as Route}
+          >
+            Ver escaladas
+          </Link>
         </li>
       ))}
     </ul>

@@ -753,7 +753,7 @@ export class WorkflowsService {
           );
           break;
         case "escalate_human":
-          await this.escalateDebt(tenantId, debt.id, rule.id, "human");
+          await this.escalateDebt(tenantId, debt.id, rule.id, "human", rule.name);
           break;
         case "update_status":
           await this.applyTransition(tenantId, debt.id, "PAYMENT_CONFIRMED", "paid_full");
@@ -770,7 +770,7 @@ export class WorkflowsService {
           });
           break;
         case "create_task":
-          await this.escalateDebt(tenantId, debt.id, rule.id, "task");
+          await this.escalateDebt(tenantId, debt.id, rule.id, "task", rule.name);
           break;
       }
 
@@ -843,7 +843,8 @@ export class WorkflowsService {
     tenantId: string,
     debtId: string,
     ruleId: string,
-    target: "human" | "legal" | "legal_risk" | "task"
+    target: "human" | "legal" | "legal_risk" | "task",
+    ruleName?: string
   ): Promise<void> {
     if (target === "legal" || target === "legal_risk") {
       await this.applyTransition(tenantId, debtId, "ESCALATE_LEGAL");
@@ -852,6 +853,7 @@ export class WorkflowsService {
     await this.kafka.publish("cobrai.debt.escalated", tenantId, {
       debt_id: debtId,
       rule_id: ruleId,
+      rule_name: ruleName ?? ruleId,
       target
     });
   }

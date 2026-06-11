@@ -276,6 +276,7 @@ export class ConversationAgentService {
           "cobrai.escalation.requested",
           ctx.tenant_id,
           {
+            conversation_id: ctx.conversation_id,
             debt_id: ctx.debt_id,
             debtor_id: ctx.debtor_id,
             channel: ctx.channel,

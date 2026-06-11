@@ -1,3 +1,11 @@
+export {
+  AUDIT_ACTION_FILTER_OPTIONS,
+  describeAuditLog,
+  normalizeAuditResourceType,
+  type AuditActionFilterOption,
+  type AuditLogLike,
+  type ReadableAudit
+} from "./audit-formatter";
 export { formatCurrency } from "./currency";
 export {
   APP_TIMEZONE,

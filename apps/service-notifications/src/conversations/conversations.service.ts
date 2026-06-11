@@ -160,6 +160,112 @@ export class ConversationsService {
     }));
   }
 
+  // ─── Escalate by workflow rule ───────────────────────────────────────────────
+  // Llamado cuando cobrai.debt.escalated llega con target="human".
+  // Marca la conversación activa como escalated o crea una nueva de canal "internal".
+  async escalateByWorkflow(
+    tenantId: string,
+    debtId: string,
+    ruleName: string
+  ): Promise<void> {
+    // Buscar conversación activa para esta deuda (no cerrada, no archivada)
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        tenantId,
+        debtId,
+        deletedAt: null,
+        status: { notIn: [ConversationStatus.closed, ConversationStatus.archived] }
+      },
+      orderBy: { lastMessageAt: "desc" }
+    });
+
+    const systemContent = JSON.stringify({
+      text: `Escalado automáticamente por regla: "${ruleName}". Requiere atención humana.`,
+      system_event: "workflow_escalation"
+    });
+
+    if (existing) {
+      await this.prisma.conversation.update({
+        where: { id: existing.id },
+        data: { status: ConversationStatus.escalated, lastMessageAt: new Date() }
+      });
+      await this.prisma.message.create({
+        data: {
+          tenantId,
+          conversationId: existing.id,
+          direction: "out",
+          channel: existing.channel,
+          content: systemContent,
+          status: "sent",
+          sentAt: new Date()
+        }
+      });
+      this.logger.log(`Conv ${existing.id} escalada por regla "${ruleName}"`);
+      return;
+    }
+
+    // Sin conversación activa: buscar deudor por deuda para crear una nueva
+    const debt = await this.prisma.debt.findFirst({
+      where: { id: debtId, tenantId, deletedAt: null },
+      select: { debtorId: true }
+    });
+    if (!debt) {
+      this.logger.warn(`escalateByWorkflow: deuda ${debtId} no encontrada`);
+      return;
+    }
+
+    const conv = await this.prisma.conversation.create({
+      data: {
+        tenantId,
+        debtorId: debt.debtorId,
+        debtId,
+        channel: "internal" as ContactChannel,
+        status: ConversationStatus.escalated,
+        lastMessageAt: new Date()
+      }
+    });
+    await this.prisma.message.create({
+      data: {
+        tenantId,
+        conversationId: conv.id,
+        direction: "out",
+        channel: "internal" as ContactChannel,
+        content: systemContent,
+        status: "sent",
+        sentAt: new Date()
+      }
+    });
+    this.logger.log(`Nueva conv interna creada y escalada por regla "${ruleName}" (deuda ${debtId})`);
+  }
+
+  // ─── Add system message on agent escalation ──────────────────────────────────
+  // Cuando el agente ya marcó la conv como escalated, agrega un mensaje de contexto visible.
+  async addEscalationSystemMessage(
+    tenantId: string,
+    conversationId: string,
+    reason: string
+  ): Promise<void> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, tenantId, deletedAt: null }
+    });
+    if (!conv) return;
+
+    await this.prisma.message.create({
+      data: {
+        tenantId,
+        conversationId,
+        direction: "out",
+        channel: conv.channel,
+        content: JSON.stringify({
+          text: `El deudor solicitó atención humana. Motivo: ${reason}.`,
+          system_event: "agent_escalation"
+        }),
+        status: "sent",
+        sentAt: new Date()
+      }
+    });
+  }
+
   // ─── Resolve escalation ──────────────────────────────────────────────────────
   async resolveEscalation(tenantId: string, conversationId: string) {
     const conv = await this.prisma.conversation.findFirst({

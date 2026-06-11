@@ -10,6 +10,7 @@ export type AuditLogRow = {
   action: string;
   resourceType: string;
   resourceId: string;
+  resourceName?: string | null;
   userId?: string | null;
   ipAddress?: string | null;
   createdAt: string;

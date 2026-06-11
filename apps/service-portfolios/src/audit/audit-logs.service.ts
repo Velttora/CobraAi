@@ -1,5 +1,27 @@
 import { ForbiddenException, Injectable } from "@nestjs/common";
 import { PrismaService, type Prisma } from "@cobrai/db";
+import { describeAuditLog } from "@cobrai/utils";
+import {
+  lookupResourceName,
+  resolveAuditResourceNames
+} from "./audit-resource-resolver";
+
+export type EnrichedAuditLog = {
+  id: string;
+  tenantId: string;
+  userId: string | null;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  resourceName: string | null;
+  changes: Prisma.JsonValue;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+  user: { id: string; name: string; email: string } | null;
+};
 
 @Injectable()
 export class AuditLogsService {
@@ -33,7 +55,7 @@ export class AuditLogsService {
         : {})
     };
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       this.prisma.auditLog.findMany({
         where,
         skip,
@@ -44,25 +66,49 @@ export class AuditLogsService {
       this.prisma.auditLog.count({ where })
     ]);
 
+    const nameMap = await resolveAuditResourceNames(
+      this.prisma,
+      tenantId,
+      rawItems
+    );
+
+    const items: EnrichedAuditLog[] = rawItems.map((row) => ({
+      ...row,
+      resourceName:
+        lookupResourceName(nameMap, row.resourceType, row.resourceId) ?? null
+    }));
+
     return { items, total, page, limit };
   }
 
   async exportCsv(tenantId: string, query: Record<string, unknown>): Promise<string> {
     const { items } = await this.list(tenantId, { ...query, limit: 1000, page: 1 });
-    const header = "fecha,usuario,accion,recurso,resource_id,ip\n";
+    const header =
+      "fecha,usuario,accion,detalle,recurso,recurso_nombre,ip\n";
     const rows = items
-      .map((row) =>
-        [
+      .map((row) => {
+        const readable = describeAuditLog({
+          action: row.action,
+          resourceType: row.resourceType,
+          resourceId: row.resourceId,
+          resourceName: row.resourceName,
+          changes:
+            row.changes && typeof row.changes === "object"
+              ? (row.changes as Record<string, unknown>)
+              : {}
+        });
+        return [
           row.createdAt.toISOString(),
           row.user?.email ?? row.userId ?? "",
-          row.action,
-          row.resourceType,
-          row.resourceId,
+          readable.action,
+          readable.detail ?? "",
+          readable.resource,
+          row.resourceName ?? "",
           row.ipAddress ?? ""
         ]
           .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-          .join(",")
-      )
+          .join(",");
+      })
       .join("\n");
     return header + rows;
   }

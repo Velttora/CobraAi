@@ -9,13 +9,15 @@ import {
   ConversationAgentService,
   type InboundMessagePayload
 } from "../agent/conversation-agent.service";
+import { ConversationsService } from "../conversations/conversations.service";
 
 const CONSUMED_TOPICS = [
   "cobrai.contact.requested",
   "cobrai.whatsapp.message_received",
   "cobrai.voice.call_completed",
   "cobrai.email.message_received",
-  "cobrai.escalation.requested"
+  "cobrai.escalation.requested",
+  "cobrai.debt.escalated"
 ] as const;
 
 @Injectable()
@@ -28,7 +30,8 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly contacts: ContactsService,
-    private readonly agent: ConversationAgentService
+    private readonly agent: ConversationAgentService,
+    private readonly conversations: ConversationsService
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -92,25 +95,39 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         break;
       case "cobrai.voice.call_completed":
         this.logger.log(`voice.call_completed recibido`, payload);
-        // Publicar cobrai.contact.completed para que workflows actualice estado
         await this.contacts.handleContactRequested(tenantId, {
           debt_id: String(payload["debt_id"] ?? ""),
           channel: "voice"
         } as ContactRequestPayload);
         break;
-      case "cobrai.escalation.requested":
-        // El agente ya marcó la conversación como 'escalated' (visible en la
-        // bandeja de escalaciones). Aquí se registra de forma visible para ops y
-        // queda el punto de enganche para notificación proactiva al equipo.
+
+      case "cobrai.debt.escalated": {
+        // Solo procesar escalaciones a humano; legal/task no requieren bandeja de conversaciones
+        const target = String(payload["target"] ?? "");
+        if (target !== "human") break;
+        const debtId = String(payload["debt_id"] ?? "");
+        const ruleName = String(payload["rule_name"] ?? payload["rule_id"] ?? "regla automática");
+        await this.conversations.escalateByWorkflow(tenantId, debtId, ruleName);
+        break;
+      }
+
+      case "cobrai.escalation.requested": {
+        // El agente ya marcó la conversación como 'escalated'.
+        // Agregamos un mensaje de sistema con el motivo para contexto del agente humano.
+        const convId = String(payload["conversation_id"] ?? "");
+        const reason = String(payload["reason"] ?? "motivo no especificado");
+        if (convId) {
+          await this.conversations.addEscalationSystemMessage(tenantId, convId, reason);
+        }
         this.logger.warn(
           `⚠️ Escalación a humano — tenant=${tenantId} ` +
             `debt=${String(payload["debt_id"] ?? "?")} ` +
-            `debtor=${String(payload["debtor_id"] ?? "?")} ` +
             `canal=${String(payload["channel"] ?? "?")} ` +
-            `motivo=${String(payload["reason"] ?? "?")} — atender en la bandeja de escalaciones`
+            `motivo=${reason}`
         );
-        // TODO: notificación proactiva al equipo (email/Slack/push) cuando exista la integración.
         break;
+      }
+
       default:
         break;
     }

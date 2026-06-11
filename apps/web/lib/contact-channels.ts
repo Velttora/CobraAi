@@ -31,7 +31,8 @@ export function channelLabel(channel: string | null | undefined): string {
     whatsapp: "WhatsApp",
     voice: "Voz",
     email: "Email",
-    sms: "WhatsApp"
+    sms: "WhatsApp",
+    internal: "Sistema"
   };
   return labels[channel] ?? channel;
 }
