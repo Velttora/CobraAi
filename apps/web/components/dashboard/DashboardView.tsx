@@ -223,23 +223,21 @@ export function DashboardView() {
             </div>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-3">
-            <div className="space-y-6 xl:col-span-2">
-              <RecoveryChart debts={allDebts} loading={metricsQuery.isLoading} />
-              <DebtTable
-                debts={tableDebts}
-                loading={tableQuery.isLoading}
-                onPageChange={setPage}
-                onSortChange={setSort}
-                pagination={tableQuery.data?.data.pagination}
-                pipelineMode={pipelineMode}
-                sort={sort}
-              />
-            </div>
-            <aside className="space-y-6">
+          <div className="space-y-6">
+            <RecoveryChart debts={allDebts} loading={metricsQuery.isLoading} />
+            <DebtTable
+              debts={tableDebts}
+              loading={tableQuery.isLoading}
+              onPageChange={setPage}
+              onSortChange={setSort}
+              pagination={tableQuery.data?.data.pagination}
+              pipelineMode={pipelineMode}
+              sort={sort}
+            />
+            <div className="grid gap-6 xl:grid-cols-2">
               <SegmentDonut debts={allDebts} loading={metricsQuery.isLoading} />
               <AlertFeed debts={allDebts} loading={metricsQuery.isLoading} />
-            </aside>
+            </div>
           </div>
         </>
       )}
