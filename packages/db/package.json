@@ -29,6 +29,7 @@
     "db:seed": "prisma db seed",
     "db:seed:align": "tsx src/seed-align.ts",
     "db:backfill-consents": "tsx src/backfill-consents.ts",
+    "db:backfill-escalations": "tsx src/backfill-escalations.ts",
     "db:clear": "tsx src/clear-database.ts",
     "db:studio": "prisma studio",
     "lint": "eslint \"src/**/*.ts\"",
