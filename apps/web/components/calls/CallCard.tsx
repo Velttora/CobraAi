@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDateTime } from "../../lib/formatters";
+import { cn } from "../../lib/utils";
 import { TranscriptViewer } from "./TranscriptViewer";
 
 interface Contact {
