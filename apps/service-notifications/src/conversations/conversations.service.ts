@@ -31,7 +31,7 @@ export class ConversationsService {
   // ─── List conversations (paginada, filtrable) ────────────────────────────────
   async listConversations(
     tenantId: string,
-    opts: { channel?: string; status?: string; page: number; limit: number }
+    opts: { channel?: string; status?: string; outcome?: string; page: number; limit: number; portfolioId?: string }
   ) {
     const { page, limit } = opts;
     const skip = (page - 1) * limit;
@@ -50,7 +50,15 @@ export class ConversationsService {
       tenantId,
       deletedAt: null as null,
       ...(channelFilter ? { channel: channelFilter } : {}),
-      ...(statusFilter ? { status: statusFilter } : {})
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(opts.portfolioId
+        ? {
+            OR: [
+              { debt: { portfolioId: opts.portfolioId } },
+              { debtor: { debts: { some: { portfolioId: opts.portfolioId, tenantId, deletedAt: null } } } }
+            ]
+          }
+        : {})
     };
 
     const [total, items] = await Promise.all([
@@ -61,7 +69,20 @@ export class ConversationsService {
         take: limit,
         orderBy: { lastMessageAt: "desc" },
         include: {
-          debtor: { select: { id: true, name: true, phones: true } },
+          debtor: {
+            select: {
+              id: true,
+              name: true,
+              phones: true,
+              debts: {
+                where: { tenantId, deletedAt: null },
+                select: { portfolio: { select: { id: true, name: true } } },
+                orderBy: { createdAt: "desc" },
+                take: 1
+              }
+            }
+          },
+          debt: { select: { portfolio: { select: { id: true, name: true } } } },
           messages: {
             where: { deletedAt: null },
             orderBy: { sentAt: "desc" },
@@ -71,24 +92,41 @@ export class ConversationsService {
       })
     ]);
 
-    return {
-      total,
-      page,
-      limit,
-      items: items.map((c) => ({
-        id: c.id,
-        channel: c.channel,
-        status: c.status,
-        last_message_at: c.lastMessageAt,
-        debtor: {
-          id: c.debtor.id,
-          name: c.debtor.name
-        },
-        last_message: c.messages[0]
-          ? parseMessagePayload(c.messages[0].content).text
-          : null
-      }))
-    };
+    // Enriquecer conversaciones de voz con outcome y duración del último Contact completado
+    const voiceDebtorIds = [...new Set(items.filter(c => c.channel === "voice").map(c => c.debtor.id))];
+    const lastCallByDebtor = new Map<string, { outcome: string | null; durationSeconds: number | null }>();
+
+    if (voiceDebtorIds.length > 0) {
+      const recentContacts = await this.prisma.contact.findMany({
+        where: { tenantId, debtorId: { in: voiceDebtorIds }, channel: "voice", status: "completed" },
+        orderBy: { endedAt: "desc" },
+        select: { debtorId: true, outcome: true, durationSeconds: true }
+      });
+      for (const c of recentContacts) {
+        if (!lastCallByDebtor.has(c.debtorId)) {
+          lastCallByDebtor.set(c.debtorId, { outcome: c.outcome ?? null, durationSeconds: c.durationSeconds ?? null });
+        }
+      }
+    }
+
+    let mappedItems = items.map((c) => ({
+      id: c.id,
+      channel: c.channel,
+      status: c.status,
+      last_message_at: c.lastMessageAt,
+      debtor: { id: c.debtor.id, name: c.debtor.name },
+      portfolio: c.debt?.portfolio ?? c.debtor.debts[0]?.portfolio ?? null,
+      last_message: c.messages[0] ? parseMessagePayload(c.messages[0].content).text : null,
+      last_call_outcome: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.outcome ?? null) : null,
+      last_call_duration: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.durationSeconds ?? null) : null
+    }));
+
+    // Filtro de outcome en memoria (deuda técnica: migrar a subquery para alto volumen)
+    if (opts.outcome && channelFilter === "voice") {
+      mappedItems = mappedItems.filter(c => c.last_call_outcome === opts.outcome);
+    }
+
+    return { total, page, limit, items: mappedItems };
   }
 
   // ─── Escalations list ────────────────────────────────────────────────────────
@@ -184,6 +222,7 @@ export class ConversationsService {
           direction: m.direction,
           channel: m.channel,
           text: parsed.text,
+          voice: parsed.voice ?? null,
           human_sent: humanSent,
           status: m.status,
           sent_at: m.sentAt ?? m.createdAt

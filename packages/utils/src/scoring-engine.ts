@@ -1,3 +1,5 @@
+import { startOfZonedDayUtc } from "./dates";
+
 export type ManagementSegment =
   | "critical"
   | "high"
@@ -96,10 +98,8 @@ export function calculatePriorityScore(
 
 export function daysSinceLastContact(lastContactAt: Date | null, today = new Date()): number | null {
   if (!lastContactAt) return null;
-  const start = new Date(today);
-  start.setUTCHours(0, 0, 0, 0);
-  const last = new Date(lastContactAt);
-  last.setUTCHours(0, 0, 0, 0);
+  const start = startOfZonedDayUtc(today);
+  const last = startOfZonedDayUtc(lastContactAt);
   return Math.max(0, Math.floor((start.getTime() - last.getTime()) / 86_400_000));
 }
 

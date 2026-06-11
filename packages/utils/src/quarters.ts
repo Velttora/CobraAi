@@ -1,3 +1,5 @@
+import { startOfZonedDayUtc } from "./dates";
+
 export type DebtStatus =
   | "future"
   | "upcoming"
@@ -24,9 +26,7 @@ export type AgingBucket =
   | "d180_plus";
 
 function startOfDayUtc(date: Date): Date {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
+  return startOfZonedDayUtc(date);
 }
 
 function differenceInDays(later: Date, earlier: Date): number {

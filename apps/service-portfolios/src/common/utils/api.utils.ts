@@ -1,5 +1,6 @@
 import type { ApiMeta, ApiSuccessResponse } from "@cobrai/types";
 import { randomUUID } from "node:crypto";
+import { startOfZonedDayUtc } from "@cobrai/utils";
 
 export function successResponse<T>(
   data: T,
@@ -66,10 +67,8 @@ export function decimalToNumber(value: unknown): number {
 }
 
 export function computeAgingDays(dueDate: Date): number {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const due = new Date(dueDate);
-  due.setUTCHours(0, 0, 0, 0);
+  const today = startOfZonedDayUtc(new Date());
+  const due = startOfZonedDayUtc(dueDate);
   const diff = today.getTime() - due.getTime();
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }

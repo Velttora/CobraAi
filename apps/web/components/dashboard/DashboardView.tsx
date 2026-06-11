@@ -21,12 +21,14 @@ import { useDebts } from "../../hooks/use-debts";
 import { usePortfolios } from "../../hooks/use-portfolios";
 import { useConversations } from "../../hooks/use-conversations";
 import { useCalls } from "../../hooks/use-calls";
+import { useWorkflowStats } from "../../hooks/use-workflows";
 import {
   computeDashboardMetrics,
   formatMetricAmount,
   formatMetricDso,
   formatMetricRecoveryRate
 } from "../../lib/dashboard-metrics";
+import { OpsDrawer, type OpsDrawerKind } from "./OpsDrawer";
 
 type DashboardTab = "active" | "projection";
 
@@ -35,6 +37,7 @@ export function DashboardView() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState("priority_score:desc");
   const [pipelineMode, setPipelineMode] = useState(false);
+  const [drawerKind, setDrawerKind] = useState<OpsDrawerKind>(null);
 
   const tableQuery = useDebts({
     page,
@@ -47,6 +50,7 @@ export function DashboardView() {
   const portfoliosQuery = usePortfolios();
   const waConvsQuery = useConversations({ channel: "whatsapp", limit: 100 });
   const callsQuery = useCalls();
+  const workflowStatsQuery = useWorkflowStats();
 
   const tableDebts = tableQuery.data?.data.items ?? [];
   const allDebts = metricsQuery.data?.data.items ?? [];
@@ -68,6 +72,8 @@ export function DashboardView() {
   ).length;
   const callAttendanceRate =
     allCalls.length > 0 ? Math.round((answeredCalls / allCalls.length) * 100) : 0;
+
+  const opsStats = workflowStatsQuery.data?.data;
 
   useEffect(() => {
     if (error) {
@@ -187,6 +193,36 @@ export function DashboardView() {
             />
           </div>
 
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
+              Operaciones hoy
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <KPICard
+                hint="Toca para ver el detalle"
+                label="Contactos hoy"
+                loading={workflowStatsQuery.isLoading}
+                onClick={() => setDrawerKind("contacts")}
+                value={String(opsStats?.contacts_today ?? 0)}
+              />
+              <KPICard
+                hint="Toca para ver el detalle"
+                label="Promesas activas"
+                loading={workflowStatsQuery.isLoading}
+                onClick={() => setDrawerKind("promises")}
+                value={String(opsStats?.active_promises ?? 0)}
+              />
+              <KPICard
+                alert={(opsStats?.escalations_today ?? 0) > 0}
+                hint="Toca para ver el detalle"
+                label="Escalaciones hoy"
+                loading={workflowStatsQuery.isLoading}
+                onClick={() => setDrawerKind("escalations")}
+                value={String(opsStats?.escalations_today ?? 0)}
+              />
+            </div>
+          </div>
+
           <div className="grid gap-6 xl:grid-cols-3">
             <div className="space-y-6 xl:col-span-2">
               <RecoveryChart debts={allDebts} loading={metricsQuery.isLoading} />
@@ -207,6 +243,8 @@ export function DashboardView() {
           </div>
         </>
       )}
+
+      <OpsDrawer kind={drawerKind} onClose={() => setDrawerKind(null)} />
     </section>
   );
 }

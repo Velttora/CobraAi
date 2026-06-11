@@ -26,14 +26,18 @@ export class ConversationsController {
     @Query("channel") channel?: string,
     @Query("status") status?: string,
     @Query("page") page = "1",
-    @Query("limit") limit = "25"
+    @Query("limit") limit = "25",
+    @Query("portfolio_id") portfolioId?: string,
+    @Query("outcome") outcome?: string
   ) {
     return successResponse(
       await this.conversationsService.listConversations(ctx.tenantId, {
         channel,
         status,
+        outcome,
         page: Number(page),
-        limit: Number(limit)
+        limit: Number(limit),
+        portfolioId
       })
     );
   }

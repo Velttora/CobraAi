@@ -2,7 +2,7 @@ import { Body, Controller, Get, Patch } from "@nestjs/common";
 import { CurrentUser, type CurrentUserContext } from "../common/decorators/current-user.decorator";
 import { Roles } from "../common/decorators/roles.decorator";
 import { successResponse } from "../common/utils/api.utils";
-import { UpdateTenantDto } from "./dto/update-tenant.dto";
+import type { UpdateTenantDto } from "./dto/tenant-profile.dto";
 import { TenantService } from "./tenant.service";
 
 @Controller("api/v1/tenant")

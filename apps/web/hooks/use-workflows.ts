@@ -129,12 +129,78 @@ export function useWorkflowQueue() {
   });
 }
 
+export type ContactTodayItem = {
+  id: string;
+  channel: string;
+  status: string;
+  outcome: string | null;
+  createdAt: string;
+  debtor: { id: string; name: string } | null;
+  debt: { id: string; portfolio: { id: string; name: string } | null } | null;
+};
+
+export type PromiseItem = {
+  id: string;
+  promisedDate: string;
+  amount: string;
+  createdAt: string;
+  debt: {
+    id: string;
+    currency: string;
+    amountOutstanding: string;
+    portfolio: { id: string; name: string } | null;
+    debtor: { id: string; name: string };
+  };
+};
+
+export type EscalationItem = {
+  id: string;
+  createdAt: string;
+  status: string;
+  rule: { id: string; name: string; action: string } | null;
+  debt: {
+    id: string;
+    portfolio: { id: string; name: string } | null;
+    debtor: { id: string; name: string };
+  } | null;
+};
+
 export function useWorkflowStats() {
   const client = useApiClient();
   return useQuery({
     queryKey: ["workflow-stats"],
     queryFn: () =>
       fetchApi<ApiItemResponse<WorkflowStats>>(client, "/api/v1/workflows/stats")
+  });
+}
+
+export function useContactsTodayDetail(enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workflow-stats-contacts"],
+    queryFn: () =>
+      fetchApi<ApiItemResponse<ContactTodayItem[]>>(client, "/api/v1/workflows/stats/contacts"),
+    enabled
+  });
+}
+
+export function useActivePromisesDetail(enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workflow-stats-promises"],
+    queryFn: () =>
+      fetchApi<ApiItemResponse<PromiseItem[]>>(client, "/api/v1/workflows/stats/promises"),
+    enabled
+  });
+}
+
+export function useEscalationsTodayDetail(enabled: boolean) {
+  const client = useApiClient();
+  return useQuery({
+    queryKey: ["workflow-stats-escalations"],
+    queryFn: () =>
+      fetchApi<ApiItemResponse<EscalationItem[]>>(client, "/api/v1/workflows/stats/escalations"),
+    enabled
   });
 }
 

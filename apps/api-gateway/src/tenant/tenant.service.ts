@@ -6,6 +6,10 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { ensureTenantRecord, PrismaService, type Tenant } from "@cobrai/db";
 import { normalizeClerkRole } from "../common/types/clerk-request";
+import {
+  toTenantProfile,
+  type TenantProfile
+} from "./dto/tenant-profile.dto";
 
 function slugify(value: string): string {
   return value
@@ -16,6 +20,11 @@ function slugify(value: string): string {
     .replace(/^-|-$/g, "")
     .slice(0, 48);
 }
+
+type ClerkOrganization = {
+  name?: string;
+  slug?: string | null;
+};
 
 @Injectable()
 export class TenantService {
@@ -32,10 +41,10 @@ export class TenantService {
     }
   }
 
-  async getCurrent(tenantId: string): Promise<Tenant> {
+  async getCurrent(tenantId: string): Promise<TenantProfile> {
     await ensureTenantRecord(this.prisma, tenantId);
 
-    const tenant = await this.prisma.tenant.findFirst({
+    let tenant = await this.prisma.tenant.findFirst({
       where: { id: tenantId, deletedAt: null }
     });
 
@@ -43,14 +52,16 @@ export class TenantService {
       throw new NotFoundException("Organización no encontrada");
     }
 
-    return tenant;
+    tenant = await this.syncNameFromClerk(tenantId, tenant);
+
+    return toTenantProfile(tenant);
   }
 
   async updateName(
     tenantId: string,
     name: string | undefined,
     role?: string
-  ): Promise<Tenant> {
+  ): Promise<TenantProfile> {
     this.assertAdmin(role);
 
     const trimmed = name?.trim() ?? "";
@@ -71,7 +82,58 @@ export class TenantService {
 
     await this.syncClerkOrganizationName(tenantId, trimmed);
 
-    return tenant;
+    return toTenantProfile(tenant);
+  }
+
+  private async syncNameFromClerk(
+    tenantId: string,
+    tenant: Tenant
+  ): Promise<Tenant> {
+    const clerkOrg = await this.fetchClerkOrganization(tenantId);
+    if (!clerkOrg?.name?.trim()) {
+      return tenant;
+    }
+
+    const clerkName = clerkOrg.name.trim();
+    const clerkSlug = clerkOrg.slug?.trim() || slugify(clerkName);
+
+    if (tenant.name === clerkName && tenant.slug === clerkSlug) {
+      return tenant;
+    }
+
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        name: clerkName,
+        slug: clerkSlug
+      }
+    });
+  }
+
+  private async fetchClerkOrganization(
+    tenantId: string
+  ): Promise<ClerkOrganization | null> {
+    const secret = this.config.get<string>("CLERK_SECRET_KEY")?.trim();
+    if (!secret) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(
+        `https://api.clerk.com/v1/organizations/${tenantId}`,
+        {
+          headers: { Authorization: `Bearer ${secret}` }
+        }
+      );
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return (await response.json()) as ClerkOrganization;
+    } catch {
+      return null;
+    }
   }
 
   private async syncClerkOrganizationName(

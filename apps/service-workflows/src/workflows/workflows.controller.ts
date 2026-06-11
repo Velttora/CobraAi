@@ -29,6 +29,21 @@ export class WorkflowsController {
     return successResponse(await this.workflows.getStats(ctx.tenantId));
   }
 
+  @Get("stats/contacts")
+  async statsContacts(@ReqContext() ctx: RequestContext) {
+    return successResponse(await this.workflows.getContactsTodayDetail(ctx.tenantId));
+  }
+
+  @Get("stats/promises")
+  async statsPromises(@ReqContext() ctx: RequestContext) {
+    return successResponse(await this.workflows.getActivePromisesDetail(ctx.tenantId));
+  }
+
+  @Get("stats/escalations")
+  async statsEscalations(@ReqContext() ctx: RequestContext) {
+    return successResponse(await this.workflows.getEscalationsTodayDetail(ctx.tenantId));
+  }
+
   @Get("rules")
   async listRules(
     @ReqContext() ctx: RequestContext,

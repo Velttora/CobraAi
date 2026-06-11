@@ -42,6 +42,7 @@ export function ConversationThread({ messages, isLoading = false }: Props) {
           key={m.id}
           sentAt={m.sent_at}
           text={m.text}
+          voice={m.voice}
         />
       ))}
       <div ref={bottomRef} />

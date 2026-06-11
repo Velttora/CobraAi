@@ -3,6 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ApiItemResponse, ApiListResponse } from "../lib/types";
+import {
+  notifyManualContactResult,
+  type ManualContactResult
+} from "../lib/contact-feedback";
 import { deleteApi, fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
 
 export type NotificationTemplate = {
@@ -120,11 +124,22 @@ export function useCreateContact() {
       debt_id: string;
       channel: string;
       template_id?: string;
-    }) => postApi<ApiItemResponse<unknown>>(client, "/api/v1/contacts", body),
-    onSuccess: () => {
+    }) =>
+      postApi<ApiItemResponse<ManualContactResult>>(
+        client,
+        "/api/v1/contacts",
+        body
+      ),
+    onSuccess: (response) => {
+      notifyManualContactResult(response.data);
       void queryClient.invalidateQueries({ queryKey: ["conversation"] });
-      toast.success("Contacto enviado");
+      void queryClient.invalidateQueries({ queryKey: ["debt-timeline"] });
+      void queryClient.invalidateQueries({ queryKey: ["debt"] });
+      void queryClient.invalidateQueries({ queryKey: ["calls"] });
     },
-    onError: () => toast.error("No se pudo enviar el contacto")
+    onError: () =>
+      toast.error("No se pudo enviar el contacto", {
+        description: "Ocurrió un error de red o del servidor. Intenta de nuevo."
+      })
   });
 }

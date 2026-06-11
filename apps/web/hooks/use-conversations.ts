@@ -5,13 +5,22 @@ import { fetchApi, patchApi, postApi, useApiClient } from "./use-api-client";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+export interface VoiceMessagePayload {
+  call_id: string;
+  transcript: string;
+  summary: string | null;
+}
+
 export interface ConversationItem {
   id: string;
   channel: string;
   status: string;
   last_message_at: string | null;
   debtor: { id: string; name: string };
+  portfolio: { id: string; name: string } | null;
   last_message: string | null;
+  last_call_outcome: string | null;
+  last_call_duration: number | null;
 }
 
 export interface ConversationMessage {
@@ -19,6 +28,7 @@ export interface ConversationMessage {
   direction: "in" | "out";
   channel: string;
   text: string;
+  voice: VoiceMessagePayload | null;
   human_sent: boolean;
   status: string;
   sent_at: string;
@@ -62,8 +72,10 @@ export interface EscalationsResponse {
 export function useConversations(opts: {
   channel?: string;
   status?: string;
+  outcome?: string;
   page?: number;
   limit?: number;
+  portfolioId?: string;
 }) {
   const client = useApiClient();
   const params: Record<string, string | number | undefined> = {
@@ -72,6 +84,8 @@ export function useConversations(opts: {
   };
   if (opts.channel) params.channel = opts.channel;
   if (opts.status) params.status = opts.status;
+  if (opts.outcome) params.outcome = opts.outcome;
+  if (opts.portfolioId) params.portfolio_id = opts.portfolioId;
 
   return useQuery({
     queryKey: ["conversations", params],

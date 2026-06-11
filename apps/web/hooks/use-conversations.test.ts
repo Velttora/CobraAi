@@ -17,7 +17,10 @@ describe("use-conversations types", () => {
       status: "escalated",
       last_message_at: "2026-05-25T10:00:00Z",
       debtor: { id: "d1", name: "Juan" },
-      last_message: "Hola"
+      portfolio: null,
+      last_message: "Hola",
+      last_call_outcome: null,
+      last_call_duration: null
     };
     expect(item.status).toBe("escalated");
     expect(item.debtor.name).toBe("Juan");
@@ -29,6 +32,7 @@ describe("use-conversations types", () => {
       direction: "in",
       channel: "whatsapp",
       text: "¿Puedo pagar en cuotas?",
+      voice: null,
       human_sent: false,
       status: "delivered",
       sent_at: "2026-05-25T10:00:00Z"
@@ -51,6 +55,7 @@ describe("use-conversations types", () => {
           direction: "out",
           channel: "whatsapp",
           text: "Le recordamos su saldo.",
+          voice: null,
           human_sent: false,
           status: "sent",
           sent_at: "2026-05-24T08:00:00Z"
@@ -60,6 +65,7 @@ describe("use-conversations types", () => {
           direction: "in",
           channel: "whatsapp",
           text: "¿Cuánto debo?",
+          voice: null,
           human_sent: false,
           status: "received",
           sent_at: "2026-05-24T08:01:00Z"

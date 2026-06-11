@@ -56,18 +56,20 @@ export class ContactsService {
     private readonly debtorMemory: DebtorMemoryService
   ) {}
 
-  async list(tenantId: string, debtId?: string, channel?: ContactChannel) {
+  async list(tenantId: string, debtId?: string, channel?: ContactChannel, portfolioId?: string) {
     const items = await this.prisma.contact.findMany({
       where: {
         tenantId,
         deletedAt: null,
         ...(debtId ? { debtId } : {}),
-        ...(channel ? { channel } : {})
+        ...(channel ? { channel } : {}),
+        ...(portfolioId ? { debt: { portfolioId } } : {})
       },
       orderBy: { createdAt: "desc" },
       take: 100,
       include: {
-        debtor: { select: { id: true, name: true } }
+        debtor: { select: { id: true, name: true } },
+        debt: { select: { portfolio: { select: { id: true, name: true } } } }
       }
     });
     return items;

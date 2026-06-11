@@ -32,6 +32,13 @@ export function formatDateTime(iso: string | Date): string {
   });
 }
 
+export function formatDuration(seconds: number | null): string {
+  if (!seconds) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m ${s}s`;
+}
+
 export function formatAgingBucket(bucket: string): string {
   const labels: Record<string, string> = {
     future: "Futuro",

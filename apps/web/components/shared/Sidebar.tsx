@@ -11,7 +11,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/portfolios", label: "Portafolios" },
   { href: "/conversations", label: "Conversaciones" },
-  { href: "/calls", label: "Llamadas" },
   { href: "/audit", label: "Auditoría" },
   { href: "/settings", label: "Configuración" }
 ];

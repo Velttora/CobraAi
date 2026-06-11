@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "../../lib/utils";
+import type { VoiceMessagePayload } from "../../hooks/use-conversations";
 
 interface Props {
   direction: "in" | "out";
@@ -8,9 +10,72 @@ interface Props {
   sentAt: string;
   humanSent?: boolean;
   channel: string;
+  voice?: VoiceMessagePayload | null;
 }
 
-export function MessageBubble({ direction, text, sentAt, humanSent = false, channel }: Props) {
+function VoiceCallBubble({ voice, sentAt }: { voice: VoiceMessagePayload; sentAt: string }) {
+  const [open, setOpen] = useState(false);
+  const time = new Date(sentAt).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="flex w-full justify-start">
+      <div className="max-w-[85%] rounded-2xl rounded-bl-none border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center gap-2">
+          <svg
+            className="h-4 w-4 shrink-0 text-[#D85A30]"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+          </svg>
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Llamada de voz</span>
+          <span className="ml-auto text-[10px] text-slate-400">{time}</span>
+        </div>
+
+        {voice.summary && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{voice.summary}</p>
+        )}
+
+        <button
+          className="mt-2 flex items-center gap-1 text-xs font-medium text-[#D85A30] hover:underline"
+          onClick={() => { setOpen(!open); }}
+          type="button"
+        >
+          <svg
+            className={cn("h-3 w-3 transition-transform", open && "rotate-180")}
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path d="M19 9l-7 7-7-7" />
+          </svg>
+          {open ? "Ocultar transcript" : "Ver transcript"}
+        </button>
+
+        {open && (
+          <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+            <pre className="whitespace-pre-wrap font-sans text-xs text-slate-700 dark:text-slate-300">
+              {voice.transcript}
+            </pre>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function MessageBubble({ direction, text, sentAt, humanSent = false, channel, voice }: Props) {
+  if (channel === "voice" && voice) {
+    return <VoiceCallBubble sentAt={sentAt} voice={voice} />;
+  }
+
   const isOut = direction === "out";
   const time = new Date(sentAt).toLocaleTimeString("es-CO", {
     hour: "2-digit",

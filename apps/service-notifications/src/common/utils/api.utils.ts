@@ -24,16 +24,34 @@ export function truncateSms(body: string, max = 160): string {
   return `${body.slice(0, max - 1)}…`;
 }
 
+export interface VoiceMessagePayload {
+  call_id: string;
+  transcript: string;
+  summary: string | null;
+}
+
 export function parseMessagePayload(content: string): {
   text: string;
   provider_message_id?: string;
+  voice?: VoiceMessagePayload;
 } {
   try {
     const parsed = JSON.parse(content) as {
       text?: string;
       provider_message_id?: string;
+      call_id?: string;
+      transcript?: string;
+      summary?: string | null;
     };
-    if (parsed.text !== undefined) return { text: parsed.text, provider_message_id: parsed.provider_message_id };
+    if (parsed.text !== undefined) {
+      return { text: parsed.text, provider_message_id: parsed.provider_message_id };
+    }
+    if (parsed.call_id !== undefined && parsed.transcript !== undefined) {
+      return {
+        text: parsed.summary ?? "Llamada de voz",
+        voice: { call_id: parsed.call_id, transcript: parsed.transcript, summary: parsed.summary ?? null }
+      };
+    }
   } catch {
     /* plain text */
   }

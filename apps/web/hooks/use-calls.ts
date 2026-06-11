@@ -12,6 +12,7 @@ export interface VoiceCall {
   transcriptUrl: string | null;
   createdAt: string;
   debtor: { id: string; name: string } | null;
+  debt?: { portfolio: { id: string; name: string } | null } | null;
 }
 
 export interface CallsResponse {
@@ -20,10 +21,11 @@ export interface CallsResponse {
   meta: { request_id: string; timestamp: string };
 }
 
-export function useCalls(opts: { outcome?: string } = {}) {
+export function useCalls(opts: { outcome?: string; portfolioId?: string } = {}) {
   const client = useApiClient();
   const params: Record<string, string | undefined> = { channel: "voice" };
   if (opts.outcome) params.outcome = opts.outcome;
+  if (opts.portfolioId) params.portfolio_id = opts.portfolioId;
 
   return useQuery({
     queryKey: ["calls", params],

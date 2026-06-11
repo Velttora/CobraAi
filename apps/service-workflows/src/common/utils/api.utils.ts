@@ -1,6 +1,9 @@
 import type { ApiMeta, ApiSuccessResponse } from "@cobrai/types";
 import { randomUUID } from "node:crypto";
 import type { AgingBucket } from "@cobrai/db";
+import { startOfTodayUtc, startOfZonedDayUtc } from "@cobrai/utils";
+
+export { startOfTodayUtc } from "@cobrai/utils";
 
 export function successResponse<T>(
   data: T,
@@ -14,10 +17,8 @@ export function successResponse<T>(
 }
 
 export function computeAgingDays(dueDate: Date): number {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const due = new Date(dueDate);
-  due.setUTCHours(0, 0, 0, 0);
+  const today = startOfZonedDayUtc(new Date());
+  const due = startOfZonedDayUtc(dueDate);
   return Math.max(
     0,
     Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24))
@@ -35,10 +36,4 @@ export function computeAgingBucket(days: number): AgingBucket {
 export function decimalToNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
   return Number(value);
-}
-
-export function startOfTodayUtc(): Date {
-  const d = new Date();
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
 }

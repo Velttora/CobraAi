@@ -5,7 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { usePortfolio, usePortfolios, useUpdatePortfolioStrategy } from "../../../hooks/use-portfolios";
 import { useWorkflowPackages } from "../../../hooks/use-workflows";
-import { useWorkflowStats } from "../../../hooks/use-workflows";
 import { WorkflowPackageCard } from "../../../components/workflows/WorkflowPackageCard";
 import { WorkflowRulesManager } from "../../../components/workflows/WorkflowRulesManager";
 import { OrganizationSettingsPanel } from "../../../components/settings/OrganizationSettingsPanel";
@@ -67,8 +66,6 @@ export default function SettingsPage(): React.ReactElement {
         </select>
       </label>
 
-      <StatsRow />
-
       <article className="rounded-xl border border-[#D85A30]/30 bg-gradient-to-br from-orange-50/80 to-white p-5 dark:border-[#D85A30]/40 dark:from-slate-900 dark:to-slate-950">
         <div className="flex items-start gap-3">
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D85A30]/10 text-[#D85A30]">
@@ -114,31 +111,3 @@ export default function SettingsPage(): React.ReactElement {
   );
 }
 
-function StatsRow(): React.ReactElement {
-  const statsQuery = useWorkflowStats();
-  const stats = statsQuery.data?.data;
-  if (!stats) return <></>;
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard label="Contactos hoy" value={stats.contacts_today} />
-      <StatCard label="Promesas activas" value={stats.active_promises} />
-      <StatCard label="Escalamientos hoy" value={stats.escalations_today} />
-      <StatCard label="Ejecuciones hoy" value={stats.executions_today} />
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value
-}: {
-  label: string;
-  value: number;
-}): React.ReactElement {
-  return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-    </article>
-  );
-}

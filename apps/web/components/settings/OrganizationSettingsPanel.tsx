@@ -12,19 +12,18 @@ export function OrganizationSettingsPanel(): React.ReactElement {
 
   const tenantQuery = useTenant();
   const updateTenant = useUpdateTenant();
-  const tenant = tenantQuery.data?.data;
 
-  const [name, setName] = useState("");
+  const tenantName = tenantQuery.data?.data?.name ?? "";
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const displayName = draftName ?? tenantName;
 
   useEffect(() => {
-    if (tenant?.name) {
-      setName(tenant.name);
-    }
-  }, [tenant?.name]);
+    setDraftName(null);
+  }, [tenantName]);
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    const trimmed = name.trim();
+    const trimmed = displayName.trim();
     if (!trimmed) {
       toast.error("El nombre no puede estar vacío");
       return;
@@ -32,6 +31,7 @@ export function OrganizationSettingsPanel(): React.ReactElement {
 
     try {
       await updateTenant.mutateAsync({ name: trimmed });
+      setDraftName(null);
       toast.success("Organización actualizada");
     } catch {
       toast.error("No se pudo guardar el nombre de la organización");
@@ -59,7 +59,7 @@ export function OrganizationSettingsPanel(): React.ReactElement {
             <p className="mt-4 text-sm text-[#A32D2D]">
               No se pudo cargar la organización.
             </p>
-          ) : (
+          ) : isAdmin ? (
             <form
               className="mt-4 max-w-md space-y-3"
               onSubmit={(e) => void handleSubmit(e)}
@@ -68,32 +68,35 @@ export function OrganizationSettingsPanel(): React.ReactElement {
                 Nombre
                 <input
                   className="mt-1 w-full rounded-md border px-3 py-2 disabled:cursor-not-allowed disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:disabled:bg-slate-900"
-                  disabled={!isAdmin || updateTenant.isPending}
-                  onChange={(e) => setName(e.target.value)}
+                  disabled={updateTenant.isPending}
+                  onChange={(e) => setDraftName(e.target.value)}
                   placeholder="Mi empresa"
                   type="text"
-                  value={name}
+                  value={displayName}
                 />
               </label>
 
-              {!isAdmin ? (
-                <p className="text-xs text-slate-500">
-                  Solo los administradores pueden editar el nombre.
-                </p>
-              ) : (
-                <button
-                  className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c24f29] disabled:opacity-60"
-                  disabled={
-                    updateTenant.isPending ||
-                    name.trim() === "" ||
-                    name.trim() === tenant?.name
-                  }
-                  type="submit"
-                >
-                  {updateTenant.isPending ? "Guardando…" : "Guardar"}
-                </button>
-              )}
+              <button
+                className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c24f29] disabled:opacity-60"
+                disabled={
+                  updateTenant.isPending ||
+                  displayName.trim() === "" ||
+                  displayName.trim() === tenantName
+                }
+                type="submit"
+              >
+                {updateTenant.isPending ? "Guardando…" : "Guardar"}
+              </button>
             </form>
+          ) : (
+            <dl className="mt-4 max-w-md">
+              <dt className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                Nombre
+              </dt>
+              <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">
+                {tenantName || "—"}
+              </dd>
+            </dl>
           )}
         </div>
       </div>

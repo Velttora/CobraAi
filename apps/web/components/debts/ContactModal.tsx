@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import { useCreateContact, useTemplates } from "../../hooks/use-notifications";
 import {
+  describeManualContactResult
+} from "../../lib/contact-feedback";
+import {
   channelLabel,
   resolveContactChannel,
   type DebtorContactSnapshot
@@ -40,6 +43,9 @@ export function ContactModal({
     (effectiveChannel as (typeof CHANNELS)[number]) ?? "email"
   );
   const [templateId, setTemplateId] = useState("");
+  const [lastFeedback, setLastFeedback] = useState<ReturnType<
+    typeof describeManualContactResult
+  > | null>(null);
 
   const templates = useMemo(
     () =>
@@ -122,6 +128,22 @@ export function ContactModal({
           </select>
         </label>
 
+        {lastFeedback ? (
+          <div
+            className={`mt-4 rounded-md border px-3 py-2 text-sm ${
+              lastFeedback.variant === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+                : lastFeedback.variant === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+                  : "border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+            }`}
+            role="status"
+          >
+            <p className="font-medium">{lastFeedback.title}</p>
+            <p className="mt-1 text-xs opacity-90">{lastFeedback.description}</p>
+          </div>
+        ) : null}
+
         <div className="mt-6 flex justify-end gap-2">
           <button
             className="rounded-md px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -134,13 +156,24 @@ export function ContactModal({
             className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29] disabled:opacity-50"
             disabled={createContact.isPending}
             onClick={() => {
+              setLastFeedback(null);
               void createContact
                 .mutateAsync({
                   debt_id: debtId,
                   channel: resolveMessageChannel(channel),
                   ...(templateId ? { template_id: templateId } : {})
                 })
-                .then(() => onClose());
+                .then((response) => {
+                  const feedback = describeManualContactResult(response.data);
+                  if (feedback.variant === "error") {
+                    setLastFeedback(feedback);
+                    return;
+                  }
+                  onClose();
+                })
+                .catch(() => {
+                  // El hook ya muestra toast de error de red/servidor.
+                });
             }}
             type="button"
           >

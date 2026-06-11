@@ -30,7 +30,8 @@ export function channelLabel(channel: string | null | undefined): string {
   const labels: Record<string, string> = {
     whatsapp: "WhatsApp",
     voice: "Voz",
-    email: "Email"
+    email: "Email",
+    sms: "WhatsApp"
   };
   return labels[channel] ?? channel;
 }

@@ -35,7 +35,7 @@ export const COUNTRY_RULES: Record<string, CountryRuleSet> = {
   CO: {
     code: "CO",
     timezone: "America/Bogota",
-    hours: { startHour: 6, endHour: 22, days: [0, 1, 2, 3, 4, 5, 6] },
+    hours: { startHour: 8, endHour: 18, days: [0, 1, 2, 3, 4, 5, 6] },
     frequency: { maxChannelsPerWeek: 1, maxPerWeek: 1 },
     requireCreditorIdentification: true,
     requireExplicitConsent: true

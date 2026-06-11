@@ -28,8 +28,6 @@ export interface Tenant {
   name: string;
   slug: string;
   plan: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface Portfolio {

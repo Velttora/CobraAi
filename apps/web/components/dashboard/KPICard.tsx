@@ -8,6 +8,7 @@ export type KPICardProps = {
   trend?: { value: string; positive?: boolean };
   alert?: boolean;
   loading?: boolean;
+  onClick?: () => void;
 };
 
 export function KPICard({
@@ -16,7 +17,8 @@ export function KPICard({
   hint,
   trend,
   alert,
-  loading
+  loading,
+  onClick
 }: KPICardProps) {
   if (loading) {
     return (
@@ -34,8 +36,13 @@ export function KPICard({
         "rounded-xl border bg-white p-5 dark:bg-slate-900",
         alert
           ? "border-[#A32D2D]/30 dark:border-[#A32D2D]/40"
-          : "border-slate-200 dark:border-slate-800"
+          : "border-slate-200 dark:border-slate-800",
+        onClick && "cursor-pointer transition-shadow hover:shadow-md"
       )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") onClick(); } : undefined}
     >
       <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">

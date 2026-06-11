@@ -37,7 +37,9 @@ export default function ConversationDetailPage() {
           </p>
           {thread && (
             <p className="text-xs capitalize text-slate-400">
-              {thread.channel} · {thread.total} mensajes
+              {thread.channel} · {isVoice
+                ? `${thread.total} llamada${thread.total === 1 ? "" : "s"}`
+                : `${thread.total} mensajes`}
             </p>
           )}
         </div>

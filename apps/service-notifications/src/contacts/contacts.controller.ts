@@ -15,12 +15,14 @@ export class ContactsController {
   async list(
     @ReqContext() ctx: RequestContext,
     @Query("debt_id") debtId?: string,
-    @Query("channel") channel?: string
+    @Query("channel") channel?: string,
+    @Query("portfolio_id") portfolioId?: string
   ) {
     const items = await this.contactsService.list(
       ctx.tenantId,
       debtId,
-      channel as import("@cobrai/db").ContactChannel | undefined
+      channel as import("@cobrai/db").ContactChannel | undefined,
+      portfolioId
     );
     return successResponse({ items });
   }

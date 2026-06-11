@@ -18,10 +18,10 @@ import {
   getAgingBucket,
   planOperationalScores
 } from "@cobrai/utils";
+import { startOfTodayUtc } from "@cobrai/utils";
 import {
   computeAgingDays,
-  decimalToNumber,
-  startOfTodayUtc
+  decimalToNumber
 } from "../common/utils/api.utils";
 import { KafkaService } from "../kafka/kafka.service";
 import { RuleEngineService } from "../rule-engine/rule-engine.service";
@@ -332,6 +332,74 @@ export class WorkflowsService {
       escalations_today: escalationsToday,
       executions_today: executionsToday
     };
+  }
+
+  async getContactsTodayDetail(tenantId: string) {
+    const today = startOfTodayUtc();
+    return this.prisma.contact.findMany({
+      where: { tenantId, createdAt: { gte: today }, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        channel: true,
+        status: true,
+        outcome: true,
+        createdAt: true,
+        debtor: { select: { id: true, name: true } },
+        debt: { select: { id: true, portfolio: { select: { id: true, name: true } } } }
+      }
+    });
+  }
+
+  async getActivePromisesDetail(tenantId: string) {
+    return this.prisma.promiseToPay.findMany({
+      where: { tenantId, status: "pending", deletedAt: null },
+      orderBy: { promisedDate: "asc" },
+      take: 100,
+      select: {
+        id: true,
+        promisedDate: true,
+        amount: true,
+        createdAt: true,
+        debt: {
+          select: {
+            id: true,
+            currency: true,
+            amountOutstanding: true,
+            portfolio: { select: { id: true, name: true } },
+            debtor: { select: { id: true, name: true } }
+          }
+        }
+      }
+    });
+  }
+
+  async getEscalationsTodayDetail(tenantId: string) {
+    const today = startOfTodayUtc();
+    return this.prisma.workflowExecution.findMany({
+      where: {
+        tenantId,
+        createdAt: { gte: today },
+        deletedAt: null,
+        rule: { action: "escalate_human" }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        createdAt: true,
+        status: true,
+        rule: { select: { id: true, name: true, action: true } },
+        debt: {
+          select: {
+            id: true,
+            portfolio: { select: { id: true, name: true } },
+            debtor: { select: { id: true, name: true } }
+          }
+        }
+      }
+    });
   }
 
   async listRules(tenantId: string, portfolioId: string) {

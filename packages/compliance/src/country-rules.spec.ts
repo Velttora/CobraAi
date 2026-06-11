@@ -3,8 +3,8 @@ import { isWithinHours, nextValidSendTime } from "./country-rules";
 import { getZonedParts } from "./timezone";
 
 const CO_HOURS = {
-  startHour: 6,
-  endHour: 22,
+  startHour: 8,
+  endHour: 18,
   days: [0, 1, 2, 3, 4, 5, 6]
 };
 
@@ -15,9 +15,15 @@ describe("isWithinHours (zona horaria local)", () => {
     expect(getZonedParts(at, "America/Bogota").hour).toBe(10);
   });
 
-  it("Colombia: 05:00 Bogotá está fuera de ventana aunque UTC sea 10:00", () => {
-    const at = new Date("2026-05-26T10:00:00.000Z");
+  it("Colombia: 07:00 Bogotá está fuera de ventana aunque UTC sea 12:00", () => {
+    const at = new Date("2026-05-26T12:00:00.000Z");
     expect(isWithinHours(at, CO_HOURS, "America/Bogota")).toBe(false);
+  });
+
+  it("Colombia: 18:00 Bogotá ya está fuera de ventana", () => {
+    const at = new Date("2026-05-26T23:00:00.000Z");
+    expect(isWithinHours(at, CO_HOURS, "America/Bogota")).toBe(false);
+    expect(getZonedParts(at, "America/Bogota").hour).toBe(18);
   });
 
   it("México: domingo local bloqueado", () => {
@@ -28,10 +34,10 @@ describe("isWithinHours (zona horaria local)", () => {
 });
 
 describe("nextValidSendTime", () => {
-  it("programa hoy a las 06:00 local si aún no abre la ventana", () => {
-    const from = new Date("2026-05-26T09:00:00.000Z"); // 04:00 Bogotá
+  it("programa hoy a las 08:00 local si aún no abre la ventana", () => {
+    const from = new Date("2026-05-26T11:00:00.000Z"); // 06:00 Bogotá
     const next = nextValidSendTime(from, CO_HOURS, "America/Bogota");
-    expect(getZonedParts(next, "America/Bogota").hour).toBe(6);
+    expect(getZonedParts(next, "America/Bogota").hour).toBe(8);
     expect(getZonedParts(next, "America/Bogota").day).toBe(26);
   });
 });
