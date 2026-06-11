@@ -53,6 +53,9 @@ const DebtRow = memo(function DebtRow({
       <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">
         {debt.debtor?.name ?? "—"}
       </td>
+      <td className="max-w-[160px] truncate px-4 py-3 text-slate-500 dark:text-slate-400">
+        {debt.portfolio?.name ?? "—"}
+      </td>
       <td className="px-4 py-3 tabular-nums">
         {formatCurrency(toNumber(debt.amountOutstanding), debt.currency)}
       </td>
@@ -184,6 +187,7 @@ export function DebtTable({
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
             <tr>
               <th className="px-4 py-3">Deudor</th>
+              <th className="px-4 py-3">Portafolio</th>
               {columns.map((col) => (
                 <th className="px-4 py-3" key={col.key}>
                   <button
@@ -212,7 +216,7 @@ export function DebtTable({
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                <td className="px-4 py-8 text-center text-slate-500" colSpan={8}>
                   No se encontraron deudas
                 </td>
               </tr>

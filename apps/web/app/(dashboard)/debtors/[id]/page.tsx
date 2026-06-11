@@ -113,6 +113,9 @@ export default function DebtorDetailPage({
                 </Link>
                 <p className="text-xs text-slate-500">
                   Vence {new Date(debt.dueDate).toLocaleDateString("es-CO")}
+                  {debt.portfolio?.name ? (
+                    <span className="ml-2 text-slate-400">· {debt.portfolio.name}</span>
+                  ) : null}
                 </p>
               </div>
               <StatusBadge status={debt.status} />

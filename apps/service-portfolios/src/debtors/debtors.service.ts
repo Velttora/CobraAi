@@ -35,7 +35,7 @@ export class DebtorsService {
     const debtor = await this.prisma.debtor.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: {
-        debts: { where: { deletedAt: null }, orderBy: { dueDate: "desc" } },
+        debts: { where: { deletedAt: null }, orderBy: { dueDate: "desc" }, include: { portfolio: { select: { id: true, name: true } } } },
         consents: true
       }
     });
