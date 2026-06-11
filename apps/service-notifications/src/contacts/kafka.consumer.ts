@@ -102,9 +102,9 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         break;
 
       case "cobrai.debt.escalated": {
-        // Solo procesar escalaciones a humano; legal/task no requieren bandeja de conversaciones
         const target = String(payload["target"] ?? "");
-        if (target !== "human") break;
+        // task escalations don't require a human inbox entry
+        if (target === "task") break;
         const debtId = String(payload["debt_id"] ?? "");
         const ruleName = String(payload["rule_name"] ?? payload["rule_id"] ?? "regla automática");
         await this.conversations.escalateByWorkflow(tenantId, debtId, ruleName);
