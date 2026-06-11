@@ -1,10 +1,18 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
-import type { Debtor } from "@cobrai/db";
+import type { ContactChannel, Debtor } from "@cobrai/db";
 import { Prisma } from "@prisma/client";
 import { normalizePhoneE164 } from "@cobrai/utils";
 import type { UpdateDebtorDto } from "../debts/dto/debt.dto";
 import { ScoringService } from "../ai-scoring/scoring.service";
+
+/** Canales con consentimiento implícito al importar/crear deudor en cartera. */
+const DEFAULT_CONSENT_CHANNELS: ContactChannel[] = [
+  "email",
+  "whatsapp",
+  "sms",
+  "voice"
+];
 
 type UpsertDebtorInput = {
   name: string;
@@ -89,44 +97,53 @@ export class DebtorsService {
 
     if (taxId) {
       const byTax = await this.findActiveDebtor(tenantId, { taxId });
-      if (byTax) return byTax;
+      if (byTax) return this.finalizeUpsert(tenantId, byTax);
 
       const archived = await this.findArchivedDebtor(tenantId, { taxId });
       if (archived) {
-        return this.reactivateDebtor(archived, input, { taxId, externalRef });
+        return this.finalizeUpsert(
+          tenantId,
+          await this.reactivateDebtor(archived, input, { taxId, externalRef })
+        );
       }
     }
 
     if (externalRef) {
       const byRef = await this.findActiveDebtor(tenantId, { externalRef });
-      if (byRef) return byRef;
+      if (byRef) return this.finalizeUpsert(tenantId, byRef);
 
       const archived = await this.findArchivedDebtor(tenantId, { externalRef });
       if (archived) {
-        return this.reactivateDebtor(archived, input, { taxId, externalRef });
+        return this.finalizeUpsert(
+          tenantId,
+          await this.reactivateDebtor(archived, input, { taxId, externalRef })
+        );
       }
     }
 
     if (name) {
       const byName = await this.findActiveDebtor(tenantId, { name });
-      if (byName) return byName;
+      if (byName) return this.finalizeUpsert(tenantId, byName);
     }
 
     const phones = this.normalizePhones(input.phones);
 
     try {
-      return await this.prisma.debtor.create({
-        data: {
-          tenantId,
-          name: name ?? input.name,
-          externalRef,
-          type: input.debtor_type ?? "person",
-          taxId,
-          phones,
-          email: input.debtor_email,
-          whatsappOptIn: input.whatsapp_opt_in ?? false
-        }
-      });
+      return this.finalizeUpsert(
+        tenantId,
+        await this.prisma.debtor.create({
+          data: {
+            tenantId,
+            name: name ?? input.name,
+            externalRef,
+            type: input.debtor_type ?? "person",
+            taxId,
+            phones,
+            email: input.debtor_email,
+            whatsappOptIn: input.whatsapp_opt_in ?? phones.length > 0
+          }
+        })
+      );
     } catch (error) {
       if (!this.isUniqueConstraintError(error)) {
         throw error;
@@ -141,10 +158,59 @@ export class DebtorsService {
       }
 
       if (existing.deletedAt) {
-        return this.reactivateDebtor(existing, input, { taxId, externalRef });
+        return this.finalizeUpsert(
+          tenantId,
+          await this.reactivateDebtor(existing, input, { taxId, externalRef })
+        );
       }
-      return existing;
+      return this.finalizeUpsert(tenantId, existing);
     }
+  }
+
+  /** Registra consentimiento en todos los canales si falta (p. ej. deudores importados). */
+  private async ensureDefaultConsents(
+    tenantId: string,
+    debtorId: string
+  ): Promise<void> {
+    for (const channel of DEFAULT_CONSENT_CHANNELS) {
+      const existing = await this.prisma.contactConsent.findFirst({
+        where: {
+          tenantId,
+          debtorId,
+          channel,
+          revokedAt: null,
+          deletedAt: null
+        }
+      });
+      if (existing) continue;
+
+      await this.prisma.contactConsent.create({
+        data: {
+          tenantId,
+          debtorId,
+          channel,
+          source: "import",
+          consentedAt: new Date()
+        }
+      });
+    }
+  }
+
+  private async finalizeUpsert(
+    tenantId: string,
+    debtor: Debtor
+  ): Promise<Debtor> {
+    await this.ensureDefaultConsents(tenantId, debtor.id);
+
+    const phones = (debtor.phones as string[] | null) ?? [];
+    if (!debtor.whatsappOptIn && (phones.length > 0 || debtor.email)) {
+      return this.prisma.debtor.update({
+        where: { id: debtor.id },
+        data: { whatsappOptIn: true }
+      });
+    }
+
+    return debtor;
   }
 
   private normalizePhones(phones: string[] | undefined): string[] {

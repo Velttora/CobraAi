@@ -41,7 +41,8 @@ describe("ComplianceService", () => {
     prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
     prisma.contact.findMany.mockResolvedValue([]);
 
-    const at = new Date("2026-05-24T10:00:00"); // Sunday
+    // Domingo 10:00 hora Ciudad de México (UTC-6 en mayo)
+    const at = new Date("2026-05-24T16:00:00.000Z");
     const result = await service.checkContact({
       tenantId: "t1",
       debtorId: "d1",
@@ -64,7 +65,8 @@ describe("ComplianceService", () => {
       { channel: "whatsapp", createdAt: new Date() }
     ]);
 
-    const at = new Date("2026-05-26T10:00:00"); // Tuesday
+    // Martes 10:00 hora Ciudad de México
+    const at = new Date("2026-05-26T16:00:00.000Z");
     const result = await service.checkContact({
       tenantId: "t1",
       debtorId: "d1",
@@ -89,7 +91,7 @@ describe("ComplianceService", () => {
       tenantId: "t1",
       debtorId: "d1",
       channel: "sms",
-      at: new Date("2026-05-26T15:00:00")
+      at: new Date("2026-05-26T18:00:00.000Z") // 15:00 São Paulo
     });
 
     expect(result.allowed).toBe(false);
@@ -109,7 +111,7 @@ describe("ComplianceService", () => {
       tenantId: "t1",
       debtorId: "d1",
       channel: "sms",
-      at: new Date("2026-05-26T10:00:00")
+      at: new Date("2026-05-26T15:00:00.000Z") // 10:00 Bogotá
     });
 
     expect(result.allowed).toBe(false);
@@ -127,7 +129,7 @@ describe("ComplianceService", () => {
       tenantId: "t1",
       debtorId: "d1",
       channel: "email",
-      at: new Date("2026-05-26T10:00:00")
+      at: new Date("2026-05-26T15:00:00.000Z") // 10:00 Bogotá
     });
 
     expect(result.allowed).toBe(true);

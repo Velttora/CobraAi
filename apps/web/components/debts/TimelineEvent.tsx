@@ -1,3 +1,4 @@
+import { formatDateTime } from "../../lib/formatters";
 import { cn } from "../../lib/utils";
 
 export function TimelineEvent({
@@ -16,7 +17,7 @@ export function TimelineEvent({
         {type.replace(/_/g, " ")}
       </p>
       <time className="text-xs text-slate-500">
-        {new Date(at).toLocaleString("es-CO")}
+        {formatDateTime(at)}
       </time>
       {data && Object.keys(data).length > 0 ? (
         <pre

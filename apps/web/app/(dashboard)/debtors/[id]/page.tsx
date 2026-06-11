@@ -8,7 +8,7 @@ import { StatusBadge } from "../../../../components/shared/StatusBadge";
 import { CardSkeleton } from "../../../../components/shared/Skeleton";
 import { useConversation } from "../../../../hooks/use-notifications";
 import { useDebtor } from "../../../../hooks/use-portfolios";
-import { formatCurrency } from "../../../../lib/formatters";
+import { formatCurrency, formatDateTime } from "../../../../lib/formatters";
 import type { Debt } from "../../../../lib/types";
 import { toNumber } from "../../../../lib/types";
 
@@ -138,7 +138,7 @@ export default function DebtorDetailPage({
                     {msg.channel} · {msg.direction === "out" ? "Saliente" : "Entrante"}
                   </span>
                   <span className="text-xs text-slate-400">
-                    {new Date(msg.sent_at).toLocaleString("es-CO")}
+                    {formatDateTime(msg.sent_at)}
                   </span>
                 </div>
                 <p className="mt-2">{msg.content}</p>

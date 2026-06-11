@@ -23,6 +23,15 @@ export interface ApiItemResponse<T> {
   meta: ApiMeta;
 }
 
+export interface Tenant {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Portfolio {
   id: string;
   name: string;

@@ -16,6 +16,7 @@ import {
   type WorkflowPackageSummary
 } from "../../hooks/use-workflows";
 import { sanitizeChannelText } from "../../lib/feature-flags";
+import { formatDateTime } from "../../lib/formatters";
 import {
   describeWorkflowRule,
   partitionPortfolioRules
@@ -265,7 +266,7 @@ export function PortfolioStrategyPanel({
               <li key={entry.id}>
                 {entry.action}
                 {entry.packageSlug ? ` · ${entry.packageSlug}` : ""} ·{" "}
-                {new Date(entry.createdAt).toLocaleString("es-CO")}
+                {formatDateTime(entry.createdAt)}
               </li>
             ))}
           </ul>

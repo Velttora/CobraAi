@@ -9,6 +9,7 @@ import {
   useResolveEscalation
 } from "../../../hooks/use-conversations";
 import { cn } from "../../../lib/utils";
+import { formatDateTime } from "../../../lib/formatters";
 
 type Tab = "all" | "whatsapp" | "voice";
 
@@ -147,10 +148,7 @@ export default function ConversationsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-400">
                       {conv.last_message_at
-                        ? new Date(conv.last_message_at).toLocaleString("es-CO", {
-                            dateStyle: "short",
-                            timeStyle: "short"
-                          })
+                        ? formatDateTime(conv.last_message_at)
                         : "—"}
                     </td>
                     <td className="px-4 py-3">

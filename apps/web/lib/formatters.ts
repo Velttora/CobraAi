@@ -1,4 +1,6 @@
 const DEFAULT_LOCALE = "es-CO";
+/** Zona horaria de referencia para la UI (Colombia / LATAM). */
+export const APP_TIMEZONE = "America/Bogota";
 
 export function formatCurrency(
   amount: number,
@@ -13,6 +15,21 @@ export function formatCurrency(
 
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
+}
+
+/** Fecha y hora en formato 24h, zona Colombia (no UTC del navegador). */
+export function formatDateTime(iso: string | Date): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(DEFAULT_LOCALE, {
+    timeZone: APP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
 }
 
 export function formatAgingBucket(bucket: string): string {

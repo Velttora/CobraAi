@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "../../lib/utils";
+import { formatDateTime } from "../../lib/formatters";
 import { TranscriptViewer } from "./TranscriptViewer";
 
 interface Contact {
@@ -50,10 +50,7 @@ function formatDuration(seconds: number | null): string {
 
 export function CallCard({ contact }: Props) {
   const outcome = contact.outcome ? (OUTCOME_LABELS[contact.outcome] ?? null) : null;
-  const date = new Date(contact.createdAt).toLocaleString("es-CO", {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
+  const date = formatDateTime(contact.createdAt);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#0f0d0b]">

@@ -8,6 +8,7 @@ import { useWorkflowPackages } from "../../../hooks/use-workflows";
 import { useWorkflowStats } from "../../../hooks/use-workflows";
 import { WorkflowPackageCard } from "../../../components/workflows/WorkflowPackageCard";
 import { WorkflowRulesManager } from "../../../components/workflows/WorkflowRulesManager";
+import { OrganizationSettingsPanel } from "../../../components/settings/OrganizationSettingsPanel";
 
 export default function SettingsPage(): React.ReactElement {
   const [portfolioId, setPortfolioId] = useState("");
@@ -41,10 +42,11 @@ export default function SettingsPage(): React.ReactElement {
           Configuración
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Automatización por portafolio. El mensaje de cada regla se edita desde
-          la propia regla.
+          Datos de tu organización y automatización por portafolio.
         </p>
       </header>
+
+      <OrganizationSettingsPanel />
 
       <label className="block max-w-sm text-sm font-medium">
         Portafolio

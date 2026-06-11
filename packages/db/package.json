@@ -28,6 +28,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:seed:align": "tsx src/seed-align.ts",
+    "db:backfill-consents": "tsx src/backfill-consents.ts",
     "db:clear": "tsx src/clear-database.ts",
     "db:studio": "prisma studio",
     "lint": "eslint \"src/**/*.ts\"",

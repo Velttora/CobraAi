@@ -665,42 +665,23 @@ export async function runSeed(options: RunSeedOptions = {}): Promise<void> {
     }
   });
 
-  for (const debtor of debtors.filter((d) => d.whatsappOptIn)) {
-    await prisma.contactConsent.create({
-      data: {
-        tenantId: tenant.id,
-        debtorId: debtor.id,
-        channel: "whatsapp",
-        consentedAt: new Date(),
-        source: "import"
-      }
-    });
-  }
-
-  for (const debtor of debtors.filter((d) => d.email)) {
-    await prisma.contactConsent.create({
-      data: {
-        tenantId: tenant.id,
-        debtorId: debtor.id,
-        channel: "email",
-        consentedAt: new Date(),
-        source: "import"
-      }
-    });
-  }
-
-  for (const debtor of debtors.filter(
-    (d) => Array.isArray(d.phones) && (d.phones as string[]).length > 0
-  )) {
-    await prisma.contactConsent.create({
-      data: {
-        tenantId: tenant.id,
-        debtorId: debtor.id,
-        channel: "sms",
-        consentedAt: new Date(),
-        source: "import"
-      }
-    });
+  for (const debtor of debtors) {
+    for (const channel of [
+      ContactChannel.email,
+      ContactChannel.whatsapp,
+      ContactChannel.sms,
+      ContactChannel.voice
+    ] as const) {
+      await prisma.contactConsent.create({
+        data: {
+          tenantId: tenant.id,
+          debtorId: debtor.id,
+          channel,
+          consentedAt: new Date(),
+          source: "import"
+        }
+      });
+    }
   }
 
   await prisma.auditLog.create({

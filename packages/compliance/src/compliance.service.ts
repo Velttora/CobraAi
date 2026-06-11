@@ -54,11 +54,11 @@ export class ComplianceService {
       ))
     ) {
       result = { allowed: false, reason: "no_consent" };
-    } else if (!isWithinHours(at, rules.hours)) {
+    } else if (!isWithinHours(at, rules.hours, rules.timezone)) {
       result = {
         allowed: false,
         reason: "outside_hours",
-        next_allowed_at: nextValidSendTime(at, rules.hours)
+        next_allowed_at: nextValidSendTime(at, rules.hours, rules.timezone)
       };
     } else {
       const frequencyBlocked = await this.isFrequencyBlocked(

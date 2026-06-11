@@ -39,6 +39,8 @@ export type CountryFrequencyRule = {
 
 export type CountryRuleSet = {
   code: string;
+  /** Zona horaria IANA para evaluar ventanas de contacto en hora local 24h. */
+  timezone: string;
   hours: CountryHours;
   frequency: CountryFrequencyRule;
   requireCreditorIdentification: boolean;

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useAuditLogs, useIsAdmin } from "../../../hooks/use-audit";
 import { useApiClient } from "../../../hooks/use-api-client";
+import { formatDateTime } from "../../../lib/formatters";
 
 export default function AuditPage(): React.ReactElement {
   const isAdmin = useIsAdmin();
@@ -141,7 +142,7 @@ export default function AuditPage(): React.ReactElement {
                   key={row.id}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
-                    {new Date(row.createdAt).toLocaleString("es-CO")}
+                    {formatDateTime(row.createdAt)}
                   </td>
                   <td className="px-4 py-3">
                     {row.user?.email ?? row.userId ?? "—"}
