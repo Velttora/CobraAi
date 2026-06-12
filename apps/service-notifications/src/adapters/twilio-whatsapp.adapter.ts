@@ -90,6 +90,7 @@ export class TwilioWhatsAppAdapter implements WhatsAppPort {
     const monto = variables.monto ?? variables.amount ?? "";
     const link = variables.link_pago ?? variables.link ?? "";
     const body = variables.body ?? "";
+    const empresa = variables.empresa ?? "su gestor de cobranza";
 
     // Si viene body pre-renderizado (desde agent response), usarlo directamente
     if (body) return body;
@@ -103,6 +104,6 @@ export class TwilioWhatsAppAdapter implements WhatsAppPort {
     if (templateId.includes("confirmacion")) {
       return `Hola ${nombre}, confirmamos recepción de su pago. ¡Gracias!`;
     }
-    return `Hola ${nombre}, le contactamos de CobraAI sobre su cuenta. Saldo: $${monto}. Info: ${link}`;
+    return `Hola ${nombre}, le contactamos de ${empresa} sobre su cuenta. Saldo: $${monto}. Info: ${link}`;
   }
 }

@@ -95,7 +95,8 @@ export class ConversationAgentService {
           },
           orderBy: { amountOutstanding: "desc" },
           take: 1
-        }
+        },
+        tenant: { select: { name: true } }
       }
     });
 
@@ -124,7 +125,7 @@ export class ConversationAgentService {
     // 4. Construir messages para OpenAI
     const systemPrompt = buildSystemPrompt({
       debtorName: debtor.name,
-      companyName: "CobraAI Demo",
+      companyName: debtor.tenant?.name ?? "CobraAI",
       amount: String(debt.amountOutstanding),
       currency: debt.currency,
       dueDate: new Date(debt.dueDate).toLocaleDateString("es-CO"),

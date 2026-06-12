@@ -128,6 +128,7 @@ export class ContactsService {
   ) {
     const debt = await this.getDebtContext(tenantId, input.debt_id);
     const debtor = debt.debtor;
+    const empresa = debt.tenant?.name ?? "CobraAI";
     const at = input.scheduled_at ? new Date(input.scheduled_at) : new Date();
 
     // Sin servicio de SMS activo, todo mensaje SMS se envía por WhatsApp.
@@ -179,7 +180,7 @@ export class ContactsService {
       input.template_hint
     );
 
-    const variables = this.buildVariables(debt, debtor);
+    const variables = this.buildVariables(debt, debtor, empresa);
     const contact = await this.prisma.contact.create({
       data: {
         tenantId,
@@ -304,7 +305,7 @@ export class ContactsService {
       case "voice": {
         const phone = phonesFromDebtor(debtor.phones)[0];
         if (!phone) throw new BadRequestException("Deudor sin teléfono");
-        const callHistory = await this.loadVoiceCallHistory(debtor.id, tenantId, debt.id, debtor.name, String(decimalToNumber(debt.amountOutstanding)), new Date(debt.dueDate).toISOString());
+        const callHistory = await this.loadVoiceCallHistory(debtor.id, tenantId, debt.id, debtor.name, String(decimalToNumber(debt.amountOutstanding)), new Date(debt.dueDate).toISOString(), variables.empresa ?? "CobraAI");
         const result = await this.voice.initiateCall({
           debt_id: debt.id,
           debtor_phone: phone,
@@ -429,7 +430,8 @@ export class ContactsService {
     debtId: string,
     nombre: string,
     montoRaw: string,
-    dueDateIso: string
+    dueDateIso: string,
+    empresa: string
   ): Promise<Record<string, string>> {
     const monto = montoEspanol(montoRaw);
     const fecha = fechaEspanol(dueDateIso);
@@ -460,14 +462,14 @@ export class ContactsService {
 
     let firstMessage: string;
     if (count === 0) {
-      firstMessage = `Hola, ¿es usted ${nombre}? Le habla Carlos de CobraAI. Le llamo porque tiene una deuda de ${monto} con fecha límite el ${fecha}. ¿Cómo podemos ayudarle a resolver esta situación?`;
+      firstMessage = `Hola, ¿es usted ${nombre}? Le habla Carlos de ${empresa}. Le llamo porque tiene una deuda de ${monto} con fecha límite el ${fecha}. ¿Cómo podemos ayudarle a resolver esta situación?`;
     } else if (pendingPromise) {
       const fechaPromesa = fechaEspanol(new Date(pendingPromise.promisedDate).toISOString());
-      firstMessage = `Hola ${nombre}, le llama Carlos de CobraAI. Le contacto porque usted prometió realizar un pago el ${fechaPromesa} y quería confirmar si pudo realizarlo.`;
+      firstMessage = `Hola ${nombre}, le llama Carlos de ${empresa}. Le contacto porque usted prometió realizar un pago el ${fechaPromesa} y quería confirmar si pudo realizarlo.`;
     } else if (brokenCount > 0) {
-      firstMessage = `Hola ${nombre}, soy Carlos de CobraAI. Hemos hablado anteriormente sobre su deuda de ${monto}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
+      firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Hemos hablado anteriormente sobre su deuda de ${monto}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
     } else {
-      firstMessage = `Hola ${nombre}, soy Carlos de CobraAI. Le llamo de nuevo respecto a su deuda de ${monto} con vencimiento el ${fecha}. ¿Tiene un momento para hablar?`;
+      firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Le llamo de nuevo respecto a su deuda de ${monto} con vencimiento el ${fecha}. ¿Tiene un momento para hablar?`;
     }
 
     return {
@@ -486,7 +488,8 @@ export class ContactsService {
 
   private buildVariables(
     debt: Debt,
-    debtor: Debtor
+    debtor: Debtor,
+    empresa: string
   ): Record<string, string> {
     const paymentBase =
       this.config.get<string>("PAYMENT_LINK_BASE_URL") ??
@@ -496,7 +499,7 @@ export class ContactsService {
       debtor_name: debtor.name,
       monto: String(decimalToNumber(debt.amountOutstanding)),
       amount: String(decimalToNumber(debt.amountOutstanding)),
-      empresa: "CobraAI Demo",
+      empresa,
       link_pago: `${paymentBase}/${debt.id}`,
       payment_link: `${paymentBase}/${debt.id}`,
       external_ref: debt.externalRef ?? debt.id,
@@ -560,7 +563,7 @@ export class ContactsService {
   private async getDebtContext(tenantId: string, debtId: string) {
     const debt = await this.prisma.debt.findFirst({
       where: { id: debtId, tenantId, deletedAt: null },
-      include: { debtor: true }
+      include: { debtor: true, tenant: { select: { name: true } } }
     });
     if (!debt) {
       throw new NotFoundException("Deuda no encontrada");
