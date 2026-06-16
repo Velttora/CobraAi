@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
 import type { ContactChannel } from "@cobrai/db";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
-import type { ContactsService, ContactRequestPayload } from "../contacts/contacts.service";
+import { ContactsService, type ContactRequestPayload } from "../contacts/contacts.service";
 
 export interface DebtorContactQueuePayload {
   debt_id: string;
