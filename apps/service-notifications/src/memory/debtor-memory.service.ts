@@ -3,11 +3,19 @@ import { ConfigService } from "@nestjs/config";
 import OpenAI from "openai";
 import { PrismaService } from "@cobrai/db";
 import { Prisma } from "@cobrai/db";
-import type { DebtorHistory } from "../agent/prompts/cobrai-system.prompt";
+import type { DebtorHistory, PendingDebtSummary } from "../agent/prompts/cobrai-system.prompt";
 
 // ---------------------------------------------------------------------------
 // Exported interfaces
 // ---------------------------------------------------------------------------
+
+export interface PendingDebt {
+  debtId: string;
+  externalRef: string | null;
+  amountOutstanding: number;
+  currency: string;
+  dueDate: string; // YYYY-MM-DD
+}
 
 export interface EmotionalProfile {
   summary: string;
@@ -17,6 +25,7 @@ export interface EmotionalProfile {
   sentimentScore: number; // -1.0 to 1.0
   updatedAt: string;      // ISO string
   interactionCount: number;
+  pendingDebts?: PendingDebt[];
 }
 
 export interface UnifiedDebtorContext {
@@ -46,6 +55,9 @@ interface AnalysisResult {
 export function parseProfile(raw: unknown): EmotionalProfile | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const p = raw as Record<string, unknown>;
+  const pendingDebts = Array.isArray(p["pendingDebts"])
+    ? (p["pendingDebts"] as PendingDebt[])
+    : undefined;
   return {
     summary: String(p["summary"] ?? ""),
     sentiment: (p["sentiment"] as EmotionalProfile["sentiment"]) ?? "neutral",
@@ -57,7 +69,8 @@ export function parseProfile(raw: unknown): EmotionalProfile | null {
       typeof p["sentimentScore"] === "number" ? p["sentimentScore"] : 0,
     updatedAt: String(p["updatedAt"] ?? new Date().toISOString()),
     interactionCount:
-      typeof p["interactionCount"] === "number" ? p["interactionCount"] : 0
+      typeof p["interactionCount"] === "number" ? p["interactionCount"] : 0,
+    ...(pendingDebts ? { pendingDebts } : {})
   };
 }
 
@@ -173,7 +186,12 @@ export class DebtorMemoryService {
       ...baseHistory,
       livingSummary: profile?.summary ?? null,
       overallSentiment: profile?.sentiment ?? null,
-      paymentBehavior: profile?.paymentBehavior ?? null
+      paymentBehavior: profile?.paymentBehavior ?? null,
+      pendingDebts: (profile?.pendingDebts ?? []).map<PendingDebtSummary>((d) => ({
+        externalRef: d.externalRef,
+        amountStr: `$${d.amountOutstanding.toLocaleString("es-CO")} ${d.currency}`,
+        dueDate: d.dueDate
+      }))
     };
 
     return { debtorHistory, emotionalProfile: profile };
@@ -213,11 +231,12 @@ export class DebtorMemoryService {
       !!pendingPromise
     );
 
-    // 5. Merge into updated profile
+    // 5. Merge into updated profile — preserve pendingDebts across LLM rewrites
     const updated: EmotionalProfile = {
       ...analysis,
       interactionCount: (previousProfile?.interactionCount ?? 0) + 1,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      ...(previousProfile?.pendingDebts ? { pendingDebts: previousProfile.pendingDebts } : {})
     };
 
     // 6. Persist debtor.emotionalProfile
@@ -244,7 +263,7 @@ export class DebtorMemoryService {
     debtorId: string,
     debtId?: string
   ): Promise<{
-    baseHistory: Omit<DebtorHistory, "livingSummary" | "overallSentiment" | "paymentBehavior">;
+    baseHistory: Omit<DebtorHistory, "livingSummary" | "overallSentiment" | "paymentBehavior" | "pendingDebts">;
     rawProfile: unknown;
   }> {
     const now = new Date();
@@ -459,6 +478,66 @@ export class DebtorMemoryService {
     }
 
     return parts.join("\n").substring(0, MAX);
+  }
+
+  // -------------------------------------------------------------------------
+  // Public: registerPendingDebt — called when a contact is blocked by weekly_limit
+  // -------------------------------------------------------------------------
+
+  async registerPendingDebt(
+    tenantId: string,
+    debtorId: string,
+    debt: PendingDebt
+  ): Promise<void> {
+    const row = await this.prisma.debtor.findFirst({
+      where: { id: debtorId, tenantId },
+      select: { emotionalProfile: true }
+    });
+    const profile = parseProfile(row?.emotionalProfile) ?? {
+      summary: "",
+      sentiment: "neutral" as const,
+      lastIntent: "otro",
+      paymentBehavior: "desconocido" as const,
+      sentimentScore: 0,
+      updatedAt: new Date().toISOString(),
+      interactionCount: 0
+    };
+
+    const existing = profile.pendingDebts ?? [];
+    if (existing.some((d) => d.debtId === debt.debtId)) return;
+
+    const updated: EmotionalProfile = {
+      ...profile,
+      pendingDebts: [...existing, debt]
+    };
+
+    await this.prisma.debtor.update({
+      where: { id: debtorId },
+      data: { emotionalProfile: updated as unknown as Prisma.InputJsonValue }
+    });
+
+    this.logger.log(
+      `Deuda ${debt.externalRef ?? debt.debtId} registrada como pendiente para deudor ${debtorId}`
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Public: clearPendingDebts — called after a successful outbound contact
+  // -------------------------------------------------------------------------
+
+  async clearPendingDebts(tenantId: string, debtorId: string): Promise<void> {
+    const row = await this.prisma.debtor.findFirst({
+      where: { id: debtorId, tenantId },
+      select: { emotionalProfile: true }
+    });
+    const profile = parseProfile(row?.emotionalProfile);
+    if (!profile?.pendingDebts?.length) return;
+
+    const updated: EmotionalProfile = { ...profile, pendingDebts: [] };
+    await this.prisma.debtor.update({
+      where: { id: debtorId },
+      data: { emotionalProfile: updated as unknown as Prisma.InputJsonValue }
+    });
   }
 
   // -------------------------------------------------------------------------

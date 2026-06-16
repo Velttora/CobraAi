@@ -164,6 +164,16 @@ export class ContactsService {
         };
       }
 
+      if (compliance.reason === "weekly_limit") {
+        await this.debtorMemory.registerPendingDebt(tenantId, debtor.id, {
+          debtId: debt.id,
+          externalRef: debt.externalRef ?? null,
+          amountOutstanding: decimalToNumber(debt.amountOutstanding),
+          currency: debt.currency,
+          dueDate: new Date(debt.dueDate).toISOString().split("T")[0] as string
+        });
+      }
+
       this.logger.warn(
         `Contacto bloqueado debt=${debt.id} channel=${input.channel} reason=${compliance.reason}`
       );
@@ -229,6 +239,9 @@ export class ContactsService {
         outcome: sendResult.status === "failed" ? "refused" : "no_answer",
         provider_message_id: sendResult.messageId
       });
+
+      // El agente tuvo acceso al contexto de deudas pendientes — limpiar la cola
+      await this.debtorMemory.clearPendingDebts(tenantId, debtor.id);
 
       return { contact: completed, blocked: false };
     } catch (err) {
@@ -472,6 +485,14 @@ export class ContactsService {
       firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Le llamo de nuevo respecto a su deuda de ${monto} con vencimiento el ${fecha}. ¿Tiene un momento para hablar?`;
     }
 
+    const pendingDebtsText = (ctx.emotionalProfile?.pendingDebts ?? [])
+      .map((d) => {
+        const ref = d.externalRef ?? "deuda";
+        const amt = `$${d.amountOutstanding.toLocaleString("es-CO")} ${d.currency}`;
+        return `${ref} por ${amt} (vence ${d.dueDate})`;
+      })
+      .join(", ");
+
     return {
       es_seguimiento: count > 0 ? "true" : "false",
       contactos_previos: String(count),
@@ -482,7 +503,8 @@ export class ContactsService {
       // Unified debtor profile from cross-channel memory
       perfil_deudor: ctx.emotionalProfile?.summary ?? "",
       sentimiento_previo: ctx.emotionalProfile?.sentiment ?? "neutral",
-      comportamiento_pago: ctx.emotionalProfile?.paymentBehavior ?? "desconocido"
+      comportamiento_pago: ctx.emotionalProfile?.paymentBehavior ?? "desconocido",
+      deudas_pendientes: pendingDebtsText
     };
   }
 

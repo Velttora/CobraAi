@@ -10,6 +10,12 @@ export interface PromptContext {
   debtorHistory?: DebtorHistory;
 }
 
+export interface PendingDebtSummary {
+  externalRef: string | null;
+  amountStr: string;
+  dueDate: string;
+}
+
 export interface DebtorHistory {
   previousContactsCount: number;
   brokenPromisesCount: number;
@@ -23,6 +29,8 @@ export interface DebtorHistory {
   livingSummary?: string | null;      // emotionalProfile.summary
   overallSentiment?: string | null;   // emotionalProfile.sentiment
   paymentBehavior?: string | null;    // emotionalProfile.paymentBehavior
+  // deudas bloqueadas por weekly_limit que el agente debe mencionar oportunamente
+  pendingDebts?: PendingDebtSummary[];
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
@@ -101,6 +109,13 @@ function buildHistorySection(h: DebtorHistory): string {
 
     if (h.overallSentiment) {
       lines.push(`- Sentimiento general: ${h.overallSentiment}${h.paymentBehavior ? ` — comportamiento de pago: ${h.paymentBehavior}` : ""}`);
+    }
+
+    if (h.pendingDebts && h.pendingDebts.length > 0) {
+      lines.push(`- OBLIGACIONES ADICIONALES PENDIENTES (menciónelas si hay oportunidad natural en la conversación):`);
+      for (const d of h.pendingDebts) {
+        lines.push(`  • ${d.externalRef ?? "sin referencia"}: ${d.amountStr} — vence ${d.dueDate}`);
+      }
     }
   }
 
