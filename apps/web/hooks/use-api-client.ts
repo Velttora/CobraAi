@@ -45,6 +45,15 @@ export async function patchApi<T>(
   return data;
 }
 
+export async function putApi<T>(
+  client: AxiosInstance,
+  path: string,
+  body?: unknown
+): Promise<T> {
+  const { data } = await client.put<T>(path, body);
+  return data;
+}
+
 export async function deleteApi<T>(
   client: AxiosInstance,
   path: string,

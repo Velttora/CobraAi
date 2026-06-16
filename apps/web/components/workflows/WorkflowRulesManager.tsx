@@ -631,7 +631,7 @@ function RuleSummary({
   );
 }
 
-type TemplateForm = { name: string; channel: string; content: string };
+type TemplateForm = { name: string; channel: string; subject: string; content: string };
 
 function RuleTemplateEditor({
   rule,
@@ -653,11 +653,13 @@ function RuleTemplateEditor({
       ? {
           name: template.name,
           channel: resolveMessageChannel(template.channel),
+          subject: template.subject ?? "",
           content: template.content
         }
       : {
           name: sanitizeChannelText(rule.name),
           channel: resolveMessageChannel(rule.channel) ?? "email",
+          subject: "",
           content:
             rule.trigger === "payment_confirmed"
               ? DEFAULT_PAYMENT_THANK_YOU_CONTENT
@@ -682,12 +684,16 @@ function RuleTemplateEditor({
     if (!form.name || !form.content) return;
     const variables = extractVariables(form.content);
 
+    const subject =
+      form.channel === "email" && form.subject.trim() ? form.subject.trim() : undefined;
+
     if (template) {
       updateTemplate.mutate(
         {
           id: template.id,
           name: form.name,
           channel: form.channel,
+          subject,
           content: form.content,
           variables
         },
@@ -700,6 +706,7 @@ function RuleTemplateEditor({
       {
         name: form.name,
         channel: form.channel,
+        subject,
         content: form.content,
         variables,
         is_approved: true
@@ -745,6 +752,21 @@ function RuleTemplateEditor({
             </select>
           </label>
         </div>
+        {form.channel === "email" && (
+          <label className="block text-sm">
+            Asunto del correo
+            <input
+              className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+              onChange={set("subject")}
+              placeholder="Ej: Recordatorio de pago — {{empresa}}"
+              value={form.subject}
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Admite variables como {"{{empresa}}"} o {"{{nombre}}"}. Si lo dejas
+              vacío, se usa un asunto por defecto.
+            </span>
+          </label>
+        )}
         <label className="block text-sm">
           Contenido
           <textarea

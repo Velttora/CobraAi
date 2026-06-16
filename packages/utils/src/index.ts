@@ -8,6 +8,23 @@ export {
 } from "./audit-formatter";
 export { formatCurrency } from "./currency";
 export {
+  AVAILABLE_EMAIL_VARIABLES,
+  DEFAULT_BRAND_COLOR,
+  DEFAULT_EMAIL_LAYOUT,
+  DEFAULT_EMAIL_SETTINGS,
+  normalizeLayoutConfig,
+  renderEmailLayout,
+  type EmailBlock,
+  type EmailBlockAlign,
+  type EmailBlockType,
+  type EmailLayoutConfig,
+  type EmailLayoutSettings,
+  type EmailSignature,
+  type EmailSocialLink,
+  type EmailVariableDescriptor,
+  type RenderEmailContext
+} from "./email-layout";
+export {
   APP_TIMEZONE,
   getZonedParts,
   isWithinContactWindow,

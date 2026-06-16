@@ -16,6 +16,7 @@ import { ProxyModule } from "./proxy/proxy.module";
 import { RateLimitMiddleware } from "./rate-limit/rate-limit.middleware";
 import { RateLimitModule } from "./rate-limit/rate-limit.module";
 import { TenantModule } from "./tenant/tenant.module";
+import { EmailLayoutModule } from "./email-layout/email-layout.module";
 import { WebhookModule } from "./webhook/webhook.module";
 import { PrismaService } from "@cobrai/db";
 
@@ -26,6 +27,7 @@ import { PrismaService } from "@cobrai/db";
     HealthModule,
     RateLimitModule,
     TenantModule,
+    EmailLayoutModule,
     ProxyModule
   ],
   providers: [

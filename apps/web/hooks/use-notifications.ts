@@ -13,6 +13,7 @@ export type NotificationTemplate = {
   id: string;
   name: string;
   channel: string;
+  subject?: string | null;
   content: string;
   variables: string[];
   isApproved: boolean;
@@ -44,6 +45,7 @@ export function useCreateTemplate() {
     mutationFn: (body: {
       name: string;
       channel: string;
+      subject?: string;
       content: string;
       variables?: string[];
       language?: string;
@@ -68,6 +70,7 @@ export function useUpdateTemplate() {
       id: string;
       name: string;
       channel: string;
+      subject?: string;
       content: string;
       variables?: string[];
     }) =>

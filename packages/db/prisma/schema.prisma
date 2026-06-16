@@ -271,6 +271,7 @@ model Tenant {
   workflowExecutions    WorkflowExecution[]
   auditLogs             AuditLog[]
   messages              Message[]
+  emailLayout           EmailLayout?
 
   @@map("tenants")
 }
@@ -569,6 +570,7 @@ model NotificationTemplate {
   tenantId   String         @map("tenant_id")
   name       String
   channel    ContactChannel
+  subject    String?
   content    String
   variables  Json           @default("[]")
   isApproved Boolean        @default(false) @map("is_approved")
@@ -583,6 +585,23 @@ model NotificationTemplate {
   @@unique([tenantId, name, channel])
   @@index([tenantId, channel])
   @@map("notification_templates")
+}
+
+/// Estructura drag-and-drop del correo (un shell por tenant) + firma reutilizable.
+/// `draft`/`published` guardan `{ blocks, settings, signature }` (ver @cobrai/utils EmailLayoutConfig).
+model EmailLayout {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @unique @map("tenant_id")
+  draft       Json      @default("{}")
+  published   Json?
+  publishedAt DateTime? @map("published_at")
+  updatedById String?   @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("email_layouts")
 }
 
 model ContactConsent {

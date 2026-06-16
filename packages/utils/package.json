@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./email-layout": {
+      "types": "./dist/email-layout.d.ts",
+      "default": "./dist/email-layout.js"
     }
   },
   "peerDependencies": {

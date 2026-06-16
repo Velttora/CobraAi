@@ -9,6 +9,7 @@ const mockAddEscalationSystemMessage = vi.fn().mockResolvedValue(undefined);
 
 const mockConfig = { get: vi.fn(() => undefined) };
 const mockContacts = { handleContactRequested: mockHandleContactRequested };
+const mockCoordinator = { handleQueuedRequest: vi.fn().mockResolvedValue(undefined) };
 const mockAgent = { processInboundMessage: mockProcessInboundMessage };
 const mockConversations = {
   escalateByWorkflow: mockEscalateByWorkflow,
@@ -23,6 +24,7 @@ describe("KafkaConsumerService", () => {
     consumer = new KafkaConsumerService(
       mockConfig as never,
       mockContacts as never,
+      mockCoordinator as never,
       mockAgent as never,
       mockConversations as never
     );

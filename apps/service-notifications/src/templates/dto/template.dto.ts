@@ -20,6 +20,10 @@ export class UpdateTemplateDto {
 
   @IsOptional()
   @IsString()
+  subject?: string;
+
+  @IsOptional()
+  @IsString()
   @MinLength(5)
   content?: string;
 
@@ -36,6 +40,10 @@ export class CreateTemplateDto {
 
   @IsEnum(ContactChannel)
   channel!: ContactChannel;
+
+  @IsOptional()
+  @IsString()
+  subject?: string;
 
   @IsString()
   @MinLength(5)

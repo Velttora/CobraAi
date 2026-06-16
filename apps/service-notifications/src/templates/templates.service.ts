@@ -22,6 +22,7 @@ export class TemplatesService {
       return this.prisma.notificationTemplate.update({
         where: { id: existing.id },
         data: {
+          subject: dto.subject ?? existing.subject,
           content: dto.content,
           variables: (dto.variables ?? existing.variables) as never,
           isApproved: dto.is_approved ?? existing.isApproved,
@@ -35,6 +36,7 @@ export class TemplatesService {
         tenantId,
         name: dto.name,
         channel: dto.channel,
+        subject: dto.subject ?? null,
         content: dto.content,
         variables: dto.variables ?? [],
         language: dto.language ?? "es",
@@ -49,6 +51,7 @@ export class TemplatesService {
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.channel !== undefined && { channel: dto.channel }),
+        ...(dto.subject !== undefined && { subject: dto.subject }),
         ...(dto.content !== undefined && { content: dto.content }),
         ...(dto.variables !== undefined && { variables: dto.variables })
       }

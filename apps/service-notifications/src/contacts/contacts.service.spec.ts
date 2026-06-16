@@ -45,6 +45,9 @@ function makePrisma() {
     },
     notificationTemplate: {
       findFirst: vi.fn().mockResolvedValue(null)
+    },
+    emailLayout: {
+      findUnique: vi.fn().mockResolvedValue(null)
     }
   };
 }
@@ -126,7 +129,9 @@ function makeDebtorMemory() {
         interactionCount: 2
       }
     }),
-    refreshMemory: vi.fn().mockResolvedValue(undefined)
+    refreshMemory: vi.fn().mockResolvedValue(undefined),
+    registerPendingDebt: vi.fn().mockResolvedValue(undefined),
+    clearPendingDebts: vi.fn().mockResolvedValue(undefined)
   };
 }
 
@@ -222,5 +227,89 @@ describe("ContactsService — voice enrichment via DebtorMemoryService", () => {
     expect(vars["es_seguimiento"]).toBeDefined();
     expect(vars["contactos_previos"]).toBeDefined();
     expect(vars["first_message_override"]).toBeDefined();
+  });
+});
+
+describe("ContactsService — email layout + subject", () => {
+  let service: ContactsService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let email: ReturnType<typeof makeEmail>;
+
+  function build() {
+    service = new ContactsService(
+      prisma as never,
+      makeCompliance() as never,
+      email as never,
+      makeSms() as never,
+      makeWhatsapp() as never,
+      makeVoice() as never,
+      makeKafka() as never,
+      makeWaterfall() as never,
+      makeConfig() as never,
+      makeDebtorMemory() as never
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+    email = makeEmail();
+    build();
+  });
+
+  function sentEmail() {
+    return email.sendTemplate.mock.calls[0]![0]! as {
+      to: string;
+      variables: { body: string; subject: string };
+    };
+  }
+
+  it("sin layout publicado, envuelve el mensaje en el DEFAULT_EMAIL_LAYOUT (HTML email-safe)", async () => {
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = sentEmail();
+    expect(variables.body).toContain("<!DOCTYPE html");
+    expect(variables.body).toContain("<table"); // estructura de tablas
+    // asunto derivado (sin template)
+    expect(variables.subject).toContain("Recordatorio de pago");
+  });
+
+  it("usa el shell publicado del tenant (firma incluida)", async () => {
+    prisma.emailLayout.findUnique.mockResolvedValue({
+      published: {
+        blocks: [
+          { id: "b", type: "body", props: {} },
+          { id: "s", type: "signature", props: {} }
+        ],
+        settings: {},
+        signature: { companyName: "Acme Cobranzas" }
+      }
+    });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = sentEmail();
+    expect(variables.body).toContain("Acme Cobranzas");
+    expect(variables.body).toContain("Ley 1266 de 2008");
+  });
+
+  it("usa el subject de la regla con variables sustituidas", async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue({
+      id: "tpl1",
+      tenantId: "org1",
+      channel: "email",
+      subject: "Su saldo con {{empresa}} vence pronto",
+      content: "Hola {{nombre}}, debe {{monto}}.",
+      isApproved: true,
+      language: "es"
+    });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = sentEmail();
+    // empresa cae a "CobraAI" porque el mock de debt no trae tenant.name
+    expect(variables.subject).toBe("Su saldo con CobraAI vence pronto");
+    // el cuerpo de la regla (renderizado) va dentro del shell
+    expect(variables.body).toContain("Hola Juan Pérez");
   });
 });

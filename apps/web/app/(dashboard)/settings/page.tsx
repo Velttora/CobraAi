@@ -1,6 +1,7 @@
 "use client";
 
-import { Package } from "lucide-react";
+import { Mail, Package } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { usePortfolio, usePortfolios, useUpdatePortfolioStrategy } from "../../../hooks/use-portfolios";
@@ -46,6 +47,25 @@ export default function SettingsPage(): React.ReactElement {
       </header>
 
       <OrganizationSettingsPanel />
+
+      <Link
+        className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-5 transition hover:border-[#D85A30] dark:border-slate-800 dark:bg-slate-900"
+        href="/settings/templates"
+      >
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D85A30]/10 text-[#D85A30]">
+          <Mail className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            Plantilla de correo
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Diseña con bloques (drag &amp; drop) la estructura de los correos a
+            deudores y la firma de tu organización. El cuerpo lo aporta el mensaje
+            de cada regla.
+          </p>
+        </div>
+      </Link>
 
       <label className="block max-w-sm text-sm font-medium">
         Portafolio
