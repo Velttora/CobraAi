@@ -240,8 +240,10 @@ export class ContactsService {
         provider_message_id: sendResult.messageId
       });
 
-      // El agente tuvo acceso al contexto de deudas pendientes — limpiar la cola
-      await this.debtorMemory.clearPendingDebts(tenantId, debtor.id);
+      // Solo limpiar si el mensaje llegó efectivamente al deudor
+      if (sendResult.status !== "failed") {
+        await this.debtorMemory.clearPendingDebts(tenantId, debtor.id);
+      }
 
       return { contact: completed, blocked: false };
     } catch (err) {

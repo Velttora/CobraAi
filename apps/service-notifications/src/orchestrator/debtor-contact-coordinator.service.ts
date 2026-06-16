@@ -42,6 +42,11 @@ export class DebtorContactCoordinatorService {
     tenantId: string,
     payload: DebtorContactQueuePayload
   ): Promise<void> {
+    if (!payload.debt_id || !payload.debtor_id) {
+      this.logger.warn(`Coordinador: payload inválido — debt_id o debtor_id vacío`);
+      return;
+    }
+
     const weekStart = new Date();
     weekStart.setDate(weekStart.getDate() - 7);
 
@@ -52,10 +57,18 @@ export class DebtorContactCoordinatorService {
         status: { in: ["scheduled", "in_progress", "completed"] },
         createdAt: { gte: weekStart }
       },
-      select: { id: true }
+      select: { id: true, debtId: true }
     });
 
     if (existingContact) {
+      // Si el contacto existente es exactamente esta deuda, no re-registrar como pendiente:
+      // el scheduler puede re-disparar la misma deuda en reintentos.
+      if (existingContact.debtId === payload.debt_id) {
+        this.logger.log(
+          `Coordinador: deuda ${payload.debt_id} ya tiene contacto activo esta semana — ignorando redisparo`
+        );
+        return;
+      }
       await this.deferDebt(tenantId, payload.debtor_id, payload.debt_id);
       return;
     }
