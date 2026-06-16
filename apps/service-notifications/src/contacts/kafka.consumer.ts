@@ -10,9 +10,14 @@ import {
   type InboundMessagePayload
 } from "../agent/conversation-agent.service";
 import { ConversationsService } from "../conversations/conversations.service";
+import {
+  DebtorContactCoordinatorService,
+  type DebtorContactQueuePayload
+} from "../orchestrator/debtor-contact-coordinator.service";
 
 const CONSUMED_TOPICS = [
   "cobrai.contact.requested",
+  "cobrai.debtor.contact_queue",
   "cobrai.whatsapp.message_received",
   "cobrai.voice.call_completed",
   "cobrai.email.message_received",
@@ -30,6 +35,7 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService,
     private readonly contacts: ContactsService,
+    private readonly coordinator: DebtorContactCoordinatorService,
     private readonly agent: ConversationAgentService,
     private readonly conversations: ConversationsService
   ) {}
@@ -81,6 +87,13 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         await this.contacts.handleContactRequested(
           tenantId,
           payload as ContactRequestPayload
+        );
+        break;
+
+      case "cobrai.debtor.contact_queue":
+        await this.coordinator.handleQueuedRequest(
+          tenantId,
+          payload as unknown as DebtorContactQueuePayload
         );
         break;
       case "cobrai.whatsapp.message_received":

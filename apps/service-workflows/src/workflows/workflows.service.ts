@@ -806,7 +806,10 @@ export class WorkflowsService {
     channel: ContactChannel,
     rule: WorkflowRule
   ): Promise<void> {
-    const check = await this.compliance.checkContact({
+    // Solo verificamos elegibilidad permanente (opt-out, consentimiento, WhatsApp opt-in).
+    // La frecuencia semanal la gestiona el DebtorContactCoordinator en service-notifications,
+    // que agrupa todas las deudas del mismo deudor antes de disparar un único contacto.
+    const check = await this.compliance.isChannelEligible({
       tenantId,
       debtorId: debt.debtorId,
       channel
@@ -838,13 +841,18 @@ export class WorkflowsService {
         ? "agradecimiento"
         : "workflow_automation";
 
-    await this.kafka.publish("cobrai.contact.requested", tenantId, {
+    // Publicar al coordinator en lugar de al executor directo.
+    // El coordinator decide si este deudor ya fue contactado esta semana
+    // y, de ser así, registra la deuda como pendiente para mencionarla en
+    // el próximo contacto.
+    await this.kafka.publish("cobrai.debtor.contact_queue", tenantId, {
       debt_id: debt.id,
       debtor_id: debt.debtorId,
       channel,
       rule_id: rule.id,
       template_id: rule.templateId ?? undefined,
-      template_hint: templateHint
+      template_hint: templateHint,
+      priority_score: debt.priorityScore ?? 0
     });
   }
 
