@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
   useCreateTemplate,
   useTemplates,
@@ -22,6 +23,12 @@ import {
 } from "../../lib/feature-flags";
 import { renderTemplatePreview } from "../../lib/template-preview";
 import {
+  buildRuleCondition,
+  parseAgingRangeFromCondition,
+  showsAgingRangeField,
+  validateAgingRangeForm
+} from "../../lib/workflow-rule-conditions";
+import {
   describeWorkflowRule,
   sortWorkflowRulesForDisplay
 } from "../../lib/workflow-rules";
@@ -32,9 +39,13 @@ const TRIGGERS = [
   { value: "score_updated", label: "Score actualizado" },
   { value: "promise_broken", label: "Promesa incumplida" },
   { value: "payment_confirmed", label: "Pago confirmado" },
-  { value: "schedule", label: "Programado" },
+  { value: "schedule", label: "Programado (por mora)" },
   { value: "manual", label: "Manual" }
 ] as const;
+
+const TRIGGER_LABELS = Object.fromEntries(
+  TRIGGERS.map((t) => [t.value, t.label])
+) as Record<string, string>;
 
 const ACTIONS = [
   { value: "send_notification", label: "Enviar notificación" },
@@ -61,6 +72,9 @@ const TEMPLATE_CHANNELS = [
 const DEFAULT_TEMPLATE_CONTENT =
   "Hola {{nombre}}, su saldo es {{monto}}. Pague en {{link_pago}}.";
 
+const DEFAULT_PAYMENT_THANK_YOU_CONTENT =
+  "Hola {{nombre}}, confirmamos la recepción de su pago por {{monto}}. ¡Gracias por su compromiso! Su cuenta queda al día.";
+
 function extractVariables(content: string): string[] {
   const matches = content.match(/\{\{(\w+)\}\}/g) ?? [];
   return [...new Set(matches.map((m) => m.replace(/\{\{|\}\}/g, "")))];
@@ -71,7 +85,8 @@ type RuleForm = {
   trigger: string;
   action: string;
   channel: string;
-  delay_hours: string;
+  aging_min_days: string;
+  aging_max_days: string;
   priority: string;
 };
 
@@ -80,17 +95,20 @@ const emptyRuleForm: RuleForm = {
   trigger: "debt_created",
   action: "send_notification",
   channel: "",
-  delay_hours: "",
+  aging_min_days: "",
+  aging_max_days: "",
   priority: ""
 };
 
 function ruleToForm(rule: WorkflowRule): RuleForm {
+  const range = parseAgingRangeFromCondition(rule.condition);
   return {
     name: rule.name,
     trigger: rule.trigger,
     action: rule.action,
     channel: rule.channel ?? "",
-    delay_hours: rule.delayHours ? String(rule.delayHours) : "",
+    aging_min_days: range?.min !== undefined ? String(range.min) : "",
+    aging_max_days: range?.max !== undefined ? String(range.max) : "",
     priority: rule.priority ? String(rule.priority) : ""
   };
 }
@@ -107,7 +125,7 @@ export function WorkflowRulesManager({
   const createRule = useCreateWorkflowRule(portfolioId);
   const updateRule = useUpdateWorkflowRule(portfolioId);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRule, setEditingRule] = useState<WorkflowRule | null>(null);
   const [templateRuleId, setTemplateRuleId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState<RuleForm>(emptyRuleForm);
@@ -132,14 +150,28 @@ export function WorkflowRulesManager({
 
   function handleCreate() {
     if (!newForm.name || !portfolioId) return;
+    if (showsAgingRangeField(newForm.trigger)) {
+      const rangeError = validateAgingRangeForm(
+        newForm.aging_min_days,
+        newForm.aging_max_days
+      );
+      if (rangeError) {
+        toast.error(rangeError);
+        return;
+      }
+    }
     createRule.mutate(
       {
         portfolio_id: portfolioId,
         name: newForm.name,
         trigger: newForm.trigger,
         action: newForm.action,
+        condition: buildRuleCondition({
+          trigger: newForm.trigger,
+          agingMinDays: newForm.aging_min_days,
+          agingMaxDays: newForm.aging_max_days
+        }),
         ...(newForm.channel ? { channel: newForm.channel } : {}),
-        ...(newForm.delay_hours ? { delay_hours: Number(newForm.delay_hours) } : {}),
         ...(newForm.priority ? { priority: Number(newForm.priority) } : {})
       },
       {
@@ -152,29 +184,44 @@ export function WorkflowRulesManager({
   }
 
   function handleUpdate() {
-    if (!editingId || !editForm.name) return;
+    if (!editingRule || !editForm.name) return;
+    if (showsAgingRangeField(editingRule.trigger, editingRule.condition)) {
+      const rangeError = validateAgingRangeForm(
+        editForm.aging_min_days,
+        editForm.aging_max_days
+      );
+      if (rangeError) {
+        toast.error(rangeError);
+        return;
+      }
+    }
     updateRule.mutate(
       {
-        id: editingId,
+        id: editingRule.id,
         name: editForm.name,
         action: editForm.action,
+        condition: buildRuleCondition({
+          trigger: editingRule.trigger,
+          agingMinDays: editForm.aging_min_days,
+          agingMaxDays: editForm.aging_max_days,
+          existing: editingRule.condition
+        }),
         ...(editForm.channel ? { channel: editForm.channel } : {}),
-        ...(editForm.delay_hours ? { delay_hours: Number(editForm.delay_hours) } : {}),
         ...(editForm.priority ? { priority: Number(editForm.priority) } : {})
       },
-      { onSuccess: () => setEditingId(null) }
+      { onSuccess: () => setEditingRule(null) }
     );
   }
 
   function startEdit(rule: WorkflowRule) {
     setEditForm(ruleToForm(rule));
-    setEditingId(rule.id);
+    setEditingRule(rule);
     setTemplateRuleId(null);
   }
 
   function toggleTemplate(rule: WorkflowRule) {
     setTemplateRuleId((current) => (current === rule.id ? null : rule.id));
-    setEditingId(null);
+    setEditingRule(null);
   }
 
   return (
@@ -205,7 +252,7 @@ export function WorkflowRulesManager({
 
       {featureFlags.workflowRuleCreation && showNew && (
         <div className="border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950">
-          <RuleFormFields form={newForm} onChange={setNewForm} />
+          <RuleFormFields form={newForm} onChange={setNewForm} trigger={newForm.trigger} />
           <div className="mt-4 flex gap-2">
             <button
               className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29] disabled:opacity-50"
@@ -232,7 +279,7 @@ export function WorkflowRulesManager({
       ) : (
         <ul>
           {rules.map((rule) =>
-            editingId === rule.id ? (
+            editingRule?.id === rule.id ? (
               <li
                 className="border-b border-slate-100 bg-slate-50 px-5 py-4 last:border-0 dark:border-slate-800 dark:bg-slate-950"
                 key={rule.id}
@@ -240,7 +287,13 @@ export function WorkflowRulesManager({
                 <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-300">
                   Editando: {sanitizeChannelText(rule.name)}
                 </p>
-                <RuleFormFields form={editForm} hidesTrigger onChange={setEditForm} />
+                <RuleFormFields
+                  condition={rule.condition}
+                  form={editForm}
+                  hidesTrigger
+                  onChange={setEditForm}
+                  trigger={editForm.trigger || rule.trigger}
+                />
                 <div className="mt-4 flex gap-2">
                   <button
                     className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white hover:bg-[#c24f29] disabled:opacity-50"
@@ -252,7 +305,7 @@ export function WorkflowRulesManager({
                   </button>
                   <button
                     className="rounded-md border border-slate-200 px-4 py-2 text-sm dark:border-slate-700"
-                    onClick={() => setEditingId(null)}
+                    onClick={() => setEditingRule(null)}
                     type="button"
                   >
                     Cancelar
@@ -300,10 +353,14 @@ export function WorkflowRulesManager({
 function RuleFormFields({
   form,
   onChange,
+  trigger,
+  condition,
   hidesTrigger = false
 }: {
   form: RuleForm;
   onChange: (f: RuleForm) => void;
+  trigger: string;
+  condition?: Record<string, unknown>;
   hidesTrigger?: boolean;
 }): React.ReactElement {
   const set =
@@ -311,8 +368,63 @@ function RuleFormFields({
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       onChange({ ...form, [key]: e.target.value });
 
+  const showAgingRange = showsAgingRangeField(trigger, condition);
+  const triggerLabel = TRIGGER_LABELS[trigger] ?? trigger;
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
+      {hidesTrigger ? (
+        <div className="sm:col-span-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
+          <span className="text-slate-500">Disparador: </span>
+          <span className="font-medium text-slate-800 dark:text-slate-200">
+            {triggerLabel}
+          </span>
+        </div>
+      ) : null}
+      {showAgingRange ? (
+        <div className="sm:col-span-2 rounded-md border border-[#D85A30]/25 bg-orange-50/50 p-4 dark:border-[#D85A30]/30 dark:bg-orange-950/20">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            Rango de mora (días)
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Define cuándo contactar según los días transcurridos desde el
+            vencimiento de la deuda.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              Desde el día
+              <input
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                min="0"
+                onChange={set("aging_min_days")}
+                placeholder="0"
+                type="number"
+                value={form.aging_min_days}
+              />
+            </label>
+            <label className="text-sm">
+              Hasta el día
+              <input
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                min="0"
+                onChange={set("aging_max_days")}
+                placeholder="30"
+                type="number"
+                value={form.aging_max_days}
+              />
+            </label>
+          </div>
+          <span className="mt-2 block text-xs text-slate-500 dark:text-slate-400">
+            Ejemplos: 0–30 primer mes, 31–60 segundo mes, 61–90 tercer mes.
+            Deja &quot;Hasta&quot; vacío para mora sin tope (ej. desde el día 181).
+          </span>
+        </div>
+      ) : hidesTrigger ? (
+        <p className="sm:col-span-2 text-xs text-slate-500 dark:text-slate-400">
+          Esta regla no usa rango de mora. Solo las reglas programadas (Aging
+          0-30, 31-60, etc.) permiten configurar el rango de días.
+        </p>
+      ) : null}
       <label className="text-sm">
         Nombre *
         <input
@@ -326,7 +438,23 @@ function RuleFormFields({
           Disparador
           <select
             className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-            onChange={set("trigger")}
+            onChange={(e) => {
+              const nextTrigger = e.target.value;
+              const next = { ...form, trigger: nextTrigger };
+              if (
+                showsAgingRangeField(nextTrigger) &&
+                !form.aging_min_days &&
+                !form.aging_max_days
+              ) {
+                next.aging_min_days = "0";
+                next.aging_max_days = "30";
+              }
+              if (nextTrigger === "payment_confirmed") {
+                next.action = "send_notification";
+                if (!next.channel) next.channel = "whatsapp";
+              }
+              onChange(next);
+            }}
             value={form.trigger}
           >
             {TRIGGERS.map((t) => (
@@ -364,21 +492,6 @@ function RuleFormFields({
             </option>
           ))}
         </select>
-      </label>
-      <label className="text-sm">
-        Delay (horas)
-        <input
-          className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-          min="0"
-          max="168"
-          onChange={set("delay_hours")}
-          type="number"
-          value={form.delay_hours}
-        />
-        <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-          Horas de espera tras el disparador antes de ejecutar la acción. 0 = de
-          inmediato. Rango sugerido: 0–168 h (hasta 7 días).
-        </span>
       </label>
       <label className="text-sm">
         Prioridad
@@ -545,7 +658,10 @@ function RuleTemplateEditor({
       : {
           name: sanitizeChannelText(rule.name),
           channel: resolveMessageChannel(rule.channel) ?? "email",
-          content: DEFAULT_TEMPLATE_CONTENT
+          content:
+            rule.trigger === "payment_confirmed"
+              ? DEFAULT_PAYMENT_THANK_YOU_CONTENT
+              : DEFAULT_TEMPLATE_CONTENT
         }
   );
   const [preview, setPreview] = useState<string | null>(null);

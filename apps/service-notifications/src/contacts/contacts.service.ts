@@ -523,7 +523,12 @@ export class ContactsService {
       if (found) return found;
     }
 
-    const nameHint = hint === "workflow_automation" ? "recordatorio" : hint;
+    const nameHint =
+      hint === "workflow_automation"
+        ? "recordatorio"
+        : hint === "agradecimiento"
+          ? "agradecimiento"
+          : hint;
     if (nameHint) {
       const byName = await this.prisma.notificationTemplate.findFirst({
         where: {

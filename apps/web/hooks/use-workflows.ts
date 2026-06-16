@@ -19,6 +19,24 @@ export type WorkflowRule = {
   templateId?: string | null;
 };
 
+function normalizeWorkflowRule(raw: Record<string, unknown>): WorkflowRule {
+  return {
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? ""),
+    trigger: String(raw.trigger ?? ""),
+    condition:
+      raw.condition && typeof raw.condition === "object" && !Array.isArray(raw.condition)
+        ? (raw.condition as Record<string, unknown>)
+        : {},
+    action: String(raw.action ?? ""),
+    channel: (raw.channel as string | null | undefined) ?? null,
+    delayHours: Number(raw.delayHours ?? raw.delay_hours ?? 0),
+    priority: Number(raw.priority ?? 100),
+    isActive: Boolean(raw.isActive ?? raw.is_active ?? true),
+    templateId: (raw.templateId ?? raw.template_id ?? null) as string | null
+  };
+}
+
 export type WorkflowPackageSummary = {
   id: string;
   name: string;
@@ -85,12 +103,17 @@ export function useWorkflowRules(portfolioId?: string) {
   const client = useApiClient();
   return useQuery({
     queryKey: ["workflow-rules", portfolioId],
-    queryFn: () =>
-      fetchApi<ApiItemResponse<WorkflowRule[]>>(
+    queryFn: async () => {
+      const response = await fetchApi<ApiItemResponse<Record<string, unknown>[]>>(
         client,
         "/api/v1/workflows/rules",
         { portfolio_id: portfolioId ?? "" }
-      ),
+      );
+      return {
+        ...response,
+        data: response.data.map(normalizeWorkflowRule)
+      } satisfies ApiItemResponse<WorkflowRule[]>;
+    },
     enabled: Boolean(portfolioId)
   });
 }
@@ -262,6 +285,7 @@ export function useUpdateWorkflowRule(portfolioId?: string) {
       channel?: string;
       delay_hours?: number;
       priority?: number;
+      condition?: Record<string, unknown>;
       template_id?: string | null;
     }) => patchApi<ApiItemResponse<WorkflowRule>>(client, `/api/v1/workflows/rules/${id}`, body),
     onSuccess: () => {

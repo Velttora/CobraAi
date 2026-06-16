@@ -72,11 +72,16 @@ function agingRank(condition: Record<string, unknown> | undefined): number {
   }
 
   const agingDays = condition?.aging_days;
-  if (agingDays && typeof agingDays === "object") {
-    const threshold = (agingDays as Record<string, unknown>).gte ??
-      (agingDays as Record<string, unknown>).gt;
-    if (typeof threshold === "number") {
-      return agingDaysToBucketRank(threshold);
+  if (agingDays && typeof agingDays === "object" && !Array.isArray(agingDays)) {
+    const obj = agingDays as Record<string, unknown>;
+    const gte =
+      typeof obj.gte === "number"
+        ? obj.gte
+        : typeof obj.gt === "number"
+          ? obj.gt + 1
+          : undefined;
+    if (gte !== undefined) {
+      return agingDaysToBucketRank(gte);
     }
   }
 
@@ -205,6 +210,18 @@ function comparatorThreshold(
 }
 
 function agingLabel(condition: Record<string, unknown>): string | undefined {
+  const agingDaysRaw = condition.aging_days;
+  if (agingDaysRaw && typeof agingDaysRaw === "object" && !Array.isArray(agingDaysRaw)) {
+    const obj = agingDaysRaw as Record<string, unknown>;
+    const gte = numberValue(obj.gte) ?? (numberValue(obj.gt) !== undefined ? numberValue(obj.gt)! + 1 : undefined);
+    const lte = numberValue(obj.lte) ?? (numberValue(obj.lt) !== undefined ? numberValue(obj.lt)! - 1 : undefined);
+    if (gte !== undefined && lte !== undefined) {
+      return gte === lte ? `${gte} días` : `${gte} a ${lte} días`;
+    }
+    if (gte !== undefined) return `desde ${gte} días`;
+    if (lte !== undefined) return `hasta ${lte} días`;
+  }
+
   const raw = condition.aging_bucket;
   const buckets = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
   const labels = buckets
@@ -261,7 +278,7 @@ function describeWhen(rule: RuleDescribable): string {
     case "promise_broken":
       return "Cuando el deudor incumple una promesa de pago";
     case "payment_confirmed":
-      return "Cuando se confirma el pago";
+      return "Cuando se confirma el pago total (saldo en cero)";
     case "manual":
       return "Cuando se ejecuta manualmente";
     default:
@@ -278,6 +295,11 @@ function describeDoes(rule: RuleDescribable): string {
     case "send_notification": {
       const resolved = resolveMessageChannel(rule.channel);
       const channel = resolved ? CHANNEL_LABEL[resolved] : undefined;
+      if (rule.trigger === "payment_confirmed") {
+        if (resolved === "voice") return "Hace una llamada de agradecimiento con IA";
+        if (channel) return `Envía un mensaje de agradecimiento por ${channel}`;
+        return "Envía un mensaje de agradecimiento al deudor";
+      }
       if (resolved === "voice") return "Hace una llamada con IA";
       if (channel) return `Envía un ${channel}`;
       return "Envía una notificación";

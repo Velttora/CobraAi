@@ -9,7 +9,7 @@ describe("compareRuleFiringOrder", () => {
   it("ordena el paquete cartera personas como el ciclo de vida del deudor", () => {
     const rules = [
       {
-        name: "Pago confirmado — cerrar",
+        name: "Pago confirmado — agradecimiento WhatsApp",
         trigger: "payment_confirmed",
         condition: { amount_outstanding: 0 }
       },
@@ -62,7 +62,7 @@ describe("compareRuleFiringOrder", () => {
       "Aging 61-90 — llamada IA",
       "Aging 180+ — escalamiento legal",
       "Promesa rota — SMS + tarea",
-      "Pago confirmado — cerrar"
+      "Pago confirmado — agradecimiento WhatsApp"
     ]);
   });
 
@@ -105,14 +105,14 @@ describe("describeWorkflowRule", () => {
     expect(desc.does).toBe("Envía un WhatsApp");
   });
 
-  it("traduce aging schedule y voz", () => {
+  it("traduce aging schedule parametrizado y voz", () => {
     const desc = describeWorkflowRule({
       trigger: "schedule",
-      condition: { aging_bucket: "d61_90" },
+      condition: { aging_days: { gte: 31, lte: 60 } },
       action: "send_notification",
       channel: "voice"
     });
-    expect(desc.when).toBe("Cuando la deuda lleva 61 a 90 días de mora");
+    expect(desc.when).toBe("Cuando la deuda lleva 31 a 60 días de mora");
     expect(desc.does).toBe("Hace una llamada con IA");
     expect(desc.timing).toBe("");
   });
@@ -130,16 +130,19 @@ describe("describeWorkflowRule", () => {
     expect(desc.timing).toBe("4 horas después");
   });
 
-  it("traduce pago confirmado a cierre de deuda", () => {
+  it("traduce pago confirmado a mensaje de agradecimiento", () => {
     const desc = describeWorkflowRule({
       trigger: "payment_confirmed",
       condition: { amount_outstanding: 0 },
-      action: "update_status"
+      action: "send_notification",
+      channel: "whatsapp"
     });
-    expect(desc.when).toBe("Cuando se confirma el pago");
-    expect(desc.does).toBe("Marca la deuda como pagada");
+    expect(desc.when).toBe(
+      "Cuando se confirma el pago total (saldo en cero)"
+    );
+    expect(desc.does).toBe("Envía un mensaje de agradecimiento por WhatsApp");
     expect(desc.summary).toBe(
-      "Cuando se confirma el pago, marca la deuda como pagada."
+      "Cuando se confirma el pago total (saldo en cero), envía un mensaje de agradecimiento por WhatsApp."
     );
   });
 });

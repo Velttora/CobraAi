@@ -24,7 +24,7 @@
     {
       "name": "Aging 31-60 — recordatorio email",
       "trigger": "schedule",
-      "condition": { "aging_bucket": "d31_60" },
+      "condition": { "aging_days": { "gte": 31, "lte": 60 } },
       "action": "send_notification",
       "channel": "email",
       "delay_hours": 0,
@@ -33,7 +33,7 @@
     {
       "name": "Aging 61-90 — llamada IA",
       "trigger": "schedule",
-      "condition": { "aging_bucket": "d61_90" },
+      "condition": { "aging_days": { "gte": 61, "lte": 90 } },
       "action": "send_notification",
       "channel": "voice",
       "delay_hours": 0,
@@ -42,7 +42,7 @@
     {
       "name": "Aging 90+ — SMS urgente",
       "trigger": "schedule",
-      "condition": { "aging_bucket": ["d91_180", "d180_plus"] },
+      "condition": { "aging_days": { "gte": 91 } },
       "action": "send_notification",
       "channel": "sms",
       "delay_hours": 0,
@@ -67,10 +67,11 @@
       "priority": 15
     },
     {
-      "name": "Pago total — cerrar cuenta",
+      "name": "Pago total — agradecimiento email",
       "trigger": "payment_confirmed",
       "condition": { "amount_outstanding": 0 },
-      "action": "update_status",
+      "action": "send_notification",
+      "channel": "email",
       "delay_hours": 0,
       "priority": 10
     }

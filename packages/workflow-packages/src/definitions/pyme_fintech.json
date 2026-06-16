@@ -34,7 +34,7 @@
     {
       "name": "Aging 0-30 — WhatsApp recordatorio",
       "trigger": "schedule",
-      "condition": { "aging_bucket": "d0_30" },
+      "condition": { "aging_days": { "gte": 0, "lte": 30 } },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 0,
@@ -43,7 +43,7 @@
     {
       "name": "Aging 31-60 — WhatsApp",
       "trigger": "schedule",
-      "condition": { "aging_bucket": "d31_60" },
+      "condition": { "aging_days": { "gte": 31, "lte": 60 } },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 0,
@@ -59,10 +59,11 @@
       "priority": 5
     },
     {
-      "name": "Pago confirmado — cerrar",
+      "name": "Pago confirmado — agradecimiento WhatsApp",
       "trigger": "payment_confirmed",
       "condition": { "amount_outstanding": 0 },
-      "action": "update_status",
+      "action": "send_notification",
+      "channel": "whatsapp",
       "delay_hours": 0,
       "priority": 10
     }

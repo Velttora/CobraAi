@@ -46,6 +46,25 @@ describe("RuleEngineService", () => {
     ).toBe(true);
   });
 
+  it("evalúa aging_days con rango personalizado", () => {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const due = new Date(today);
+    due.setUTCDate(due.getUTCDate() - 45);
+    const debt = { ...baseDebt, dueDate: due };
+
+    expect(
+      engine.matchesCondition(debt as never, debtor as never, {
+        aging_days: { gte: 31, lte: 60 }
+      })
+    ).toBe(true);
+    expect(
+      engine.matchesCondition(debt as never, debtor as never, {
+        aging_days: { gte: 0, lte: 30 }
+      })
+    ).toBe(false);
+  });
+
   it("evalúa whatsapp_opt_in", () => {
     expect(
       engine.matchesCondition(baseDebt as never, debtor as never, {

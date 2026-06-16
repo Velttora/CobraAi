@@ -749,7 +749,7 @@ export class WorkflowsService {
             tenantId,
             debt,
             (rule.channel ?? debt.bestChannel ?? "email") as ContactChannel,
-            rule.id
+            rule
           );
           break;
         case "escalate_human":
@@ -804,7 +804,7 @@ export class WorkflowsService {
     tenantId: string,
     debt: DebtContext,
     channel: ContactChannel,
-    ruleId: string
+    rule: WorkflowRule
   ): Promise<void> {
     const check = await this.compliance.checkContact({
       tenantId,
@@ -820,7 +820,7 @@ export class WorkflowsService {
         data: {
           tenantId,
           debtId: debt.id,
-          ruleId,
+          ruleId: rule.id,
           status: "skipped",
           executedAt: new Date(),
           result: { blocked: true, reason: check.reason, channel }
@@ -829,13 +829,22 @@ export class WorkflowsService {
       return;
     }
 
-    await this.applyTransition(tenantId, debt.id, "CONTACT_STARTED");
+    if (rule.trigger !== "payment_confirmed") {
+      await this.applyTransition(tenantId, debt.id, "CONTACT_STARTED");
+    }
+
+    const templateHint =
+      rule.trigger === "payment_confirmed"
+        ? "agradecimiento"
+        : "workflow_automation";
+
     await this.kafka.publish("cobrai.contact.requested", tenantId, {
       debt_id: debt.id,
       debtor_id: debt.debtorId,
       channel,
-      rule_id: ruleId,
-      template_hint: "workflow_automation"
+      rule_id: rule.id,
+      template_id: rule.templateId ?? undefined,
+      template_hint: templateHint
     });
   }
 
