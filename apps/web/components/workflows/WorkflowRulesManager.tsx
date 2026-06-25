@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   useCreateTemplate,
@@ -22,6 +22,10 @@ import {
   sanitizeChannelText
 } from "../../lib/feature-flags";
 import { renderTemplatePreview } from "../../lib/template-preview";
+import {
+  TEMPLATE_VARIABLE_GROUPS,
+  TEMPLATE_VARIABLE_SAMPLES
+} from "../../lib/template-variables";
 import {
   buildRuleCondition,
   parseAgingRangeFromCondition,
@@ -667,6 +671,26 @@ function RuleTemplateEditor({
         }
   );
   const [preview, setPreview] = useState<string | null>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertVariable(key: string) {
+    const token = `{{${key}}}`;
+    const el = contentRef.current;
+    if (!el) {
+      setForm((prev) => ({ ...prev, content: `${prev.content}${token}` }));
+      return;
+    }
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? el.value.length;
+    const next = `${el.value.slice(0, start)}${token}${el.value.slice(end)}`;
+    setForm((prev) => ({ ...prev, content: next }));
+    // Reposiciona el cursor justo después de la variable insertada.
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
 
   const isPending =
     createTemplate.isPending || updateTemplate.isPending || updateRule.isPending;
@@ -772,12 +796,47 @@ function RuleTemplateEditor({
           <textarea
             className="mt-1 min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-900"
             onChange={set("content")}
+            ref={contentRef}
             value={form.content}
           />
         </label>
         <p className="text-xs text-slate-500">
-          Variables: {extractVariables(form.content).join(", ") || "—"}
+          Variables usadas: {extractVariables(form.content).join(", ") || "—"}
         </p>
+        <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            Variables disponibles
+          </p>
+          <p className="mb-3 text-xs text-slate-500">
+            Haz clic en una variable para insertarla en el mensaje. Se reemplaza
+            automáticamente con los datos reales de cada deudor al enviar.
+          </p>
+          <div className="space-y-3">
+            {TEMPLATE_VARIABLE_GROUPS.map((group) => (
+              <div key={group.category}>
+                <p className="mb-1.5 text-[11px] font-semibold text-slate-400">
+                  {group.category}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {group.variables.map((v) => (
+                    <button
+                      className="group inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-left text-xs hover:border-[#D85A30] hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+                      key={v.key}
+                      onClick={() => insertVariable(v.key)}
+                      title={v.label}
+                      type="button"
+                    >
+                      <code className="font-mono text-[#D85A30]">{`{{${v.key}}}`}</code>
+                      <span className="hidden text-slate-500 sm:inline">
+                        · {v.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
         {preview && (
           <p className="rounded-md bg-white p-3 text-sm dark:bg-slate-900">{preview}</p>
         )}
@@ -794,13 +853,7 @@ function RuleTemplateEditor({
         <button
           className="rounded-md border border-slate-200 px-4 py-2 text-sm dark:border-slate-700"
           onClick={() =>
-            setPreview(
-              renderTemplatePreview(form.content, {
-                nombre: "María López",
-                monto: "$1.250.000",
-                link_pago: "https://pay.cobrai.dev/abc"
-              })
-            )
+            setPreview(renderTemplatePreview(form.content, TEMPLATE_VARIABLE_SAMPLES))
           }
           type="button"
         >

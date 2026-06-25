@@ -26,6 +26,8 @@ import {
   buildMessageContent,
   decimalToNumber,
   fechaEspanol,
+  formatDate,
+  formatMoney,
   montoEspanol,
   phonesFromDebtor,
   renderTemplate
@@ -524,16 +526,33 @@ export class ContactsService {
     const paymentBase =
       this.config.get<string>("PAYMENT_LINK_BASE_URL") ??
       "http://localhost:3001/pay";
+
+    const outstanding = decimalToNumber(debt.amountOutstanding);
+    const original = decimalToNumber(debt.amountOriginal);
+    const currency = debt.currency ?? "COP";
+    const due = new Date(debt.dueDate);
+    const diasMora = Number.isNaN(due.getTime())
+      ? 0
+      : Math.max(
+          0,
+          Math.floor((Date.now() - due.getTime()) / (1000 * 60 * 60 * 24))
+        );
+
     return {
       nombre: debtor.name,
       debtor_name: debtor.name,
-      monto: String(decimalToNumber(debt.amountOutstanding)),
-      amount: String(decimalToNumber(debt.amountOutstanding)),
+      monto: String(outstanding),
+      amount: String(outstanding),
+      monto_formato: `${formatMoney(outstanding)} ${currency}`,
+      monto_original: String(original),
+      moneda: currency,
+      dias_mora: String(diasMora),
       empresa,
       link_pago: `${paymentBase}/${debt.id}`,
       payment_link: `${paymentBase}/${debt.id}`,
       external_ref: debt.externalRef ?? debt.id,
-      due_date: new Date(debt.dueDate).toISOString(),
+      due_date: due.toISOString(),
+      fecha_vencimiento: formatDate(due),
       installments: "3",
       link: `${paymentBase}/${debt.id}`,
       days: "15"

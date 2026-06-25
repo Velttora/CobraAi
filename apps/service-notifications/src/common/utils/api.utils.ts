@@ -84,6 +84,23 @@ export function countryFromAddress(address: unknown): string {
   return country?.toUpperCase().slice(0, 2) ?? "CO";
 }
 
+/** Formatea un número como monto con separador de miles (estilo es-CO). Ej: 1250000 → "1.250.000" */
+export function formatMoney(raw: string | number): string {
+  const n = Math.round(Number(raw));
+  if (Number.isNaN(n)) return String(raw);
+  return n.toLocaleString("es-CO");
+}
+
+/** Formatea una fecha como DD/MM/AAAA. */
+export function formatDate(raw: string | Date | undefined): string {
+  if (!raw) return "";
+  const d = typeof raw === "string" ? new Date(raw) : raw;
+  if (Number.isNaN(d.getTime())) return String(raw);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
 // ─── Speech helpers (TTS español) ───────────────────────────────────────────
 
 const _MESES = ["enero","febrero","marzo","abril","mayo","junio",

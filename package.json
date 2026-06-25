@@ -36,6 +36,7 @@
     "db:backfill-escalations": "pnpm --filter @cobrai/db db:backfill-escalations",
     "db:fix-prod-escalations": "bash infra/fly/run-prod-db-fix.sh",
     "db:fix-prod-payment-thank-you": "bash infra/fly/run-prod-payment-thank-you.sh",
+    "db:migrate:prod": "bash infra/fly/run-prod-migrate.sh",
     "fly:setup-infra": "bash infra/fly/setup-infra.sh",
     "fly:deploy": "bash infra/fly/deploy.sh",
     "transform:cartera": "tsx scripts/transform-cartera.ts"
