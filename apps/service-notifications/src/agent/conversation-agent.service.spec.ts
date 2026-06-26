@@ -138,7 +138,8 @@ describe("ConversationAgentService", () => {
       mockKafka as never,
       mockWhatsapp as never,
       mockDebtorMemory as never,
-      mockEmail as never
+      mockEmail as never,
+      { createPlan: vi.fn().mockResolvedValue("plan-1") } as never
     );
   });
 

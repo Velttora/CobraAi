@@ -4,9 +4,10 @@ import { ConversationAgentService } from "./conversation-agent.service";
 import { KafkaModule } from "../kafka/kafka.module";
 import { AdaptersModule } from "../adapters/adapters.module";
 import { MemoryModule } from "../memory/memory.module";
+import { PaymentPlanModule } from "./payment-plan.module";
 
 @Module({
-  imports: [KafkaModule, AdaptersModule, ConfigModule, MemoryModule],
+  imports: [KafkaModule, AdaptersModule, ConfigModule, MemoryModule, PaymentPlanModule],
   providers: [ConversationAgentService],
   exports: [ConversationAgentService]
 })

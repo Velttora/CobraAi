@@ -22,6 +22,15 @@
       "priority": 5
     },
     {
+      "name": "Pre-vencimiento -7d — recordatorio email",
+      "trigger": "schedule",
+      "condition": { "days_to_due": { "gte": 1, "lte": 7 } },
+      "action": "send_notification",
+      "channel": "email",
+      "delay_hours": 0,
+      "priority": 28
+    },
+    {
       "name": "Aging 31-60 — recordatorio email",
       "trigger": "schedule",
       "condition": { "aging_days": { "gte": 31, "lte": 60 } },

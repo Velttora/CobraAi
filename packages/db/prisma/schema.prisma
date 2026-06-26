@@ -255,23 +255,24 @@ model Tenant {
   updatedAt DateTime   @updatedAt @map("updated_at")
   deletedAt DateTime?  @map("deleted_at")
 
-  users                 User[]
-  portfolios            Portfolio[]
+  users                        User[]
+  portfolios                   Portfolio[]
   portfolioPackageApplications PortfolioPackageApplication[]
-  debtors               Debtor[]
-  debts                 Debt[]
-  contacts              Contact[]
-  promisesToPay         PromiseToPay[]
-  payments              Payment[]
-  paymentLinks          PaymentLink[]
-  conversations         Conversation[]
-  notificationTemplates NotificationTemplate[]
-  contactConsents       ContactConsent[]
-  workflowRules         WorkflowRule[]
-  workflowExecutions    WorkflowExecution[]
-  auditLogs             AuditLog[]
-  messages              Message[]
-  emailLayout           EmailLayout?
+  debtors                      Debtor[]
+  debts                        Debt[]
+  contacts                     Contact[]
+  promisesToPay                PromiseToPay[]
+  paymentPlans                 PaymentPlan[]
+  payments                     Payment[]
+  paymentLinks                 PaymentLink[]
+  conversations                Conversation[]
+  notificationTemplates        NotificationTemplate[]
+  contactConsents              ContactConsent[]
+  workflowRules                WorkflowRule[]
+  workflowExecutions           WorkflowExecution[]
+  auditLogs                    AuditLog[]
+  messages                     Message[]
+  emailLayout                  EmailLayout?
 
   @@map("tenants")
 }
@@ -290,10 +291,10 @@ model User {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
-  tenant            Tenant      @relation(fields: [tenantId], references: [id])
-  portfoliosCreated Portfolio[] @relation("PortfolioCreatedBy")
+  tenant              Tenant                        @relation(fields: [tenantId], references: [id])
+  portfoliosCreated   Portfolio[]                   @relation("PortfolioCreatedBy")
   packageApplications PortfolioPackageApplication[] @relation("PackageApplicationBy")
-  auditLogs         AuditLog[]
+  auditLogs           AuditLog[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -301,21 +302,21 @@ model User {
 }
 
 model Portfolio {
-  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId           String                    @map("tenant_id")
-  name               String
-  description        String?
-  status             PortfolioStatus           @default(active)
-  automationStatus   PortfolioAutomationStatus @default(none) @map("automation_status")
-  activePackageSlug  String?                   @map("active_package_slug")
-  totalDebts         Int                       @default(0) @map("total_debts")
-  totalAmount        Decimal                   @default(0) @map("total_amount") @db.Decimal(15, 2)
-  currency           String                    @default("COP") @db.Char(3)
-  importedAt         DateTime?                 @map("imported_at")
-  createdById        String?                   @map("created_by")
-  createdAt          DateTime                  @default(now()) @map("created_at")
-  updatedAt          DateTime                  @updatedAt @map("updated_at")
-  deletedAt          DateTime?                 @map("deleted_at")
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String                    @map("tenant_id")
+  name              String
+  description       String?
+  status            PortfolioStatus           @default(active)
+  automationStatus  PortfolioAutomationStatus @default(none) @map("automation_status")
+  activePackageSlug String?                   @map("active_package_slug")
+  totalDebts        Int                       @default(0) @map("total_debts")
+  totalAmount       Decimal                   @default(0) @map("total_amount") @db.Decimal(15, 2)
+  currency          String                    @default("COP") @db.Char(3)
+  importedAt        DateTime?                 @map("imported_at")
+  createdById       String?                   @map("created_by")
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  deletedAt         DateTime?                 @map("deleted_at")
 
   tenant              Tenant                        @relation(fields: [tenantId], references: [id])
   createdBy           User?                         @relation("PortfolioCreatedBy", fields: [createdById], references: [id])
@@ -377,37 +378,38 @@ model Debtor {
 }
 
 model Debt {
-  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId          String          @map("tenant_id")
-  portfolioId       String          @map("portfolio_id") @db.Uuid
-  debtorId          String          @map("debtor_id") @db.Uuid
-  externalRef       String?         @map("external_ref")
-  amountOriginal    Decimal         @map("amount_original") @db.Decimal(15, 2)
-  amountOutstanding Decimal         @map("amount_outstanding") @db.Decimal(15, 2)
-  currency          String          @default("COP") @db.Char(3)
-  dueDate           DateTime        @map("due_date") @db.Date
-  scheduledCollectionDate DateTime? @map("scheduled_collection_date") @db.Date
-  paymentTermsDays  Int?            @map("payment_terms_days")
-  collectionQuarter String?         @map("collection_quarter")
-  invoiceDate       DateTime?       @map("invoice_date") @db.Date
-  agingBucket       AgingBucket     @map("aging_bucket")
-  status            DebtStatus      @default(new)
-  aiScore           Int?            @map("ai_score")
-  priorityScore     Int?            @map("priority_score")
-  aiSegment         RiskSegment?    @map("ai_segment")
-  riskLevel         RiskSegment?    @map("risk_level")
-  bestChannel       ContactChannel? @map("best_channel")
-  strategyId        String?         @map("strategy_id") @db.Uuid
-  metadata          Json            @default("{}")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
-  deletedAt         DateTime?       @map("deleted_at")
+  id                      String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                String          @map("tenant_id")
+  portfolioId             String          @map("portfolio_id") @db.Uuid
+  debtorId                String          @map("debtor_id") @db.Uuid
+  externalRef             String?         @map("external_ref")
+  amountOriginal          Decimal         @map("amount_original") @db.Decimal(15, 2)
+  amountOutstanding       Decimal         @map("amount_outstanding") @db.Decimal(15, 2)
+  currency                String          @default("COP") @db.Char(3)
+  dueDate                 DateTime        @map("due_date") @db.Date
+  scheduledCollectionDate DateTime?       @map("scheduled_collection_date") @db.Date
+  paymentTermsDays        Int?            @map("payment_terms_days")
+  collectionQuarter       String?         @map("collection_quarter")
+  invoiceDate             DateTime?       @map("invoice_date") @db.Date
+  agingBucket             AgingBucket     @map("aging_bucket")
+  status                  DebtStatus      @default(new)
+  aiScore                 Int?            @map("ai_score")
+  priorityScore           Int?            @map("priority_score")
+  aiSegment               RiskSegment?    @map("ai_segment")
+  riskLevel               RiskSegment?    @map("risk_level")
+  bestChannel             ContactChannel? @map("best_channel")
+  strategyId              String?         @map("strategy_id") @db.Uuid
+  metadata                Json            @default("{}")
+  createdAt               DateTime        @default(now()) @map("created_at")
+  updatedAt               DateTime        @updatedAt @map("updated_at")
+  deletedAt               DateTime?       @map("deleted_at")
 
   tenant             Tenant              @relation(fields: [tenantId], references: [id])
   portfolio          Portfolio           @relation(fields: [portfolioId], references: [id])
   debtor             Debtor              @relation(fields: [debtorId], references: [id])
   contacts           Contact[]
   promisesToPay      PromiseToPay[]
+  paymentPlans       PaymentPlan[]
   payments           Payment[]
   paymentLinks       PaymentLink[]
   conversations      Conversation[]
@@ -451,25 +453,63 @@ model Contact {
 }
 
 model PromiseToPay {
-  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String        @map("tenant_id")
-  debtId       String        @map("debt_id") @db.Uuid
-  contactId    String?       @map("contact_id") @db.Uuid
-  amount       Decimal       @db.Decimal(15, 2)
-  promisedDate DateTime      @map("promised_date") @db.Date
-  status       PromiseStatus @default(pending)
-  notes        String?
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
-  deletedAt    DateTime?     @map("deleted_at")
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String        @map("tenant_id")
+  debtId            String        @map("debt_id") @db.Uuid
+  contactId         String?       @map("contact_id") @db.Uuid
+  planId            String?       @map("plan_id") @db.Uuid
+  installmentNumber Int?          @map("installment_number")
+  amount            Decimal       @db.Decimal(15, 2)
+  promisedDate      DateTime      @map("promised_date") @db.Date
+  status            PromiseStatus @default(pending)
+  notes             String?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  deletedAt         DateTime?     @map("deleted_at")
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-  debt    Debt     @relation(fields: [debtId], references: [id])
-  contact Contact? @relation(fields: [contactId], references: [id])
+  tenant  Tenant       @relation(fields: [tenantId], references: [id])
+  debt    Debt         @relation(fields: [debtId], references: [id])
+  contact Contact?     @relation(fields: [contactId], references: [id])
+  plan    PaymentPlan? @relation(fields: [planId], references: [id])
 
   @@index([tenantId, debtId])
   @@index([tenantId, status])
+  @@index([tenantId, planId])
   @@map("promises_to_pay")
+}
+
+enum PaymentPlanStatus {
+  active
+  completed
+  defaulted
+  cancelled
+
+  @@map("payment_plan_status")
+}
+
+/// Acuerdo de pago en cuotas. Cada cuota es un PromiseToPay con planId e
+/// installmentNumber, de modo que reutiliza el seguimiento de promesas
+/// (recordatorios, detección de incumplimiento y cierre por pago).
+model PaymentPlan {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String            @map("tenant_id")
+  debtId            String            @map("debt_id") @db.Uuid
+  totalAmount       Decimal           @map("total_amount") @db.Decimal(15, 2)
+  installmentsCount Int               @map("installments_count")
+  status            PaymentPlanStatus @default(active)
+  createdVia        ContactChannel?   @map("created_via")
+  notes             String?
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  debt         Debt           @relation(fields: [debtId], references: [id])
+  installments PromiseToPay[]
+
+  @@index([tenantId, debtId])
+  @@index([tenantId, status])
+  @@map("payment_plans")
 }
 
 model Payment {

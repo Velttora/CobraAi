@@ -47,6 +47,14 @@ export {
 } from "./quarters";
 export { normalizePhoneE164 } from "./validation";
 export {
+  buildInstallmentSchedule,
+  canBreakPromiseForDebtStatus,
+  resolvePromiseStatusForPayment,
+  PROMISE_SAFE_DEBT_STATUSES,
+  type InstallmentPlanItem,
+  type ResolvedPromiseStatus
+} from "./promises";
+export {
   agingRecoveryScore,
   amountNormalizedRecoveryScore,
   bestChannelForScores,

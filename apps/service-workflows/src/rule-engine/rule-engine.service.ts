@@ -23,6 +23,35 @@ export class RuleEngineService {
     return { applied, reason: applied ? undefined : "condition_not_met" };
   }
 
+  /**
+   * ¿La regla puede actuar sobre esta deuda según su estado y condición?
+   *
+   * - `future`: nunca (aún no es gestionable).
+   * - `upcoming` (por vencer): solo reglas pre-vencimiento, es decir las que
+   *   filtran por `days_to_due`. Así evitamos contactar antes de tiempo con
+   *   reglas pensadas para mora.
+   * - resto: aplica la condición normal.
+   */
+  ruleAppliesToDebt(
+    debt: Debt,
+    debtor: Debtor | null,
+    condition: Record<string, unknown>
+  ): boolean {
+    if (debt.status === "future") return false;
+    if (debt.status === "upcoming" && !this.conditionTargetsPreDue(condition)) {
+      return false;
+    }
+    return this.matchesCondition(debt, debtor, condition);
+  }
+
+  /** Una condición es "pre-vencimiento" si filtra por días hasta el vencimiento. */
+  private conditionTargetsPreDue(condition: Record<string, unknown>): boolean {
+    return Boolean(
+      condition &&
+        Object.prototype.hasOwnProperty.call(condition, "days_to_due")
+    );
+  }
+
   matchesCondition(
     debt: Debt,
     debtor: Debtor | null,
@@ -71,6 +100,15 @@ export class RuleEngineService {
           0,
           Math.floor((today.getTime() - due.getTime()) / 86400000)
         );
+      }
+      case "days_to_due": {
+        // Días hasta el vencimiento, con signo: positivo antes de vencer
+        // (habilita recordatorios pre-vencimiento), negativo si ya venció.
+        const due = new Date(debt.dueDate);
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        due.setUTCHours(0, 0, 0, 0);
+        return Math.floor((due.getTime() - today.getTime()) / 86400000);
       }
       default:
         return undefined;
