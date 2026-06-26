@@ -42,7 +42,22 @@
       "Bash(pnpm --filter @cobrai/utils test)",
       "Bash(timeout 150 pnpm infra:up)",
       "Bash(timeout 60 pnpm --filter @cobrai/db exec prisma migrate deploy)",
-      "Bash(timeout 180 pnpm --filter @cobrai/service-notifications test:e2e)"
+      "Bash(timeout 180 pnpm --filter @cobrai/service-notifications test:e2e)",
+      "Bash(ls -la packages)",
+      "Bash(ls -la apps)",
+      "Bash(ls -la services)",
+      "Bash(npx turbo *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);for\\(const p of ['apps/service-portfolios','apps/service-workflows','packages/utils']\\){console.log\\(p,'->',JSON.parse\\(fs.readFileSync\\(p+'/package.json'\\)\\).name\\)}\")",
+      "Bash(node -e \"const p=require\\('./packages/utils/package.json'\\);console.log\\(JSON.stringify\\({main:p.main,types:p.types,exports:p.exports,scripts:p.scripts},null,2\\)\\)\")",
+      "Bash(git stash *)",
+      "Bash(echo \"PORTFOLIOS_EXIT:$?\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./packages/db/package.json'\\).scripts,null,2\\)\\)\")",
+      "Bash(awk '/^model Debt /{p=1} p{print} /^}/{if\\(p\\){p=0;exit}}' packages/db/prisma/schema.prisma)",
+      "Bash(npx prisma *)",
+      "Bash(npx vitest *)",
+      "Bash(cat apps/service-notifications/src/agent/agent.module.ts)",
+      "Bash(git checkout *)",
+      "Bash(git commit --only -m ' *)"
     ]
   }
 }
