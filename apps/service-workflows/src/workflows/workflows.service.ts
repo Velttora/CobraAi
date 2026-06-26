@@ -16,7 +16,8 @@ import type {
 import {
   daysSinceLastContact,
   getAgingBucket,
-  planOperationalScores
+  planOperationalScores,
+  PROMISE_SAFE_DEBT_STATUSES
 } from "@cobrai/utils";
 import { startOfTodayUtc } from "@cobrai/utils";
 import {
@@ -155,7 +156,7 @@ export class WorkflowsService {
               tenantId,
               deletedAt: null,
               portfolioId: { in: portfolioIds },
-              status: { in: ["active", "contacted", "promised"] }
+              status: { in: ["upcoming", "active", "contacted", "promised"] }
             },
             include: { debtor: true },
             take: 200
@@ -190,7 +191,7 @@ export class WorkflowsService {
       const matching = activeRules.filter(
         (rule) =>
           rule.portfolioId === debt.portfolioId &&
-          this.rules.matchesCondition(
+          this.rules.ruleAppliesToDebt(
             debt,
             debt.debtor,
             rule.condition as Record<string, unknown>
@@ -502,7 +503,9 @@ export class WorkflowsService {
           tenantId,
           portfolioId: portfolio.id,
           deletedAt: null,
-          status: { in: ["active", "contacted"] }
+          // "upcoming" entra para habilitar recordatorios pre-vencimiento;
+          // el gate ruleAppliesToDebt evita que reglas de mora las toquen.
+          status: { in: ["upcoming", "active", "contacted"] }
         },
         include: { debtor: { include: { consents: true } } }
       });
@@ -511,7 +514,7 @@ export class WorkflowsService {
       for (const debt of debts) {
         for (const rule of scheduleRules) {
           if (
-            !this.rules.matchesCondition(
+            !this.rules.ruleAppliesToDebt(
               debt,
               debt.debtor,
               rule.condition as Record<string, unknown>
@@ -595,7 +598,10 @@ export class WorkflowsService {
         tenantId,
         status: "pending",
         promisedDate: { lt: startOfTodayUtc() },
-        deletedAt: null
+        deletedAt: null,
+        // No marcar como rota una promesa cuya deuda ya está saldada/castigada:
+        // el pago pudo confirmarse puntualmente y la promesa debe quedar cumplida.
+        debt: { status: { notIn: [...PROMISE_SAFE_DEBT_STATUSES] } }
       }
     });
 

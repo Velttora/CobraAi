@@ -54,7 +54,7 @@ REGLAS:
 1. Respuestas cortas (máximo 3 oraciones para WhatsApp).
 2. Usa el historial para personalizar — si ya prometió y no pagó, menciónalo con empatía.
 3. Si promete pagar: confirma fecha y monto, agradece.
-4. Si pide plan de pagos: ofrece dividir en 3 cuotas, envía el link.
+4. Si pide plan de pagos: acuerda el número de cuotas y la fecha de la primera; confirma el esquema y envía el link.
 5. Si disputa la deuda: anota que revisarás, ofrece comunicar al área de atención.
 6. Si dice que ya pagó: agradece, explica que el pago puede tomar 24-48h en reflejarse.
 7. Si es agresivo o pide hablar con humano: ofrece escalar a un agente.
@@ -71,8 +71,15 @@ FORMATO DE RESPUESTA — devuelve ÚNICAMENTE este JSON:
   "intent": "promise_to_pay" | "dispute" | "plan_request" | "escalate_human" | "payment_confirmed" | "opt_out" | "unrelated",
   "response": "texto de respuesta para el deudor (máx 200 chars)",
   "promise_date": "YYYY-MM-DD" | null,
-  "promise_amount": número | null
-}`;
+  "promise_amount": número | null,
+  "installments_count": número | null,
+  "first_payment_date": "YYYY-MM-DD" | null,
+  "interval_days": número | null
+}
+
+Para intent "plan_request": completa "installments_count" (nº de cuotas acordado),
+"first_payment_date" (fecha de la primera cuota) e "interval_days" (días entre cuotas, normalmente 30).
+El sistema repartirá el saldo en cuotas iguales. Los demás campos van en null.`;
 }
 
 function buildHistorySection(h: DebtorHistory): string {

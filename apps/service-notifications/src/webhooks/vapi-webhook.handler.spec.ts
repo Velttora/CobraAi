@@ -104,6 +104,7 @@ describe("VapiWebhookHandler", () => {
       compliance as any,
       config as any,
       debtorMemory as any,
+      { createPlan: vi.fn().mockResolvedValue(null) } as any,
     );
   });
 

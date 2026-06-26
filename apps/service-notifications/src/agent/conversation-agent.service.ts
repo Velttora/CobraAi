@@ -5,8 +5,10 @@ import { PrismaService, ConversationStatus, ContactChannel } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
+import { buildInstallmentSchedule } from "@cobrai/utils";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
+import { PaymentPlanService } from "./payment-plan.service";
 
 /** Reply-To address for outbound agent emails (fixed for v1). */
 const EMAIL_REPLY_TO = "reply@reply.fogging.org";
@@ -38,6 +40,14 @@ interface AgentResponse {
   response: string;
   promise_date?: string | null;
   promise_amount?: number | null;
+  /** Plan en cuotas explícito acordado con el deudor. */
+  installments?: Array<{ date: string; amount: number }> | null;
+  /** Alternativa: número de cuotas para repartir el saldo por igual. */
+  installments_count?: number | null;
+  /** Fecha de la primera cuota (YYYY-MM-DD) cuando se usa installments_count. */
+  first_payment_date?: string | null;
+  /** Días entre cuotas (por defecto 30). */
+  interval_days?: number | null;
 }
 
 const FALLBACK_RESPONSE: AgentResponse = {
@@ -59,7 +69,8 @@ export class ConversationAgentService {
     private readonly kafka: KafkaService,
     private readonly whatsapp: TwilioWhatsAppAdapter,
     private readonly debtorMemory: DebtorMemoryService,
-    private readonly email: EmailAdapter
+    private readonly email: EmailAdapter,
+    private readonly paymentPlans: PaymentPlanService
   ) {
     const apiKey = config.get<string>("OPENAI_API_KEY");
     this.openai = apiKey ? new OpenAI({ apiKey }) : null;
@@ -214,7 +225,8 @@ export class ConversationAgentService {
       debt_id: debt.id,
       debtor_id,
       conversation_id,
-      channel: (payload.channel ?? "whatsapp") as ContactChannel
+      channel: (payload.channel ?? "whatsapp") as ContactChannel,
+      amount_outstanding: Number(debt.amountOutstanding)
     });
   }
 
@@ -226,6 +238,7 @@ export class ConversationAgentService {
       debtor_id: string;
       conversation_id: string;
       channel: ContactChannel;
+      amount_outstanding: number;
     }
   ): Promise<void> {
     switch (response.intent) {
@@ -299,9 +312,59 @@ export class ConversationAgentService {
         });
         break;
 
-      default:
-        // unrelated, plan_request, payment_confirmed — solo registrado en BD
+      case "plan_request":
+        await this.registerPaymentPlan(response, ctx);
         break;
+
+      default:
+        // unrelated, payment_confirmed — solo registrado en BD
+        break;
+    }
+  }
+
+  /**
+   * Crea un plan de cuotas a partir de lo acordado. Acepta cuotas explícitas
+   * (fechas + montos) o un número de cuotas para repartir el saldo por igual.
+   */
+  private async registerPaymentPlan(
+    response: AgentResponse,
+    ctx: {
+      tenant_id: string;
+      debt_id: string;
+      channel: ContactChannel;
+      amount_outstanding: number;
+    }
+  ): Promise<void> {
+    let installments;
+    if (response.installments && response.installments.length > 0) {
+      installments = response.installments.map((c, i) => ({
+        installmentNumber: i + 1,
+        amount: c.amount,
+        dueDate: c.date
+      }));
+    } else if (response.installments_count && response.first_payment_date) {
+      installments = buildInstallmentSchedule({
+        totalAmount: ctx.amount_outstanding,
+        installmentsCount: response.installments_count,
+        firstDueDate: response.first_payment_date,
+        intervalDays: response.interval_days ?? 30
+      });
+    } else {
+      this.logger.warn(
+        `plan_request sin datos de cuotas para deuda ${ctx.debt_id} — no se crea plan`
+      );
+      return;
+    }
+
+    const planId = await this.paymentPlans.createPlan(ctx.tenant_id, {
+      debtId: ctx.debt_id,
+      installments,
+      createdVia: ctx.channel
+    });
+    if (!planId) {
+      this.logger.warn(
+        `plan_request con cuotas insuficientes para deuda ${ctx.debt_id} — no se crea plan`
+      );
     }
   }
 

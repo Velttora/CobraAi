@@ -2,10 +2,12 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService, type ContactChannel } from "@cobrai/db";
 import { ComplianceService } from "@cobrai/compliance";
+import { buildInstallmentSchedule } from "@cobrai/utils";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
+import { PaymentPlanService } from "../agent/payment-plan.service";
 
 type ContactOutcome =
   | "promise_made"
@@ -23,6 +25,8 @@ export interface VapiStructuredData {
   promise_date?: string;          // ISO YYYY-MM-DD calculado por Vapi
   promise_timeframe_text?: string; // texto literal: "el siguiente mes"
   promise_amount?: number;
+  installments_count?: number;    // nº de cuotas si se acordó un plan
+  interval_days?: number;         // días entre cuotas (por defecto 30)
 }
 
 export interface VapiWebhookPayload {
@@ -61,6 +65,7 @@ export class VapiWebhookHandler {
     private readonly compliance: ComplianceService,
     private readonly config: ConfigService,
     private readonly debtorMemory: DebtorMemoryService,
+    private readonly paymentPlans: PaymentPlanService,
   ) {}
 
   async handleEndOfCall(payload: VapiWebhookPayload): Promise<void> {
@@ -166,7 +171,11 @@ export class VapiWebhookHandler {
     // 4. Si hubo promesa de pago → registrar promesa y entregar link por el
     //    canal configurado (WhatsApp si está habilitado, si no email).
     if (outcome === "promise_made") {
-      await this.registerPromiseFromCall(tenantId, debtId, analysis?.structuredData);
+      const sd = analysis?.structuredData;
+      const planCreated = await this.maybeRegisterPlanFromCall(tenantId, debtId, sd);
+      if (!planCreated) {
+        await this.registerPromiseFromCall(tenantId, debtId, sd);
+      }
       await this.deliverPaymentLink(tenantId, debtId);
     }
 
@@ -245,6 +254,41 @@ export class VapiWebhookHandler {
    * marca la deuda como "promised" y publica el evento. Esto conecta lo que el
    * deudor dijo por voz ("el siguiente mes") con el resto del sistema.
    */
+  /**
+   * Si en la llamada se acordó un plan en cuotas (installments_count ≥ 2 y una
+   * fecha para la primera), crea el plan repartiendo el saldo y devuelve true.
+   * Si no, devuelve false para que se registre una promesa simple.
+   */
+  private async maybeRegisterPlanFromCall(
+    tenantId: string,
+    debtId: string,
+    structuredData?: VapiStructuredData,
+  ): Promise<boolean> {
+    const count = structuredData?.installments_count ?? 0;
+    const firstDate = this.parseVapiDate(structuredData);
+    if (count < 2 || !firstDate) return false;
+
+    const debt = await this.prisma.debt.findFirst({
+      where: { id: debtId, tenantId },
+      select: { amountOutstanding: true },
+    });
+    if (!debt) return false;
+
+    const installments = buildInstallmentSchedule({
+      totalAmount: Number(debt.amountOutstanding),
+      installmentsCount: count,
+      firstDueDate: firstDate,
+      intervalDays: structuredData?.interval_days ?? 30,
+    });
+
+    const planId = await this.paymentPlans.createPlan(tenantId, {
+      debtId,
+      installments,
+      createdVia: "voice",
+    });
+    return planId !== null;
+  }
+
   private async registerPromiseFromCall(
     tenantId: string,
     debtId: string,
