@@ -11,7 +11,8 @@ describe("deferred transitions / rule engine", () => {
     amountOutstanding: 1000,
     aiScore: null,
     aiSegment: null
-  } as never;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
 
   it("ignora deudas future", () => {
     const result = engine.evaluateRules(baseDebt, null, { status: "active" });

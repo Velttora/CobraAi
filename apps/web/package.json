@@ -7,7 +7,7 @@
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start --port 3001",
-    "lint": "eslint \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"hooks/**/*.ts\" \"services/**/*.ts\" \"stores/**/*.ts\"",
+    "lint": "eslint --no-error-on-unmatched-pattern \"app/**/*.{ts,tsx}\" \"components/**/*.{ts,tsx}\" \"hooks/**/*.ts\" \"services/**/*.ts\" \"stores/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "playwright": "playwright test",
