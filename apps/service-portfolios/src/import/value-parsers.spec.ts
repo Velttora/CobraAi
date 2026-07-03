@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCurrency, parseAmount, parseDate } from "./value-parsers";
+import {
+  normalizeCurrency,
+  parseAmount,
+  parseDate,
+  parsePercentage,
+} from "./value-parsers";
 
 describe("parseAmount", () => {
   it("acepta separadores LatAm/EU", () => {
@@ -67,6 +72,30 @@ describe("parseDate", () => {
 
   it("devuelve cadena vacía para basura", () => {
     expect(parseDate("no es fecha")).toBe("");
+  });
+});
+
+describe("parsePercentage", () => {
+  it("interpreta la fracción de Excel como porcentaje", () => {
+    expect(parsePercentage(0.05)).toBe(5);
+    expect(parsePercentage(0.15)).toBe(15);
+  });
+
+  it("mantiene porcentajes literales", () => {
+    expect(parsePercentage(5)).toBe(5);
+    expect(parsePercentage("15")).toBe(15);
+  });
+
+  it("acepta símbolo de porcentaje y separador LatAm", () => {
+    expect(parsePercentage("5%")).toBe(5);
+    expect(parsePercentage("0,5%")).toBe(0.5);
+    expect(parsePercentage("0,05")).toBe(5);
+  });
+
+  it("devuelve NaN para valores vacíos o no numéricos", () => {
+    expect(Number.isNaN(parsePercentage(""))).toBe(true);
+    expect(Number.isNaN(parsePercentage(null))).toBe(true);
+    expect(Number.isNaN(parsePercentage("N/A"))).toBe(true);
   });
 });
 

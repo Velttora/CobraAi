@@ -91,6 +91,18 @@ export const IMPORT_COLUMNS: ImportColumnSpec[] = [
     desc: "Código de país (ej. CO)"
   },
   {
+    label: "Descuento Pronto Pago (%)",
+    internal: "discount_percentage",
+    req: false,
+    desc: "Porcentaje de descuento por pronto pago (ej. 5 o 0.05)"
+  },
+  {
+    label: "Fecha Límite Pronto Pago",
+    internal: "discount_expiration_date",
+    req: false,
+    desc: "Fecha límite del descuento por pronto pago YYYY-MM-DD"
+  },
+  {
     label: "metadata_*",
     internal: "metadata_*",
     req: false,

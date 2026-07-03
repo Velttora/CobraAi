@@ -74,6 +74,40 @@ export function parseAmount(raw: unknown): number {
   return negative ? -n : n;
 }
 
+/**
+ * Convierte un valor de porcentaje a número en escala 0-100.
+ * Soporta:
+ *   - Fracción de Excel (una celda con formato "%": 0.05 → 5)
+ *   - Porcentaje literal ("5", "15" → 5, 15)
+ *   - Con símbolo y separador LatAm ("5 %", "0,5%" → 5, 0.5)
+ * Devuelve NaN si no se puede interpretar.
+ */
+export function parsePercentage(raw: unknown): number {
+  let value: number;
+  let hadPercentSign = false;
+
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return NaN;
+    value = raw;
+  } else if (raw == null) {
+    return NaN;
+  } else {
+    let s = String(raw).trim();
+    if (!s) return NaN;
+    hadPercentSign = s.includes("%");
+    s = s.replace(/%/g, "").trim().replace(",", ".").replace(/[^0-9.-]/g, "");
+    if (!s) return NaN;
+    value = Number(s);
+    if (Number.isNaN(value)) return NaN;
+  }
+
+  // Con símbolo "%" el número ya está en escala de porcentaje ("0.5%" → 0.5).
+  // Sin símbolo, una fracción (0<v<1) se asume proporción de Excel (0.05 → 5%);
+  // el resto se toma como porcentaje literal (5 → 5%).
+  const pct = !hadPercentSign && value > 0 && value < 1 ? value * 100 : value;
+  return Math.round(pct * 10000) / 10000; // elimina ruido de punto flotante
+}
+
 const MONTHS: Record<string, number> = {
   ene: 1, jan: 1,
   feb: 2,

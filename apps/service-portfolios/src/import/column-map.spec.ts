@@ -80,4 +80,34 @@ describe("buildColumnMapping - resolución de ambigüedad", () => {
     expect(f["invoice_date"]).toBe("Fecha factura");
     expect(f["due_date"]).toBe("Fecha de vencimiento");
   });
+
+  it("reconoce el descuento por pronto pago y su fecha límite", () => {
+    const f = fields([
+      "Nombre",
+      "Monto",
+      "Vencimiento",
+      "Porcentaje de descuento pronto pago",
+      "Fecha limite de pago pronto pago"
+    ]);
+    expect(f["discount_percentage"]).toBe("Porcentaje de descuento pronto pago");
+    expect(f["discount_expiration_date"]).toBe(
+      "Fecha limite de pago pronto pago"
+    );
+    // No debe robarle la columna de vencimiento a due_date.
+    expect(f["due_date"]).toBe("Vencimiento");
+  });
+
+  it("tolera erratas en los encabezados de pronto pago (BD Prueba)", () => {
+    const f = fields([
+      "Nombre",
+      "Monto",
+      "Vencimiento",
+      "Porcentaje de descuento pronto pago",
+      "Fehca limite de pago protno pago"
+    ]);
+    expect(f["discount_percentage"]).toBe("Porcentaje de descuento pronto pago");
+    expect(f["discount_expiration_date"]).toBe(
+      "Fehca limite de pago protno pago"
+    );
+  });
 });

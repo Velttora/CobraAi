@@ -63,6 +63,56 @@ export const TEMPLATE_VARIABLE_GROUPS: TemplateVariableGroup[] = [
       { key: "link", label: "Link de pago (alias corto)", sample: "https://pay.cobrai.dev/abc" },
       { key: "external_ref", label: "Referencia externa de la deuda", sample: "FAC-00123" }
     ]
+  },
+  {
+    category: "Descuento pronto pago",
+    variables: [
+      {
+        key: "discount_percentage",
+        label: "Porcentaje de descuento pronto pago",
+        sample: "5"
+      },
+      {
+        key: "descuento_pronto_pago",
+        label: "Descuento pronto pago con símbolo",
+        sample: "5%"
+      },
+      {
+        key: "discount_amount",
+        label: "Valor del descuento (número)",
+        sample: "62500"
+      },
+      {
+        key: "discount_amount_formato",
+        label: "Valor del descuento con formato y moneda",
+        sample: "62.500 COP"
+      },
+      {
+        key: "discount_final_amount",
+        label: "Saldo con descuento aplicado (número)",
+        sample: "1187500"
+      },
+      {
+        key: "discount_final_amount_formato",
+        label: "Saldo con descuento con formato y moneda",
+        sample: "1.187.500 COP"
+      },
+      {
+        key: "discount_expiration_date",
+        label: "Fecha límite del descuento (ISO)",
+        sample: "2026-05-30"
+      },
+      {
+        key: "fecha_limite_pronto_pago",
+        label: "Fecha límite del descuento (DD/MM/AAAA)",
+        sample: "30/05/2026"
+      },
+      {
+        key: "discount_enabled",
+        label: "¿Tiene descuento pronto pago? (true/false)",
+        sample: "true"
+      }
+    ]
   }
 ];
 

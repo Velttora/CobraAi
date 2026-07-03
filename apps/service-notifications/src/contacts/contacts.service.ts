@@ -538,6 +538,19 @@ export class ContactsService {
           Math.floor((Date.now() - due.getTime()) / (1000 * 60 * 60 * 24))
         );
 
+    // Descuento por pronto pago importado del archivo (guardado en metadata).
+    const meta = (debt.metadata ?? {}) as Record<string, unknown>;
+    const discountPct = Number(meta.discount_percentage);
+    const discountDate =
+      typeof meta.discount_expiration_date === "string"
+        ? meta.discount_expiration_date
+        : "";
+    const hasDiscount = Number.isFinite(discountPct) && discountPct > 0;
+    const discountAmount = hasDiscount
+      ? Math.round(outstanding * (discountPct / 100))
+      : 0;
+    const discountFinal = hasDiscount ? outstanding - discountAmount : outstanding;
+
     return {
       nombre: debtor.name,
       debtor_name: debtor.name,
@@ -555,7 +568,21 @@ export class ContactsService {
       fecha_vencimiento: formatDate(due),
       installments: "3",
       link: `${paymentBase}/${debt.id}`,
-      days: "15"
+      days: "15",
+      // Descuento por pronto pago (vacío cuando la deuda no lo trae).
+      discount_enabled: hasDiscount ? "true" : "false",
+      discount_percentage: hasDiscount ? String(discountPct) : "",
+      descuento_pronto_pago: hasDiscount ? `${discountPct}%` : "",
+      discount_amount: hasDiscount ? String(discountAmount) : "",
+      discount_amount_formato: hasDiscount
+        ? `${formatMoney(discountAmount)} ${currency}`
+        : "",
+      discount_final_amount: hasDiscount ? String(discountFinal) : "",
+      discount_final_amount_formato: hasDiscount
+        ? `${formatMoney(discountFinal)} ${currency}`
+        : "",
+      discount_expiration_date: discountDate,
+      fecha_limite_pronto_pago: discountDate ? formatDate(discountDate) : ""
     };
   }
 

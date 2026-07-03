@@ -1,5 +1,10 @@
 import { type ImportRow } from "./csv-parser.service";
-import { normalizeCurrency, parseAmount, parseDate } from "./value-parsers";
+import {
+  normalizeCurrency,
+  parseAmount,
+  parseDate,
+  parsePercentage,
+} from "./value-parsers";
 
 function text(v: unknown): string {
   if (v == null) return "";
@@ -27,6 +32,19 @@ export function buildImportRow(
   const termsRaw = text(fields["payment_terms_days"]);
   const terms = termsRaw ? Number(termsRaw.replace(/[^0-9]/g, "")) : undefined;
 
+  // Descuento por pronto pago: no tiene columna propia en la deuda, así que se
+  // guarda en `metadata` para exponerlo luego como variable de plantilla.
+  const discountPct = parsePercentage(fields["discount_percentage"]);
+  const discountDate = parseDate(fields["discount_expiration_date"]);
+  const discountMetadata: Record<string, string> = {};
+  if (Number.isFinite(discountPct) && discountPct > 0) {
+    discountMetadata.discount_percentage = String(discountPct);
+  }
+  if (discountDate) {
+    discountMetadata.discount_expiration_date = discountDate;
+  }
+  const mergedMetadata = { ...metadata, ...discountMetadata };
+
   return {
     external_ref: text(fields["external_ref"]) || undefined,
     debtor_name: debtorName,
@@ -44,6 +62,7 @@ export function buildImportRow(
     debtor_type: text(fields["debtor_type"]) || undefined,
     address_city: text(fields["address_city"]) || undefined,
     address_country: text(fields["address_country"]) || undefined,
-    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+    metadata:
+      Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
   };
 }
