@@ -74,6 +74,89 @@ describe("compareRuleFiringOrder", () => {
       )
     ).toBeGreaterThan(0);
   });
+
+  it("ordena pre-vencimiento antes de mora 0-30", () => {
+    expect(
+      compareRuleFiringOrder(
+        {
+          name: "Aging 0-30",
+          trigger: "schedule",
+          condition: { aging_days: { gte: 0, lte: 30 } }
+        },
+        {
+          name: "Pre-vencimiento",
+          trigger: "schedule",
+          condition: { days_to_due: { gte: 1, lte: 7 } }
+        }
+      )
+    ).toBeGreaterThan(0);
+  });
+
+  it("ordena el paquete cartera personas con aging_days y days_to_due", () => {
+    const rules = [
+      {
+        name: "Pago confirmado — agradecimiento WhatsApp",
+        trigger: "payment_confirmed",
+        condition: { amount_outstanding: 0 }
+      },
+      {
+        name: "Aging 180+ — escalamiento legal",
+        trigger: "schedule",
+        condition: { aging_days: { gte: 181 } }
+      },
+      {
+        name: "Bienvenida — WhatsApp",
+        trigger: "debt_created",
+        condition: { status: "new" }
+      },
+      {
+        name: "Score medio-bajo — WhatsApp",
+        trigger: "score_updated",
+        condition: { ai_score: { lt: 60 } },
+        delay_hours: 1
+      },
+      {
+        name: "Pre-vencimiento -7d — WhatsApp",
+        trigger: "schedule",
+        condition: { days_to_due: { gte: 1, lte: 7 } }
+      },
+      {
+        name: "Aging 0-30 — WhatsApp",
+        trigger: "schedule",
+        condition: { aging_days: { gte: 0, lte: 30 } }
+      },
+      {
+        name: "Promesa rota — WhatsApp + tarea",
+        trigger: "promise_broken",
+        condition: {}
+      },
+      {
+        name: "Aging 61-90 — llamada IA",
+        trigger: "schedule",
+        condition: { aging_days: { gte: 61, lte: 90 } }
+      },
+      {
+        name: "Score bajo — WhatsApp",
+        trigger: "score_updated",
+        condition: { ai_score: { lt: 40 } },
+        delay_hours: 2
+      }
+    ];
+
+    const ordered = sortRulesByDebtorLifecycle(rules).map((r) => r.name);
+
+    expect(ordered).toEqual([
+      "Bienvenida — WhatsApp",
+      "Score medio-bajo — WhatsApp",
+      "Score bajo — WhatsApp",
+      "Pre-vencimiento -7d — WhatsApp",
+      "Aging 0-30 — WhatsApp",
+      "Aging 61-90 — llamada IA",
+      "Aging 180+ — escalamiento legal",
+      "Promesa rota — WhatsApp + tarea",
+      "Pago confirmado — agradecimiento WhatsApp"
+    ]);
+  });
 });
 
 describe("describeWorkflowRule", () => {
@@ -102,6 +185,19 @@ describe("describeWorkflowRule", () => {
     });
     expect(desc.when).toBe("Cuando el score de cobro queda muy bajo (menos de 40)");
     // Sin NEXT_PUBLIC_ENABLE_SMS, los SMS se muestran como WhatsApp.
+    expect(desc.does).toBe("Envía un WhatsApp");
+  });
+
+  it("traduce pre-vencimiento sin hablar de mora", () => {
+    const desc = describeWorkflowRule({
+      trigger: "schedule",
+      condition: { days_to_due: { gte: 1, lte: 7 }, whatsapp_opt_in: true },
+      action: "send_notification",
+      channel: "whatsapp"
+    });
+    expect(desc.when).toBe(
+      "Cuando faltan entre 1 y 7 días para el vencimiento (aún sin mora) (con WhatsApp habilitado)"
+    );
     expect(desc.does).toBe("Envía un WhatsApp");
   });
 

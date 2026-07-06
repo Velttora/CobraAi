@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAgingRangeToCondition,
+  applyPreDueRangeToCondition,
   buildRuleCondition,
+  conditionTargetsPreDue,
   parseAgingRangeFromCondition,
+  parseDaysToDueRangeFromCondition,
   showsAgingRangeField,
-  validateAgingRangeForm
+  showsPreDueRangeField,
+  validateAgingRangeForm,
+  validatePreDueRangeForm
 } from "./workflow-rule-conditions";
 
 describe("parseAgingRangeFromCondition", () => {
@@ -26,6 +31,14 @@ describe("parseAgingRangeFromCondition", () => {
       min: 181,
       max: undefined
     });
+  });
+});
+
+describe("parseDaysToDueRangeFromCondition", () => {
+  it("lee days_to_due para pre-vencimiento", () => {
+    expect(
+      parseDaysToDueRangeFromCondition({ days_to_due: { gte: 1, lte: 7 } })
+    ).toEqual({ min: 1, max: 7 });
   });
 });
 
@@ -59,6 +72,34 @@ describe("buildRuleCondition", () => {
       aging_days: { gte: 0, lte: 45 }
     });
   });
+  it("preserva condiciones extra al editar pre-vencimiento", () => {
+    expect(
+      buildRuleCondition({
+        trigger: "schedule",
+        agingMinDays: "1",
+        agingMaxDays: "14",
+        existing: {
+          days_to_due: { gte: 1, lte: 7 },
+          whatsapp_opt_in: true
+        }
+      })
+    ).toEqual({
+      whatsapp_opt_in: true,
+      days_to_due: { gte: 1, lte: 14 }
+    });
+  });
+
+  it("elimina aging_days al guardar pre-vencimiento", () => {
+    expect(
+      applyPreDueRangeToCondition(
+        { aging_days: { gte: 0, lte: 30 }, whatsapp_opt_in: true },
+        { min: 1, max: 7 }
+      )
+    ).toEqual({
+      whatsapp_opt_in: true,
+      days_to_due: { gte: 1, lte: 7 }
+    });
+  });
 });
 
 describe("showsAgingRangeField", () => {
@@ -68,6 +109,26 @@ describe("showsAgingRangeField", () => {
       true
     );
     expect(showsAgingRangeField("debt_created", { status: "new" })).toBe(false);
+  });
+
+  it("oculta mora cuando la regla es pre-vencimiento", () => {
+    expect(
+      showsAgingRangeField("schedule", { days_to_due: { gte: 1, lte: 7 } })
+    ).toBe(false);
+    expect(conditionTargetsPreDue({ days_to_due: { gte: 1, lte: 7 } })).toBe(
+      true
+    );
+    expect(
+      showsPreDueRangeField("schedule", { days_to_due: { gte: 1, lte: 7 } })
+    ).toBe(true);
+  });
+});
+
+describe("validatePreDueRangeForm", () => {
+  it("rechaza rango invertido", () => {
+    expect(validatePreDueRangeForm("7", "1")).toBe(
+      "El mínimo de días antes no puede ser mayor que el máximo."
+    );
   });
 });
 

@@ -29,10 +29,14 @@ import {
 import {
   buildRuleCondition,
   parseAgingRangeFromCondition,
+  parseDaysToDueRangeFromCondition,
   showsAgingRangeField,
-  validateAgingRangeForm
+  showsPreDueRangeField,
+  validateAgingRangeForm,
+  validatePreDueRangeForm
 } from "../../lib/workflow-rule-conditions";
 import {
+  buildRuleExecutionSteps,
   describeWorkflowRule,
   sortWorkflowRulesForDisplay
 } from "../../lib/workflow-rules";
@@ -105,6 +109,19 @@ const emptyRuleForm: RuleForm = {
 };
 
 function ruleToForm(rule: WorkflowRule): RuleForm {
+  const preDueRange = parseDaysToDueRangeFromCondition(rule.condition);
+  if (preDueRange) {
+    return {
+      name: rule.name,
+      trigger: rule.trigger,
+      action: rule.action,
+      channel: rule.channel ?? "",
+      aging_min_days: preDueRange.min !== undefined ? String(preDueRange.min) : "",
+      aging_max_days: preDueRange.max !== undefined ? String(preDueRange.max) : "",
+      priority: rule.priority ? String(rule.priority) : ""
+    };
+  }
+
   const range = parseAgingRangeFromCondition(rule.condition);
   return {
     name: rule.name,
@@ -139,6 +156,10 @@ export function WorkflowRulesManager({
     () => sortWorkflowRulesForDisplay(rulesQuery.data?.data ?? []),
     [rulesQuery.data?.data]
   );
+  const executionSteps = useMemo(
+    () => buildRuleExecutionSteps(rules),
+    [rules]
+  );
   const templates = templatesQuery.data?.data.items ?? [];
   const templateById = useMemo(
     () => new Map(templates.map((t) => [t.id, t])),
@@ -154,7 +175,16 @@ export function WorkflowRulesManager({
 
   function handleCreate() {
     if (!newForm.name || !portfolioId) return;
-    if (showsAgingRangeField(newForm.trigger)) {
+    if (showsPreDueRangeField(newForm.trigger)) {
+      const rangeError = validatePreDueRangeForm(
+        newForm.aging_min_days,
+        newForm.aging_max_days
+      );
+      if (rangeError) {
+        toast.error(rangeError);
+        return;
+      }
+    } else if (showsAgingRangeField(newForm.trigger)) {
       const rangeError = validateAgingRangeForm(
         newForm.aging_min_days,
         newForm.aging_max_days
@@ -189,7 +219,18 @@ export function WorkflowRulesManager({
 
   function handleUpdate() {
     if (!editingRule || !editForm.name) return;
-    if (showsAgingRangeField(editingRule.trigger, editingRule.condition)) {
+    if (showsPreDueRangeField(editingRule.trigger, editingRule.condition)) {
+      const rangeError = validatePreDueRangeForm(
+        editForm.aging_min_days,
+        editForm.aging_max_days
+      );
+      if (rangeError) {
+        toast.error(rangeError);
+        return;
+      }
+    } else if (
+      showsAgingRangeField(editingRule.trigger, editingRule.condition)
+    ) {
       const rangeError = validateAgingRangeForm(
         editForm.aging_min_days,
         editForm.aging_max_days
@@ -231,15 +272,23 @@ export function WorkflowRulesManager({
   return (
     <article className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-        <h2 className="text-sm font-semibold">
-          Reglas de automatización
-          {rules.length > 0 && (
-            <span className="ml-2 font-normal text-slate-500">
-              {activeCount} activas
-              {inactiveCount > 0 ? ` · ${inactiveCount} inactivas` : ""}
-            </span>
-          )}
-        </h2>
+        <div>
+          <h2 className="text-sm font-semibold">
+            Reglas de automatización
+            {rules.length > 0 && (
+              <span className="ml-2 font-normal text-slate-500">
+                {activeCount} activas
+                {inactiveCount > 0 ? ` · ${inactiveCount} inactivas` : ""}
+              </span>
+            )}
+          </h2>
+          {rules.length > 0 ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Orden cronológico de ejecución: de arriba a abajo, como la IA
+              contactaría al deudor a lo largo del ciclo de vida.
+            </p>
+          ) : null}
+        </div>
         {portfolioId && featureFlags.workflowRuleCreation && (
           <button
             className="text-sm text-[#D85A30] hover:underline"
@@ -322,6 +371,7 @@ export function WorkflowRulesManager({
                 key={rule.id}
               >
                 <RuleRow
+                  executionStep={executionSteps.get(rule.id)}
                   hasTemplate={Boolean(
                     rule.templateId && templateById.has(rule.templateId)
                   )}
@@ -372,6 +422,7 @@ function RuleFormFields({
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       onChange({ ...form, [key]: e.target.value });
 
+  const showPreDueRange = showsPreDueRangeField(trigger, condition);
   const showAgingRange = showsAgingRangeField(trigger, condition);
   const triggerLabel = TRIGGER_LABELS[trigger] ?? trigger;
 
@@ -382,6 +433,48 @@ function RuleFormFields({
           <span className="text-slate-500">Disparador: </span>
           <span className="font-medium text-slate-800 dark:text-slate-200">
             {triggerLabel}
+          </span>
+        </div>
+      ) : null}
+      {showPreDueRange ? (
+        <div className="sm:col-span-2 rounded-md border border-sky-200/80 bg-sky-50/50 p-4 dark:border-sky-900/50 dark:bg-sky-950/20">
+          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            Pre-vencimiento (días)
+          </p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Contactar mientras la deuda{" "}
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              aún no ha vencido
+            </span>
+            , según los días que faltan para la fecha de vencimiento.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              Mín. días antes del vencimiento
+              <input
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                min="1"
+                onChange={set("aging_min_days")}
+                placeholder="1"
+                type="number"
+                value={form.aging_min_days}
+              />
+            </label>
+            <label className="text-sm">
+              Máx. días antes del vencimiento
+              <input
+                className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                min="1"
+                onChange={set("aging_max_days")}
+                placeholder="7"
+                type="number"
+                value={form.aging_max_days}
+              />
+            </label>
+          </div>
+          <span className="mt-2 block text-xs text-slate-500 dark:text-slate-400">
+            Ejemplo: 1–7 contacta cuando falten entre 1 y 7 días para vencer.
+            La deuda sigue vigente; aún no entra en mora.
           </span>
         </div>
       ) : null}
@@ -425,8 +518,9 @@ function RuleFormFields({
         </div>
       ) : hidesTrigger ? (
         <p className="sm:col-span-2 text-xs text-slate-500 dark:text-slate-400">
-          Esta regla no usa rango de mora. Solo las reglas programadas (Aging
-          0-30, 31-60, etc.) permiten configurar el rango de días.
+          Esta regla no usa rango de mora ni pre-vencimiento. Solo las reglas
+          programadas (pre-vencimiento, Aging 0-30, 31-60, etc.) permiten
+          configurar el rango de días.
         </p>
       ) : null}
       <label className="text-sm">
@@ -519,6 +613,7 @@ function RuleFormFields({
 
 function RuleRow({
   rule,
+  executionStep,
   hasTemplate,
   isTemplateOpen,
   isPending,
@@ -528,6 +623,7 @@ function RuleRow({
   onDelete
 }: {
   rule: WorkflowRule;
+  executionStep?: number;
   hasTemplate: boolean;
   isTemplateOpen: boolean;
   isPending: boolean;
@@ -542,6 +638,17 @@ function RuleRow({
     <div
       className={`flex flex-wrap items-center justify-between gap-3 px-5 py-4 ${!rule.isActive ? "opacity-50" : ""}`}
     >
+      {executionStep !== undefined ? (
+        <span
+          aria-hidden
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#D85A30]/10 text-xs font-semibold text-[#D85A30]"
+          title={`Paso ${executionStep} en el ciclo de vida`}
+        >
+          {executionStep}
+        </span>
+      ) : (
+        <span aria-hidden className="w-7 shrink-0" />
+      )}
       {canTemplate ? (
         <button
           aria-expanded={isTemplateOpen}

@@ -61,6 +61,36 @@ function agingDaysToBucketRank(days: number): number {
   return AGING_BUCKET_ORDER.d180_plus;
 }
 
+function daysToDueRank(condition: Record<string, unknown>): number | undefined {
+  const daysToDue = condition.days_to_due;
+  if (!daysToDue || typeof daysToDue !== "object" || Array.isArray(daysToDue)) {
+    return undefined;
+  }
+
+  const obj = daysToDue as Record<string, unknown>;
+  const gte =
+    typeof obj.gte === "number"
+      ? obj.gte
+      : typeof obj.gt === "number"
+        ? obj.gt + 1
+        : undefined;
+  const lte =
+    typeof obj.lte === "number"
+      ? obj.lte
+      : typeof obj.lt === "number"
+        ? obj.lt - 1
+        : undefined;
+
+  if ((gte !== undefined && gte > 0) || (lte !== undefined && lte > 0)) {
+    return AGING_BUCKET_ORDER.upcoming;
+  }
+  if (gte !== undefined && gte <= 0) {
+    return AGING_BUCKET_ORDER.d0_30;
+  }
+
+  return undefined;
+}
+
 function agingRank(condition: Record<string, unknown> | undefined): number {
   const raw = condition?.aging_bucket;
   const buckets = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
@@ -69,6 +99,13 @@ function agingRank(condition: Record<string, unknown> | undefined): number {
     .filter((rank): rank is number => rank !== undefined);
   if (ranks.length > 0) {
     return Math.min(...ranks);
+  }
+
+  if (condition) {
+    const preDueRank = daysToDueRank(condition);
+    if (preDueRank !== undefined) {
+      return preDueRank;
+    }
   }
 
   const agingDays = condition?.aging_days;
@@ -90,7 +127,7 @@ function agingRank(condition: Record<string, unknown> | undefined): number {
 
 /**
  * Orden cronológico del ciclo de vida del deudor (cómo la IA contactaría en el tiempo):
- * bienvenida → score/prioridad → aging 0-30 → 31-60 → … → promesa rota → pago.
+ * bienvenida → score/prioridad → pre-vencimiento → aging 0-30 → 31-60 → … → promesa rota → pago.
  */
 export function compareRuleFiringOrder(
   a: RuleLifecycleSortable,
@@ -127,6 +164,18 @@ export function sortWorkflowRulesForDisplay(rules: WorkflowRule[]): WorkflowRule
     }
     return compareRuleFiringOrder(a, b);
   });
+}
+
+/** Número de paso en el ciclo de vida (solo reglas activas, en orden de ejecución). */
+export function buildRuleExecutionSteps(rules: WorkflowRule[]): Map<string, number> {
+  const steps = new Map<string, number>();
+  let step = 0;
+  for (const rule of sortWorkflowRulesForDisplay(rules)) {
+    if (!rule.isActive) continue;
+    step += 1;
+    steps.set(rule.id, step);
+  }
+  return steps;
 }
 
 export function sortRulesByDebtorLifecycle<T extends RuleLifecycleSortable>(
@@ -209,6 +258,38 @@ function comparatorThreshold(
   return undefined;
 }
 
+function daysToDueLabel(condition: Record<string, unknown>): string | undefined {
+  const raw = condition.days_to_due;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const gte =
+    numberValue(obj.gte) ??
+    (numberValue(obj.gt) !== undefined ? numberValue(obj.gt)! + 1 : undefined);
+  const lte =
+    numberValue(obj.lte) ??
+    (numberValue(obj.lt) !== undefined ? numberValue(obj.lt)! - 1 : undefined);
+
+  if (gte !== undefined && lte !== undefined) {
+    if (gte === lte) {
+      return gte === 1
+        ? "falta 1 día para el vencimiento"
+        : `faltan ${gte} días para el vencimiento`;
+    }
+    return `faltan entre ${gte} y ${lte} días para el vencimiento`;
+  }
+  if (gte !== undefined) {
+    return `faltan al menos ${gte} día${gte === 1 ? "" : "s"} para el vencimiento`;
+  }
+  if (lte !== undefined) {
+    return `faltan como máximo ${lte} día${lte === 1 ? "" : "s"} para el vencimiento`;
+  }
+
+  return undefined;
+}
+
 function agingLabel(condition: Record<string, unknown>): string | undefined {
   const agingDaysRaw = condition.aging_days;
   if (agingDaysRaw && typeof agingDaysRaw === "object" && !Array.isArray(agingDaysRaw)) {
@@ -262,8 +343,12 @@ function describeWhen(rule: RuleDescribable): string {
       return "Cuando se recalcula el score de cobro";
     }
     case "schedule": {
+      const preDue = daysToDueLabel(condition);
       const aging = agingLabel(condition);
       const amount = comparatorThreshold(condition.amount_outstanding);
+      if (preDue) {
+        return `Cuando ${preDue} (aún sin mora)`;
+      }
       if (aging && amount?.kind === "gt") {
         return `Cuando la deuda lleva ${aging} de mora y supera $${amount.n.toLocaleString("es-CO")}`;
       }

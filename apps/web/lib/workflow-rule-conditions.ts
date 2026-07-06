@@ -15,8 +15,69 @@ export type AgingDaysRange = {
   max?: number;
 };
 
+/** Alias semántico: días que faltan para el vencimiento (deuda aún sin mora). */
+export type PreDueDaysRange = AgingDaysRange;
+
 function readBound(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** La regla filtra por días antes del vencimiento (no por mora). */
+export function conditionTargetsPreDue(
+  condition?: Record<string, unknown>
+): boolean {
+  return Boolean(
+    condition &&
+      Object.prototype.hasOwnProperty.call(condition, "days_to_due")
+  );
+}
+
+/** Extrae un rango de días antes del vencimiento desde la condición de una regla. */
+export function parseDaysToDueRangeFromCondition(
+  condition: Record<string, unknown> | undefined
+): PreDueDaysRange | null {
+  if (!condition) return null;
+
+  const daysToDue = condition.days_to_due;
+  if (!daysToDue || typeof daysToDue !== "object" || Array.isArray(daysToDue)) {
+    return null;
+  }
+
+  const obj = daysToDue as Record<string, unknown>;
+  const min =
+    readBound(obj.gte) ??
+    (readBound(obj.gt) !== undefined ? readBound(obj.gt)! + 1 : undefined);
+  const max =
+    readBound(obj.lte) ??
+    (readBound(obj.lt) !== undefined ? readBound(obj.lt)! - 1 : undefined);
+
+  if (min !== undefined || max !== undefined) {
+    return { min, max };
+  }
+
+  return null;
+}
+
+/** Construye `days_to_due` en la condición y elimina campos de mora. */
+export function applyPreDueRangeToCondition(
+  condition: Record<string, unknown>,
+  range: PreDueDaysRange
+): Record<string, unknown> {
+  const next = { ...condition };
+  delete next.aging_days;
+  delete next.aging_bucket;
+
+  const days_to_due: Record<string, number> = {};
+  if (range.min !== undefined) days_to_due.gte = range.min;
+  if (range.max !== undefined) days_to_due.lte = range.max;
+
+  if (Object.keys(days_to_due).length > 0) {
+    next.days_to_due = days_to_due;
+  } else {
+    delete next.days_to_due;
+  }
+
+  return next;
 }
 
 /** Extrae un rango de días de mora desde la condición de una regla. */
@@ -87,6 +148,15 @@ export function buildRuleCondition(input: {
   existing?: Record<string, unknown>;
 }): Record<string, unknown> {
   const base = { ...(input.existing ?? {}) };
+
+  if (showsPreDueRangeField(input.trigger, base)) {
+    const min =
+      input.agingMinDays.trim() !== "" ? Number(input.agingMinDays) : undefined;
+    const max =
+      input.agingMaxDays.trim() !== "" ? Number(input.agingMaxDays) : undefined;
+    return applyPreDueRangeToCondition(base, { min, max });
+  }
+
   const usesAgingRange =
     input.trigger === "schedule" ||
     parseAgingRangeFromCondition(base) !== null;
@@ -106,10 +176,18 @@ export function buildRuleCondition(input: {
   return base;
 }
 
+export function showsPreDueRangeField(
+  trigger: string | undefined,
+  condition?: Record<string, unknown>
+): boolean {
+  return trigger === "schedule" && conditionTargetsPreDue(condition);
+}
+
 export function showsAgingRangeField(
   trigger: string | undefined,
   condition?: Record<string, unknown>
 ): boolean {
+  if (conditionTargetsPreDue(condition)) return false;
   if (trigger === "schedule") return true;
   return parseAgingRangeFromCondition(condition) !== null;
 }
@@ -124,6 +202,47 @@ export function formatAgingRangeLabel(range: AgingDaysRange): string {
   if (min !== undefined) return `desde el día ${min} de mora`;
   if (max !== undefined) return `hasta el día ${max} de mora`;
   return "sin rango definido";
+}
+
+export function formatPreDueRangeLabel(range: PreDueDaysRange): string {
+  const { min, max } = range;
+  if (min !== undefined && max !== undefined) {
+    if (min === max) {
+      return min === 1
+        ? "falta 1 día para el vencimiento"
+        : `faltan ${min} días para el vencimiento`;
+    }
+    return `faltan entre ${min} y ${max} días para el vencimiento`;
+  }
+  if (min !== undefined) {
+    return `faltan al menos ${min} día${min === 1 ? "" : "s"} para el vencimiento`;
+  }
+  if (max !== undefined) {
+    return `faltan como máximo ${max} día${max === 1 ? "" : "s"} para el vencimiento`;
+  }
+  return "aún no ha vencido";
+}
+
+export function validatePreDueRangeForm(
+  minDays: string,
+  maxDays: string
+): string | null {
+  const min = minDays.trim() !== "" ? Number(minDays) : undefined;
+  const max = maxDays.trim() !== "" ? Number(maxDays) : undefined;
+
+  if (min !== undefined && (min < 1 || !Number.isFinite(min))) {
+    return "El mínimo debe ser al menos 1 día antes del vencimiento.";
+  }
+  if (max !== undefined && (max < 1 || !Number.isFinite(max))) {
+    return "El máximo debe ser al menos 1 día antes del vencimiento.";
+  }
+  if (min === undefined && max === undefined) {
+    return "Indica al menos el mínimo o el máximo de días antes del vencimiento.";
+  }
+  if (min !== undefined && max !== undefined && min > max) {
+    return "El mínimo de días antes no puede ser mayor que el máximo.";
+  }
+  return null;
 }
 
 export function validateAgingRangeForm(
