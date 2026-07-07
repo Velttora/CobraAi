@@ -13,6 +13,11 @@
  * fuentes web-safe. Sin CSS externo ni clases.
  */
 
+import {
+  emailLayoutVariables,
+  type TemplateVariableDescriptor
+} from "./template-variables";
+
 export type EmailBlockType =
   | "logo"
   | "heading"
@@ -69,12 +74,10 @@ export interface RenderEmailContext {
   variables: Record<string, string>;
 }
 
-/** Variable disponible para insertar en el editor (chips). */
-export interface EmailVariableDescriptor {
-  key: string;
-  label: string;
-  sample: string;
-}
+export type EmailVariableDescriptor = Pick<
+  TemplateVariableDescriptor,
+  "key" | "label" | "sample"
+>;
 
 export const DEFAULT_BRAND_COLOR = "#D85A30";
 
@@ -89,14 +92,8 @@ export const DEFAULT_EMAIL_SETTINGS: EmailLayoutSettings = {
  * Variables que el orquestador de contactos expone (ver `buildVariables` en
  * service-notifications). El editor las ofrece como chips de inserción.
  */
-export const AVAILABLE_EMAIL_VARIABLES: EmailVariableDescriptor[] = [
-  { key: "nombre", label: "Nombre del deudor", sample: "María López" },
-  { key: "empresa", label: "Tu organización", sample: "Acme Cobranzas" },
-  { key: "monto", label: "Monto adeudado", sample: "$1.250.000 COP" },
-  { key: "link_pago", label: "Link de pago", sample: "https://pay.cobrai.dev/abc" },
-  { key: "due_date", label: "Fecha de vencimiento", sample: "15 de junio de 2026" },
-  { key: "external_ref", label: "Referencia de la deuda", sample: "CRED-00123" }
-];
+export const AVAILABLE_EMAIL_VARIABLES: EmailVariableDescriptor[] =
+  emailLayoutVariables();
 
 /** Disclaimer legal por defecto (Ley 1266 de 2008 — Habeas Data, Colombia). */
 const DEFAULT_LEGAL_DISCLAIMER =

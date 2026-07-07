@@ -173,6 +173,8 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
               nombre: ctx.variables["nombre"] ?? "cliente",
               monto: montoEspanol(ctx.variables["monto"] ?? ctx.variables["amount"] ?? "0"),
               empresa: ctx.variables["empresa"] ?? "CobraAI",
+              referencia:
+                ctx.variables["referencia"] ?? ctx.variables["external_ref"] ?? "",
               fecha_vencimiento: fechaEspanol(ctx.variables["due_date"]),
               agente_nombre: "Carlos"
             },

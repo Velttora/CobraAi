@@ -12,6 +12,10 @@
     "./email-layout": {
       "types": "./dist/email-layout.d.ts",
       "default": "./dist/email-layout.js"
+    },
+    "./template-variables": {
+      "types": "./dist/template-variables.d.ts",
+      "default": "./dist/template-variables.js"
     }
   },
   "peerDependencies": {

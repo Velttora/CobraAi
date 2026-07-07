@@ -312,4 +312,23 @@ describe("ContactsService — email layout + subject", () => {
     // el cuerpo de la regla (renderizado) va dentro del shell
     expect(variables.body).toContain("Hola Juan Pérez");
   });
+
+  it("expone referencia y external_ref de la deuda en variables de plantilla", async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue({
+      id: "tpl1",
+      tenantId: "org1",
+      channel: "email",
+      subject: "Recordatorio",
+      content: "Su factura {{referencia}} por {{monto}}.",
+      isApproved: true,
+      language: "es"
+    });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = sentEmail();
+    expect(variables.referencia).toBe("EXT-001");
+    expect(variables.external_ref).toBe("EXT-001");
+    expect(variables.body).toContain("Su factura EXT-001");
+  });
 });

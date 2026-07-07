@@ -550,6 +550,7 @@ export class ContactsService {
       ? Math.round(outstanding * (discountPct / 100))
       : 0;
     const discountFinal = hasDiscount ? outstanding - discountAmount : outstanding;
+    const referencia = debt.externalRef?.trim() || debt.id;
 
     return {
       nombre: debtor.name,
@@ -563,7 +564,8 @@ export class ContactsService {
       empresa,
       link_pago: `${paymentBase}/${debt.id}`,
       payment_link: `${paymentBase}/${debt.id}`,
-      external_ref: debt.externalRef ?? debt.id,
+      referencia,
+      external_ref: referencia,
       due_date: due.toISOString(),
       fecha_vencimiento: formatDate(due),
       installments: "3",

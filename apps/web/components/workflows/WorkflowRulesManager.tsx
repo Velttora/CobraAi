@@ -916,7 +916,9 @@ function RuleTemplateEditor({
           </p>
           <p className="mb-3 text-xs text-slate-500">
             Haz clic en una variable para insertarla en el mensaje. Se reemplaza
-            automáticamente con los datos reales de cada deudor al enviar.
+            automáticamente con los datos reales de cada deudor al enviar. Las
+            plantillas antiguas con alias como {"{{amount}}"} o {"{{debtor_name}}"}{" "}
+            siguen funcionando al enviar.
           </p>
           <div className="space-y-3">
             {TEMPLATE_VARIABLE_GROUPS.map((group) => (
