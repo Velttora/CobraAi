@@ -14,6 +14,7 @@ import { toNumber } from "../../lib/types";
 import { useDebounce } from "../../hooks/use-debounce";
 import { DebtScoresCell } from "../shared/DebtScoresCell";
 import { StatusBadge } from "../shared/StatusBadge";
+import { ResponseStatusBadge } from "../shared/ResponseStatusBadge";
 import { TableSkeleton } from "../shared/Skeleton";
 
 type SortField =
@@ -76,7 +77,15 @@ const DebtRow = memo(function DebtRow({
         {formatAgingBucket(debt.agingBucket)}
       </td>
       <td className="px-4 py-3">
-        <StatusBadge status={debt.status} />
+        <div className="flex flex-col gap-1">
+          <StatusBadge status={debt.status} />
+          {debt.lastContactResponseStatus ? (
+            <ResponseStatusBadge
+              attemptNumber={debt.lastContactAttempt}
+              status={debt.lastContactResponseStatus}
+            />
+          ) : null}
+        </div>
       </td>
       {pipelineMode ? (
         <td className="px-4 py-3 text-slate-500">

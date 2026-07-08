@@ -3,7 +3,7 @@ import type { DebtStatus } from "@cobrai/db";
 export type WorkflowEvent =
   | "DEBT_CREATED"
   | "DEBT_SEGMENTED"
-  | "CONTACT_STARTED"
+  | "CONTACT_EFFECTIVE"
   | "CONTACT_COMPLETED"
   | "PROMISE_MADE"
   | "DISPUTED"
@@ -12,13 +12,17 @@ export type WorkflowEvent =
   | "NO_RESPONSE_THRESHOLD"
   | "ESCALATE_LEGAL";
 
+// "contacted" solo se alcanza con una respuesta real del deudor (evento CONTACT_EFFECTIVE,
+// disparado por WorkflowsService.handleContactEffective al recibir cobrai.contact.effective).
+// Enviar un mensaje ya no mueve la deuda de estado por sí solo — ver debtor-contact-coordinator
+// y ContactsService.markResponse/markContactExpired.
 const TRANSITIONS: Partial<
   Record<DebtStatus, Partial<Record<WorkflowEvent, DebtStatus>>>
 > = {
   new: { DEBT_CREATED: "analyzing" },
   analyzing: { DEBT_SEGMENTED: "active" },
   active: {
-    CONTACT_STARTED: "contacted",
+    CONTACT_EFFECTIVE: "contacted",
     PAYMENT_CONFIRMED: "paid_full",
     NO_RESPONSE_THRESHOLD: "legal_risk"
   },
@@ -26,13 +30,13 @@ const TRANSITIONS: Partial<
     PROMISE_MADE: "promised",
     DISPUTED: "disputed",
     NO_RESPONSE_THRESHOLD: "legal_risk",
-    CONTACT_STARTED: "contacted"
+    CONTACT_EFFECTIVE: "contacted"
   },
   promised: {
     PAYMENT_CONFIRMED: "paid_full",
     PROMISE_BROKEN: "active"
   },
-  disputed: { CONTACT_STARTED: "contacted" },
+  disputed: { CONTACT_EFFECTIVE: "contacted" },
   legal_risk: { ESCALATE_LEGAL: "legal" },
   plan: { PAYMENT_CONFIRMED: "paid_partial" }
 };

@@ -20,8 +20,12 @@ export type ContactFeedback = {
 const REASON_MESSAGES: Record<string, string> = {
   outside_hours:
     "No se puede contactar fuera del horario permitido por la normativa de cobranza.",
-  weekly_limit:
-    "Este deudor ya alcanzó el límite de contactos permitidos esta semana.",
+  awaiting_response:
+    "Este deudor tiene un mensaje enviado y aún está dentro de la ventana de espera de respuesta.",
+  retry_cooldown:
+    "Este deudor está en espera del próximo reintento automático de contacto.",
+  max_attempts_reached:
+    "Se agotaron los intentos de contacto configurados sin obtener respuesta; la deuda fue escalada.",
   frequency_limit:
     "Ya se contactó a este deudor por este canal dentro del límite diario.",
   no_consent:

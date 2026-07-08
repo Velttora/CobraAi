@@ -20,14 +20,24 @@ describe("describeManualContactResult", () => {
     expect(result.description).toContain("horario");
   });
 
-  it("bloquea por límite semanal", () => {
+  it("bloquea mientras espera respuesta del intento anterior", () => {
     const result = describeManualContactResult({
       blocked: true,
-      reason: "weekly_limit"
+      reason: "awaiting_response"
     });
 
     expect(result.variant).toBe("error");
-    expect(result.description).toContain("límite de contactos");
+    expect(result.description).toContain("ventana de espera");
+  });
+
+  it("bloquea al agotar los intentos de contacto", () => {
+    const result = describeManualContactResult({
+      blocked: true,
+      reason: "max_attempts_reached"
+    });
+
+    expect(result.variant).toBe("error");
+    expect(result.description).toContain("intentos de contacto");
   });
 
   it("bloquea por falta de consentimiento", () => {

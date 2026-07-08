@@ -73,7 +73,7 @@ export function computeAgingDays(dueDate: Date): number {
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }
 
-import type { AgingBucket } from "@cobrai/db";
+import type { AgingBucket, PrismaService } from "@cobrai/db";
 
 export function computeAgingBucket(days: number): AgingBucket {
   if (days <= 30) return "d0_30";
@@ -81,4 +81,38 @@ export function computeAgingBucket(days: number): AgingBucket {
   if (days <= 90) return "d61_90";
   if (days <= 180) return "d91_180";
   return "d180_plus";
+}
+
+/** Adjunta el estado de respuesta (Mensaje enviado / Contacto efectivo / Sin contacto) del intento de contacto más reciente de cada deuda. */
+export async function attachLastContactResponse<T extends { id: string }>(
+  prisma: PrismaService,
+  tenantId: string,
+  debts: T[]
+): Promise<(T & { lastContactResponseStatus: string | null; lastContactAttempt: number | null })[]> {
+  if (debts.length === 0) return [];
+
+  const debtIds = debts.map((d) => d.id);
+  const recentContacts = await prisma.contact.findMany({
+    where: {
+      tenantId,
+      debtId: { in: debtIds },
+      deletedAt: null,
+      status: { in: ["in_progress", "completed"] }
+    },
+    orderBy: { createdAt: "desc" },
+    select: { debtId: true, responseStatus: true, attemptNumber: true }
+  });
+
+  const byDebt = new Map<string, { responseStatus: string; attemptNumber: number }>();
+  for (const c of recentContacts) {
+    if (!byDebt.has(c.debtId)) {
+      byDebt.set(c.debtId, { responseStatus: c.responseStatus, attemptNumber: c.attemptNumber });
+    }
+  }
+
+  return debts.map((d) => ({
+    ...d,
+    lastContactResponseStatus: byDebt.get(d.id)?.responseStatus ?? null,
+    lastContactAttempt: byDebt.get(d.id)?.attemptNumber ?? null
+  }));
 }

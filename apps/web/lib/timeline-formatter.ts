@@ -30,6 +30,13 @@ const CONTACT_OUTCOME: Record<string, string> = {
   callback_requested: "Solicitó devolución de llamada"
 };
 
+/** Estado de respuesta del intento (independiente del envío/despacho, ver Contact.status). */
+const RESPONSE_STATUS: Record<string, string> = {
+  pending: "Mensaje enviado — esperando respuesta",
+  effective: "Contacto efectivo",
+  no_response: "Sin contacto"
+};
+
 const PROMISE_STATUS: Record<string, string> = {
   pending: "Pendiente",
   kept: "Cumplida",
@@ -74,7 +81,9 @@ const WORKFLOW_ACTION: Record<string, string> = {
 const COMPLIANCE_REASON: Record<string, string> = {
   outside_hours: "Fuera de horario permitido",
   no_consent: "Sin consentimiento",
-  weekly_limit: "Límite semanal alcanzado",
+  awaiting_response: "Esperando respuesta del intento anterior",
+  retry_cooldown: "En espera del próximo reintento",
+  max_attempts_reached: "Se agotaron los intentos de contacto",
   frequency_limit: "Límite de frecuencia alcanzado",
   opt_out_global: "Deudor con opt-out global",
   opt_out_channel: "Deudor con opt-out en el canal",
@@ -123,11 +132,17 @@ function formatContactEvent(data: Record<string, unknown>): FormattedTimelineEve
   const channel = resolveMessageChannel(str(data, "channel"));
   const status = str(data, "status");
   const outcome = str(data, "outcome");
+  const responseStatus = str(data, "responseStatus");
+  const attemptNumber = num(data, "attemptNumber");
   const duration = num(data, "durationSeconds");
   const agentType = str(data, "agentType");
 
   const meta: string[] = [];
   if (status) meta.push(`Estado: ${CONTACT_STATUS[status] ?? status}`);
+  if (responseStatus) {
+    meta.push(RESPONSE_STATUS[responseStatus] ?? responseStatus);
+  }
+  if (attemptNumber) meta.push(`Intento ${attemptNumber}`);
   if (outcome) meta.push(`Resultado: ${CONTACT_OUTCOME[outcome] ?? outcome}`);
   if (duration) meta.push(`Duración: ${formatDuration(duration)}`);
   if (agentType) {
@@ -147,6 +162,12 @@ function formatContactEvent(data: Record<string, unknown>): FormattedTimelineEve
     description = `Contacto cancelado por ${channelName}.`;
   } else if (outcome) {
     description = `Contacto por ${channelName}: ${CONTACT_OUTCOME[outcome] ?? outcome}.`;
+  } else if (responseStatus === "effective") {
+    description = `Contacto efectivo por ${channelName}: el deudor respondió.`;
+  } else if (responseStatus === "no_response") {
+    description = `Se envió mensaje por ${channelName}, pero el deudor no respondió.`;
+  } else if (responseStatus === "pending") {
+    description = `Mensaje enviado por ${channelName}, esperando respuesta.`;
   } else if (status === "completed") {
     description = `Contacto completado por ${channelName}.`;
   }

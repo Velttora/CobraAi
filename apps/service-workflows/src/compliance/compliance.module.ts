@@ -35,6 +35,6 @@ import {
       inject: [PrismaService, ConsentService, OptOutService, AuditService]
     }
   ],
-  exports: [ComplianceService]
+  exports: [ComplianceService, AuditService]
 })
 export class ComplianceModule {}

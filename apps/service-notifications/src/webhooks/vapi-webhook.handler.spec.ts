@@ -96,6 +96,7 @@ describe("VapiWebhookHandler", () => {
       getUnifiedContext: vi.fn(),
     };
     const config = { get: vi.fn().mockReturnValue("http://localhost:3001/pay"), getOrThrow: vi.fn() };
+    const contacts = { markResponse: vi.fn().mockResolvedValue(undefined) };
     handler = new VapiWebhookHandler(
       prisma as any,
       kafka as any,
@@ -105,6 +106,7 @@ describe("VapiWebhookHandler", () => {
       config as any,
       debtorMemory as any,
       { createPlan: vi.fn().mockResolvedValue(null) } as any,
+      contacts as any,
     );
   });
 

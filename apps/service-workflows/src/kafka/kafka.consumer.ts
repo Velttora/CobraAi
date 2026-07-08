@@ -6,7 +6,8 @@ import { WorkflowsService } from "../workflows/workflows.service";
 const CONSUMED_TOPICS = [
   "cobrai.debt.created",
   "cobrai.debt.segmented",
-  "cobrai.contact.completed",
+  "cobrai.contact.effective",
+  "cobrai.contact.no_response",
   "cobrai.payment.confirmed"
 ] as const;
 
@@ -76,8 +77,11 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
       case "cobrai.debt.segmented":
         await this.workflows.handleDebtSegmented(tenantId, payload);
         break;
-      case "cobrai.contact.completed":
-        await this.workflows.handleContactCompleted(tenantId, payload);
+      case "cobrai.contact.effective":
+        await this.workflows.handleContactEffective(tenantId, payload);
+        break;
+      case "cobrai.contact.no_response":
+        await this.workflows.handleContactNoResponse(tenantId, payload);
         break;
       case "cobrai.payment.confirmed":
         await this.workflows.handlePaymentConfirmed(tenantId, payload);

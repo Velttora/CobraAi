@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AdaptersModule } from "../adapters/adapters.module";
 import { ComplianceModule } from "../compliance/compliance.module";
+import { ContactsModule } from "../contacts/contacts.module";
 import { KafkaModule } from "../kafka/kafka.module";
 import { MemoryModule } from "../memory/memory.module";
 import { PaymentPlanModule } from "../agent/payment-plan.module";
@@ -11,7 +12,14 @@ import { VapiWebhookHandler } from "./vapi-webhook.handler";
 import { SendgridInboundHandler } from "./sendgrid-inbound.handler";
 
 @Module({
-  imports: [AdaptersModule, ComplianceModule, KafkaModule, MemoryModule, PaymentPlanModule],
+  imports: [
+    AdaptersModule,
+    ComplianceModule,
+    ContactsModule,
+    KafkaModule,
+    MemoryModule,
+    PaymentPlanModule
+  ],
   controllers: [WebhooksController],
   providers: [WebhooksService, TwilioWaWebhookHandler, VapiWebhookHandler, SendgridInboundHandler]
 })

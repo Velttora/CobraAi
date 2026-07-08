@@ -11,6 +11,7 @@ import { toNumber } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import { DebtScoresCell } from "../shared/DebtScoresCell";
 import { StatusBadge } from "../shared/StatusBadge";
+import { ResponseStatusBadge } from "../shared/ResponseStatusBadge";
 import { TableSkeleton } from "../shared/Skeleton";
 
 type SortKey =
@@ -188,7 +189,15 @@ function DebtRow({
         {formatAgingBucket(debt.agingBucket)}
       </td>
       <td className="px-4 py-3">
-        <StatusBadge status={debt.status} />
+        <div className="flex flex-col gap-1">
+          <StatusBadge status={debt.status} />
+          {debt.lastContactResponseStatus ? (
+            <ResponseStatusBadge
+              attemptNumber={debt.lastContactAttempt}
+              status={debt.lastContactResponseStatus}
+            />
+          ) : null}
+        </div>
       </td>
       <td className="px-4 py-3">
         {deferred ? (

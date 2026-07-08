@@ -65,7 +65,7 @@ pnpm front       # web :3001
 ### Infra (recomendado)
 
 - [ ] **REDIS_URL** — rate limit gateway, cola import CSV
-- [ ] **KAFKA_BROKERS** — eventos pagos → workflows → notificaciones
+- [ ] **KAFKA_BROKERS** — eventos pagos → workflows → notificaciones. En local apunta a `localhost:9092` (docker-compose, sin auth). En producción (Redpanda Cloud Serverless) además requiere **KAFKA_SASL_USERNAME** y **KAFKA_SASL_PASSWORD** — sin ellas el cliente no puede autenticar por SASL_SSL. Ver `docs/DESPLIEGUE.md`.
 - [ ] **CLERK_WEBHOOK_SECRET** — sync org/usuarios vía webhook Svix
 
 ### Integraciones externas (opcional)

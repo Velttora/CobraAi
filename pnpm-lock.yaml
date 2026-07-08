@@ -50,6 +50,9 @@ importers:
       '@clerk/backend':
         specifier: ^3.4.7
         version: 3.4.7(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@cobrai/compliance':
+        specifier: workspace:*
+        version: link:../../packages/compliance
       '@cobrai/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -141,6 +144,9 @@ importers:
       '@nestjs/platform-express':
         specifier: ^10.4.22
         version: 10.4.22(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)
+      '@nestjs/schedule':
+        specifier: ^4.1.2
+        version: 4.1.2(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.22)
       axios:
         specifier: ^1.6.0
         version: 1.16.1

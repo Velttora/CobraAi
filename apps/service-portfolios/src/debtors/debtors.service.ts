@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { normalizePhoneE164 } from "@cobrai/utils";
 import type { UpdateDebtorDto } from "../debts/dto/debt.dto";
 import { ScoringService } from "../ai-scoring/scoring.service";
+import { attachLastContactResponse } from "../common/utils/api.utils";
 
 /** Canales con consentimiento implícito al importar/crear deudor en cartera. */
 const DEFAULT_CONSENT_CHANNELS: ContactChannel[] = [
@@ -42,7 +43,8 @@ export class DebtorsService {
     if (!debtor) {
       throw new NotFoundException("Deudor no encontrado");
     }
-    return debtor;
+    const debts = await attachLastContactResponse(this.prisma, tenantId, debtor.debts);
+    return { ...debtor, debts };
   }
 
   async update(

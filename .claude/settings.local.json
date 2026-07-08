@@ -57,7 +57,24 @@
       "Bash(npx vitest *)",
       "Bash(cat apps/service-notifications/src/agent/agent.module.ts)",
       "Bash(git checkout *)",
-      "Bash(git commit --only -m ' *)"
+      "Bash(git commit --only -m ' *)",
+      "Bash(pg_isready -h localhost -p 5433)",
+      "Bash(docker info *)",
+      "Bash(open -a Docker)",
+      "Bash(docker compose *)",
+      "Bash(docker exec *)",
+      "Bash(pnpm --filter @cobrai/db build)",
+      "Bash(pnpm --filter @cobrai/compliance build)",
+      "Bash(pnpm --filter @cobrai/utils typecheck)",
+      "Bash(pnpm --filter @cobrai/service-workflows typecheck)",
+      "Bash(pnpm --filter @cobrai/service-portfolios typecheck)",
+      "Bash(pnpm --filter @cobrai/compliance test)",
+      "Bash(pnpm --filter @cobrai/service-notifications test -- conversations.service.spec.ts kafka.consumer.spec.ts)",
+      "Bash(pnpm --filter @cobrai/db typecheck)",
+      "Bash(pnpm --filter @cobrai/db test)",
+      "Bash(pnpm --filter @cobrai/service-portfolios test)",
+      "Bash(pnpm --filter @cobrai/web test)",
+      "Bash(pnpm --filter @cobrai/service-portfolios lint)"
     ]
   }
 }

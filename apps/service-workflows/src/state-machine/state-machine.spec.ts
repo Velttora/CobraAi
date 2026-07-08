@@ -20,7 +20,7 @@ describe("StateMachine", () => {
   });
 
   it("rechaza transición inválida paid_full → active", () => {
-    expect(canTransition("paid_full", "CONTACT_STARTED")).toBe(false);
+    expect(canTransition("paid_full", "CONTACT_EFFECTIVE")).toBe(false);
     expect(listValidEvents("paid_full")).toEqual([]);
   });
 

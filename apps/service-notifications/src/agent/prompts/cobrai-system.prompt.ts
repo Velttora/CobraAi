@@ -29,7 +29,7 @@ export interface DebtorHistory {
   livingSummary?: string | null;      // emotionalProfile.summary
   overallSentiment?: string | null;   // emotionalProfile.sentiment
   paymentBehavior?: string | null;    // emotionalProfile.paymentBehavior
-  // deudas bloqueadas por weekly_limit que el agente debe mencionar oportunamente
+  // deudas diferidas (en espera de respuesta o cooldown de reintento) que el agente debe mencionar oportunamente
   pendingDebts?: PendingDebtSummary[];
 }
 

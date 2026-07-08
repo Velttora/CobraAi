@@ -61,6 +61,12 @@ function makeCompliance() {
   };
 }
 
+function makeAudit() {
+  return {
+    logContactLifecycle: vi.fn().mockResolvedValue(undefined)
+  };
+}
+
 function makeEmail() {
   return {
     sendTemplate: vi.fn().mockResolvedValue({ message_id: "em1", status: "sent" })
@@ -158,6 +164,7 @@ describe("ContactsService — voice enrichment via DebtorMemoryService", () => {
     service = new ContactsService(
       prisma as never,
       makeCompliance() as never,
+      makeAudit() as never,
       makeEmail() as never,
       makeSms() as never,
       makeWhatsapp() as never,
@@ -239,6 +246,7 @@ describe("ContactsService — email layout + subject", () => {
     service = new ContactsService(
       prisma as never,
       makeCompliance() as never,
+      makeAudit() as never,
       email as never,
       makeSms() as never,
       makeWhatsapp() as never,

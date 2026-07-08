@@ -23,6 +23,8 @@ const mockPrisma = {
 };
 
 const mockKafka = { publish: mockPublish };
+const mockMarkResponse = vi.fn().mockResolvedValue(undefined);
+const mockContacts = { markResponse: mockMarkResponse };
 
 describe("TwilioWaWebhookHandler", () => {
   let handler: TwilioWaWebhookHandler;
@@ -31,7 +33,8 @@ describe("TwilioWaWebhookHandler", () => {
     vi.clearAllMocks();
     handler = new TwilioWaWebhookHandler(
       mockPrisma as never,
-      mockKafka as never
+      mockKafka as never,
+      mockContacts as never
     );
   });
 

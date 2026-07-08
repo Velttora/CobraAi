@@ -9,6 +9,7 @@ import { useWorkflowPackages } from "../../../hooks/use-workflows";
 import { WorkflowPackageCard } from "../../../components/workflows/WorkflowPackageCard";
 import { WorkflowRulesManager } from "../../../components/workflows/WorkflowRulesManager";
 import { OrganizationSettingsPanel } from "../../../components/settings/OrganizationSettingsPanel";
+import { ContactRetryPolicyPanel } from "../../../components/settings/ContactRetryPolicyPanel";
 
 export default function SettingsPage(): React.ReactElement {
   const [portfolioId, setPortfolioId] = useState("");
@@ -47,6 +48,8 @@ export default function SettingsPage(): React.ReactElement {
       </header>
 
       <OrganizationSettingsPanel />
+
+      <ContactRetryPolicyPanel />
 
       <Link
         className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-5 transition hover:border-[#D85A30] dark:border-slate-800 dark:bg-slate-900"

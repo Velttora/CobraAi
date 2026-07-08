@@ -16,7 +16,7 @@ import { EmailAdapter } from "../adapters/email.adapter";
 import { SmsAdapter } from "../adapters/sms.adapter";
 import { VapiVoiceAdapter } from "../adapters/vapi-voice.adapter";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
-import { ComplianceService } from "@cobrai/compliance";
+import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
 import {
   DEFAULT_EMAIL_LAYOUT,
   renderEmailLayout,
@@ -44,6 +44,9 @@ export type ContactRequestPayload = {
   rule_id?: string;
   template_id?: string;
   template_hint?: string;
+  attempt_number?: number;
+  previous_channel?: ContactChannel;
+  escalation?: "switch_channel" | "same_channel";
 };
 
 @Injectable()
@@ -53,6 +56,7 @@ export class ContactsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly compliance: ComplianceService,
+    private readonly audit: AuditService,
     private readonly email: EmailAdapter,
     private readonly sms: SmsAdapter,
     private readonly whatsapp: TwilioWhatsAppAdapter,
@@ -100,15 +104,21 @@ export class ContactsService {
         debt_id: payload.debt_id,
         channel: payload.channel,
         template_id: payload.template_id,
-        template_hint: payload.template_hint
+        template_hint: payload.template_hint,
+        attempt_number: payload.attempt_number
       });
       return;
     }
 
     const debt = await this.getDebtContext(tenantId, payload.debt_id);
     const channels = this.availableChannels(debt.debtor);
-    const first = this.waterfall.nextChannel(null, channels);
-    if (!first) {
+    // Reintento: si la política es "same_channel" reintenta el mismo canal; si no
+    // (default "switch_channel" o primer intento), avanza al siguiente canal disponible.
+    const channel =
+      payload.escalation === "same_channel" && payload.previous_channel
+        ? payload.previous_channel
+        : this.waterfall.nextChannel(payload.previous_channel ?? null, channels);
+    if (!channel) {
       await this.kafka.publish("cobrai.contact.failed.no_response", tenantId, {
         debt_id: payload.debt_id,
         reason: "no_available_channel"
@@ -118,8 +128,9 @@ export class ContactsService {
 
     await this.executeContact(tenantId, {
       debt_id: payload.debt_id,
-      channel: first,
-      template_hint: payload.template_hint
+      channel,
+      template_hint: payload.template_hint,
+      attempt_number: payload.attempt_number
     });
   }
 
@@ -131,6 +142,7 @@ export class ContactsService {
       template_id?: string;
       template_hint?: string;
       scheduled_at?: string;
+      attempt_number?: number;
     }
   ) {
     const debt = await this.getDebtContext(tenantId, input.debt_id);
@@ -171,7 +183,10 @@ export class ContactsService {
         };
       }
 
-      if (compliance.reason === "weekly_limit") {
+      if (
+        compliance.reason === "awaiting_response" ||
+        compliance.reason === "retry_cooldown"
+      ) {
         await this.debtorMemory.registerPendingDebt(tenantId, debtor.id, {
           debtId: debt.id,
           externalRef: debt.externalRef ?? null,
@@ -197,6 +212,9 @@ export class ContactsService {
       input.template_hint
     );
 
+    const policy = resolveRetryPolicy(debt.tenant?.settings);
+    const attemptNumber = input.attempt_number ?? 1;
+
     const variables = this.buildVariables(debt, debtor, empresa);
     const contact = await this.prisma.contact.create({
       data: {
@@ -205,7 +223,8 @@ export class ContactsService {
         debtorId: debtor.id,
         channel: input.channel,
         status: "in_progress",
-        startedAt: at
+        startedAt: at,
+        attemptNumber
       }
     });
 
@@ -230,25 +249,54 @@ export class ContactsService {
         sendResult.body
       );
 
+      const sendFailed = sendResult.status === "failed";
+
       const completed = await this.prisma.contact.update({
         where: { id: contact.id },
         data: {
-          status: sendResult.status === "failed" ? "failed" : "completed",
-          endedAt: new Date()
+          status: sendFailed ? "failed" : "completed",
+          endedAt: new Date(),
+          // Un envío fallido nunca llegó al deudor — no tiene sentido esperar respuesta
+          // por él; se marca sin_contacto de inmediato para que el reintento no espere
+          // la ventana completa por algo que ya sabemos que no se entregó.
+          ...(sendFailed
+            ? { responseStatus: "no_response" as const, respondedAt: new Date() }
+            : {})
         }
       });
 
-      await this.kafka.publish("cobrai.contact.completed", tenantId, {
+      // Registro (no dispara outcome ni cuenta intentos por sí solo — eso lo decide
+      // la respuesta real del deudor o el vencimiento de la ventana, ver §4/§5).
+      await this.kafka.publish("cobrai.contact.sent", tenantId, {
         debt_id: debt.id,
         debtor_id: debtor.id,
         contact_id: contact.id,
         channel: input.channel,
-        outcome: sendResult.status === "failed" ? "refused" : "no_answer",
+        attempt_number: attemptNumber,
+        send_failed: sendFailed,
         provider_message_id: sendResult.messageId
       });
 
-      // Solo limpiar si el mensaje llegó efectivamente al deudor
-      if (sendResult.status !== "failed") {
+      await this.audit.logContactLifecycle({
+        tenantId,
+        debtorId: debtor.id,
+        action: "compliance.contact.sent",
+        channel: input.channel,
+        attemptNumber,
+        maxAttempts: policy.maxAttempts,
+        windowHours: policy.windowHours
+      });
+
+      if (sendFailed) {
+        await this.kafka.publish("cobrai.contact.no_response", tenantId, {
+          debt_id: debt.id,
+          debtor_id: debtor.id,
+          contact_id: contact.id,
+          channel: input.channel,
+          attempt_number: attemptNumber
+        });
+      } else {
+        // Solo limpiar si el mensaje llegó efectivamente al deudor
         await this.debtorMemory.clearPendingDebts(tenantId, debtor.id);
       }
 
@@ -256,10 +304,120 @@ export class ContactsService {
     } catch (err) {
       await this.prisma.contact.update({
         where: { id: contact.id },
-        data: { status: "failed", endedAt: new Date() }
+        data: {
+          status: "failed",
+          endedAt: new Date(),
+          responseStatus: "no_response",
+          respondedAt: new Date()
+        }
+      });
+      await this.kafka.publish("cobrai.contact.no_response", tenantId, {
+        debt_id: debt.id,
+        debtor_id: debtor.id,
+        contact_id: contact.id,
+        channel: input.channel,
+        attempt_number: attemptNumber
       });
       throw err;
     }
+  }
+
+  /**
+   * Marca la respuesta del intento de contacto más reciente del deudor (cualquier
+   * deuda/canal — el coordinator ya agrupa las deudas de un deudor en un solo ciclo
+   * de contacto activo). Se llama desde las vías inbound: WhatsApp, email y el
+   * resultado real de una llamada de voz.
+   */
+  async markResponse(
+    tenantId: string,
+    debtorId: string,
+    status: "effective" | "no_response",
+    via: ContactChannel
+  ): Promise<void> {
+    const pending = await this.prisma.contact.findFirst({
+      where: {
+        tenantId,
+        debtorId,
+        deletedAt: null,
+        responseStatus: "pending",
+        status: { in: ["scheduled", "in_progress", "completed"] }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+    if (!pending) return;
+
+    await this.finalizeResponse(tenantId, pending, status, via);
+  }
+
+  /**
+   * Igual que markResponse, pero apuntando a un Contact ya identificado por id — usado
+   * por ContactRetrySweepService para no reconsultar "el más reciente" y arriesgar marcar
+   * uno distinto si en el ínterin se creó un intento más nuevo para el mismo deudor.
+   */
+  async markContactExpired(tenantId: string, contactId: string): Promise<void> {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, tenantId, deletedAt: null, responseStatus: "pending" }
+    });
+    if (!contact) return;
+
+    await this.finalizeResponse(tenantId, contact, "no_response");
+  }
+
+  private async finalizeResponse(
+    tenantId: string,
+    pending: { id: string; debtId: string; debtorId: string; channel: ContactChannel; attemptNumber: number },
+    status: "effective" | "no_response",
+    via?: ContactChannel
+  ): Promise<void> {
+    await this.prisma.contact.update({
+      where: { id: pending.id },
+      data: { responseStatus: status, respondedAt: new Date() }
+    });
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true }
+    });
+    const policy = resolveRetryPolicy(tenant?.settings);
+    const debtorId = pending.debtorId;
+
+    if (status === "effective") {
+      await this.debtorMemory.clearPendingDebts(tenantId, debtorId);
+      await this.audit.logContactLifecycle({
+        tenantId,
+        debtorId,
+        action: "compliance.contact.effective",
+        channel: pending.channel,
+        attemptNumber: pending.attemptNumber,
+        maxAttempts: policy.maxAttempts,
+        respondedVia: via
+      });
+      await this.kafka.publish("cobrai.contact.effective", tenantId, {
+        debt_id: pending.debtId,
+        debtor_id: debtorId,
+        contact_id: pending.id,
+        channel: pending.channel,
+        attempt_number: pending.attemptNumber,
+        responded_via: via
+      });
+      return;
+    }
+
+    await this.audit.logContactLifecycle({
+      tenantId,
+      debtorId,
+      action: "compliance.contact.no_response",
+      channel: pending.channel,
+      attemptNumber: pending.attemptNumber,
+      maxAttempts: policy.maxAttempts
+    });
+    await this.kafka.publish("cobrai.contact.no_response", tenantId, {
+      debt_id: pending.debtId,
+      debtor_id: debtorId,
+      contact_id: pending.id,
+      channel: pending.channel,
+      attempt_number: pending.attemptNumber
+    });
   }
 
   /** Mientras FEATURE_SMS_ENABLED no esté activo, SMS se trata como WhatsApp. */
@@ -646,7 +804,7 @@ export class ContactsService {
   private async getDebtContext(tenantId: string, debtId: string) {
     const debt = await this.prisma.debt.findFirst({
       where: { id: debtId, tenantId, deletedAt: null },
-      include: { debtor: true, tenant: { select: { name: true } } }
+      include: { debtor: true, tenant: { select: { name: true, settings: true } } }
     });
     if (!debt) {
       throw new NotFoundException("Deuda no encontrada");

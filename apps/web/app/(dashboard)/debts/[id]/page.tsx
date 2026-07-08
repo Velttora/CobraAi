@@ -7,6 +7,7 @@ import { ContactModal } from "../../../../components/debts/ContactModal";
 import { TimelineEvent } from "../../../../components/debts/TimelineEvent";
 import { ScoreCircle } from "../../../../components/debts/ScoreCircle";
 import { StatusBadge } from "../../../../components/shared/StatusBadge";
+import { ResponseStatusBadge } from "../../../../components/shared/ResponseStatusBadge";
 import { CardSkeleton } from "../../../../components/shared/Skeleton";
 import { useDebt, useDebtTimeline } from "../../../../hooks/use-debts";
 import { useCreatePaymentLink } from "../../../../hooks/use-payments";
@@ -101,8 +102,14 @@ export default function DebtDetailPage({
             </div>
             <div>
               <dt className="text-xs text-slate-500">Estado</dt>
-              <dd>
+              <dd className="flex flex-col gap-1">
                 <StatusBadge status={debt.status} />
+                {debt.lastContactResponseStatus ? (
+                  <ResponseStatusBadge
+                    attemptNumber={debt.lastContactAttempt}
+                    status={debt.lastContactResponseStatus}
+                  />
+                ) : null}
               </dd>
             </div>
             <div>

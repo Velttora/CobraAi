@@ -6,7 +6,7 @@
 | API + microservicios | **Fly.io** (región `gru`, São Paulo) |
 | Postgres | Fly Postgres `cobrai-db` (si ya existe en `iad`, sigue funcionando; apps en `gru` se conectan por red interna) |
 | Redis | Fly Redis / Upstash `cobrai-redis` |
-| Kafka | [Upstash Kafka](https://console.upstash.com/) (consola web) |
+| Kafka | [Redpanda Cloud Serverless](https://cloud.redpanda.com/) (consola web) — Upstash Kafka fue descontinuado en marzo 2025 |
 
 ---
 
@@ -26,7 +26,17 @@ fly postgres create --name cobrai-db --region gru
 # Redis (Upstash en Fly)
 fly redis create --name cobrai-redis --region gru
 
-# Kafka → https://console.upstash.com/ → crear cluster → copiar bootstrap URL
+# Kafka → https://cloud.redpanda.com/ → Create Cluster → tipo "Serverless"
+#   - Namespace: el que te ofrezca por defecto (o crea uno, ej. "cobrai")
+#   - Región: la más cercana a gru (Fly) — cualquiera cercana a São Paulo
+#   - Al terminar de crearse (unos minutos), entra al cluster:
+#     - Tab "Overview" → "How to connect" → "Kafka API" → copia el
+#       Bootstrap Server (algo como seed-xxxxx.redpanda.com:9092)
+#     - Tab "Security" → "Create User" → nombre + password, mecanismo
+#       SASL "SCRAM-SHA-256" → estas son KAFKA_SASL_USERNAME/PASSWORD
+#   - Los topics de eventos no se auto-crean en Redpanda Serverless por
+#     defecto: correr `pnpm kafka:create-topics` (más abajo) después de
+#     crear el usuario
 ```
 
 Adjunta Postgres a cada app (si `setup-infra.sh` no lo hizo):
@@ -70,13 +80,21 @@ fly secrets set --config infra/fly/gateway.fly.toml \
 
 Las URLs internas de microservicios ya están en `gateway.fly.toml` (`*.internal:8080`).
 
+> **Kafka en producción usa SASL_SSL** (Redpanda Serverless no acepta
+> conexiones en texto plano). `KAFKA_BROKERS` solo no basta: hay que pasar
+> también `KAFKA_SASL_USERNAME` y `KAFKA_SASL_PASSWORD` en los 4
+> microservicios de abajo. El cliente (`packages/kafka`) activa TLS +
+> SCRAM-SHA-256 automáticamente en cuanto detecta esas dos variables.
+
 ### Portfolios
 
 ```bash
 fly secrets set --config infra/fly/portfolios.fly.toml \
   DATABASE_URL="postgresql://..." \
   REDIS_URL="redis://..." \
-  KAFKA_BROKERS="host:9092"
+  KAFKA_BROKERS="host:9092" \
+  KAFKA_SASL_USERNAME="..." \
+  KAFKA_SASL_PASSWORD="..."
 ```
 
 ### Workflows
@@ -84,7 +102,9 @@ fly secrets set --config infra/fly/portfolios.fly.toml \
 ```bash
 fly secrets set --config infra/fly/workflows.fly.toml \
   DATABASE_URL="postgresql://..." \
-  KAFKA_BROKERS="host:9092"
+  KAFKA_BROKERS="host:9092" \
+  KAFKA_SASL_USERNAME="..." \
+  KAFKA_SASL_PASSWORD="..."
 ```
 
 ### Notifications
@@ -93,6 +113,8 @@ fly secrets set --config infra/fly/workflows.fly.toml \
 fly secrets set --config infra/fly/notifications.fly.toml \
   DATABASE_URL="postgresql://..." \
   KAFKA_BROKERS="host:9092" \
+  KAFKA_SASL_USERNAME="..." \
+  KAFKA_SASL_PASSWORD="..." \
   SENDGRID_API_KEY="" \
   SENDGRID_FROM_EMAIL="noreply@tudominio.com"
 ```
@@ -103,10 +125,32 @@ fly secrets set --config infra/fly/notifications.fly.toml \
 fly secrets set --config infra/fly/payments.fly.toml \
   DATABASE_URL="postgresql://..." \
   KAFKA_BROKERS="host:9092" \
+  KAFKA_SASL_USERNAME="..." \
+  KAFKA_SASL_PASSWORD="..." \
   CONEKTA_PRIVATE_KEY="" \
   CONEKTA_WEBHOOK_SECRET="" \
   MP_ACCESS_TOKEN="" \
   MP_WEBHOOK_SECRET=""
+```
+
+### Topics de eventos
+
+Redpanda Serverless no auto-crea topics: crea los ~20 topics de eventos
+(`cobrai.debt.created`, `cobrai.payment.confirmed`, etc.) antes de
+desplegar:
+
+```bash
+KAFKA_BROKERS="host:9092" \
+KAFKA_SASL_USERNAME="..." \
+KAFKA_SASL_PASSWORD="..." \
+pnpm kafka:create-topics
+```
+
+Verifica que un servicio quedó conectado revisando sus logs tras el deploy:
+
+```bash
+fly logs --app cobrai-portfolios | grep -i kafka
+# No debe aparecer "Kafka deshabilitado"
 ```
 
 ---

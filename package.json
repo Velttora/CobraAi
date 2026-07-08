@@ -39,6 +39,7 @@
     "db:migrate:prod": "bash infra/fly/run-prod-migrate.sh",
     "fly:setup-infra": "bash infra/fly/setup-infra.sh",
     "fly:deploy": "bash infra/fly/deploy.sh",
+    "kafka:create-topics": "pnpm --filter @cobrai/kafka create-topics",
     "transform:cartera": "tsx scripts/transform-cartera.ts"
   },
   "devDependencies": {

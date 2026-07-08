@@ -481,7 +481,7 @@ export class DebtorMemoryService {
   }
 
   // -------------------------------------------------------------------------
-  // Public: registerPendingDebt — called when a contact is blocked by weekly_limit
+  // Public: registerPendingDebt — called when a contact is blocked by awaiting_response/retry_cooldown
   // -------------------------------------------------------------------------
 
   async registerPendingDebt(

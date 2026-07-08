@@ -2,8 +2,47 @@ import { PrismaService, type Prisma } from "@cobrai/db";
 import { randomUUID } from "node:crypto";
 import type { ContactCheckReason } from "./types";
 
+export type ContactLifecycleAction =
+  | "compliance.contact.sent"
+  | "compliance.contact.effective"
+  | "compliance.contact.no_response"
+  | "compliance.contact.retry_scheduled"
+  | "compliance.contact.escalated";
+
 export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Traza descriptiva del ciclo de vida de un intento de contacto (envío → respuesta/vencimiento → reintento/escalamiento). */
+  async logContactLifecycle(input: {
+    tenantId: string;
+    debtorId: string;
+    action: ContactLifecycleAction;
+    channel: string;
+    attemptNumber: number;
+    maxAttempts: number;
+    windowHours?: number;
+    respondedVia?: string;
+    nextRetryAt?: Date;
+    escalationTarget?: string;
+  }): Promise<void> {
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: input.tenantId,
+        action: input.action,
+        resourceType: "debtor",
+        resourceId: input.debtorId,
+        changes: {
+          channel: input.channel,
+          attemptNumber: input.attemptNumber,
+          maxAttempts: input.maxAttempts,
+          windowHours: input.windowHours ?? null,
+          respondedVia: input.respondedVia ?? null,
+          nextRetryAt: input.nextRetryAt?.toISOString() ?? null,
+          escalationTarget: input.escalationTarget ?? null
+        }
+      }
+    });
+  }
 
   async logComplianceDecision(input: {
     tenantId: string;

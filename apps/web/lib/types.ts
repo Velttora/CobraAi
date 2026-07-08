@@ -23,11 +23,19 @@ export interface ApiItemResponse<T> {
   meta: ApiMeta;
 }
 
+export interface ContactRetryPolicy {
+  windowHours: number;
+  maxAttempts: number;
+  escalation: "switch_channel" | "same_channel";
+  escalateTo: "legal_risk" | "human";
+}
+
 export interface Tenant {
   id: string;
   name: string;
   slug: string;
   plan: string;
+  contactRetryPolicy: ContactRetryPolicy;
 }
 
 export interface Portfolio {
@@ -124,6 +132,9 @@ export interface Debt {
   debtor?: Debtor;
   portfolio?: Portfolio;
   timeline_preview?: TimelineEvent[];
+  /** Estado de respuesta del intento de contacto más reciente (Mensaje enviado / Contacto efectivo / Sin contacto). */
+  lastContactResponseStatus?: string | null;
+  lastContactAttempt?: number | null;
 }
 
 export interface TimelineEvent {

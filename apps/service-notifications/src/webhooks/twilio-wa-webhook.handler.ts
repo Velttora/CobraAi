@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
+import { ContactsService } from "../contacts/contacts.service";
 
 export interface TwilioWaInboundPayload {
   MessageSid: string;
@@ -19,7 +20,8 @@ export class TwilioWaWebhookHandler {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly kafka: KafkaService
+    private readonly kafka: KafkaService,
+    private readonly contacts: ContactsService
   ) {}
 
   async handleInbound(payload: TwilioWaInboundPayload): Promise<void> {
@@ -69,6 +71,9 @@ export class TwilioWaWebhookHandler {
       where: { id: conversation.id },
       data: { lastMessageAt: new Date() }
     });
+
+    // Cualquier respuesta entrante cierra el intento de contacto pendiente como efectivo.
+    await this.contacts.markResponse(debtor.tenantId, debtor.id, "effective", "whatsapp");
 
     // Publicar evento para que el agente LLM responda (Phase 3)
     await this.kafka.publish(

@@ -126,6 +126,14 @@ enum ContactOutcome {
   @@map("contact_outcome")
 }
 
+enum ContactResponseStatus {
+  pending
+  effective
+  no_response
+
+  @@map("contact_response_status")
+}
+
 enum AgentType {
   ai
   human
@@ -432,6 +440,10 @@ model Contact {
   channel         ContactChannel
   status          ContactStatus   @default(scheduled)
   outcome         ContactOutcome?
+  responseStatus  ContactResponseStatus @default(pending) @map("response_status")
+  respondedAt     DateTime?       @map("responded_at")
+  attemptNumber   Int             @default(1) @map("attempt_number")
+  nextRetryAt     DateTime?       @map("next_retry_at")
   sentimentScore  Float?          @map("sentiment_score")
   transcriptUrl   String?         @map("transcript_url")
   durationSeconds Int?            @map("duration_seconds")
@@ -449,6 +461,8 @@ model Contact {
 
   @@index([tenantId, debtId])
   @@index([tenantId, debtorId])
+  @@index([tenantId, debtorId, responseStatus])
+  @@index([responseStatus, status])
   @@map("contacts")
 }
 

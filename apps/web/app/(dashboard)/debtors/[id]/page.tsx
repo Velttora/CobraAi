@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { EditDebtorForm } from "../../../../components/debtors/EditDebtorForm";
 import { StatusBadge } from "../../../../components/shared/StatusBadge";
+import { ResponseStatusBadge } from "../../../../components/shared/ResponseStatusBadge";
 import { CardSkeleton } from "../../../../components/shared/Skeleton";
 import { useConversation } from "../../../../hooks/use-notifications";
 import { useDebtor } from "../../../../hooks/use-portfolios";
@@ -118,7 +119,15 @@ export default function DebtorDetailPage({
                   ) : null}
                 </p>
               </div>
-              <StatusBadge status={debt.status} />
+              <div className="flex flex-col items-end gap-1">
+                <StatusBadge status={debt.status} />
+                {debt.lastContactResponseStatus ? (
+                  <ResponseStatusBadge
+                    attemptNumber={debt.lastContactAttempt}
+                    status={debt.lastContactResponseStatus}
+                  />
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>

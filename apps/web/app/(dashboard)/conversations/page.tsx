@@ -70,6 +70,22 @@ const OUTCOME_LABELS: Record<string, { label: string; className: string }> = {
   }
 };
 
+/** Estado del intento de contacto más reciente del deudor (independiente del canal). */
+const RESPONSE_STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  pending: {
+    label: "Mensaje enviado",
+    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+  },
+  effective: {
+    label: "Contacto efectivo",
+    className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+  },
+  no_response: {
+    label: "Sin contacto",
+    className: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+  }
+};
+
 const VOICE_OUTCOME_OPTIONS = [
   { value: "", label: "Todos los resultados" },
   { value: "promise_made", label: "Promesa de pago" },
@@ -338,6 +354,7 @@ export default function ConversationsPage() {
                   )}
                   <th className="px-4 py-3 text-left font-medium text-slate-500">Último mensaje</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-500">Estado</th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-500">Respuesta</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-500">Fecha</th>
                   <th className="px-4 py-3 text-left font-medium text-slate-500">Acciones</th>
                 </tr>
@@ -350,6 +367,9 @@ export default function ConversationsPage() {
                   };
                   const outcomeInfo = conv.last_call_outcome
                     ? (OUTCOME_LABELS[conv.last_call_outcome] ?? null)
+                    : null;
+                  const responseStatusInfo = conv.last_response_status
+                    ? (RESPONSE_STATUS_LABELS[conv.last_response_status] ?? null)
                     : null;
                   return (
                     <tr
@@ -403,6 +423,18 @@ export default function ConversationsPage() {
                         <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", statusInfo.className)}>
                           {statusInfo.label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {responseStatusInfo ? (
+                          <span
+                            className={cn("rounded-full px-2 py-0.5 text-xs font-medium", responseStatusInfo.className)}
+                            title={conv.last_response_attempt ? `Intento ${conv.last_response_attempt}` : undefined}
+                          >
+                            {responseStatusInfo.label}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-400">
                         {conv.last_message_at ? formatDateTime(conv.last_message_at) : "—"}

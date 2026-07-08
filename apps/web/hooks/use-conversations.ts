@@ -21,6 +21,8 @@ export interface ConversationItem {
   last_message: string | null;
   last_call_outcome: string | null;
   last_call_duration: number | null;
+  last_response_status: string | null;
+  last_response_attempt: number | null;
 }
 
 export interface ConversationMessage {

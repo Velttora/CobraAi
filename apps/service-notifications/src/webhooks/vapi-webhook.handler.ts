@@ -8,6 +8,7 @@ import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import { PaymentPlanService } from "../agent/payment-plan.service";
+import { ContactsService } from "../contacts/contacts.service";
 
 type ContactOutcome =
   | "promise_made"
@@ -17,6 +18,14 @@ type ContactOutcome =
   | "voicemail"
   | "wrong_number"
   | "callback_requested";
+
+/** Outcomes que implican que el deudor interactuó realmente (aunque haya rechazado). */
+const EFFECTIVE_VOICE_OUTCOMES: ContactOutcome[] = [
+  "promise_made",
+  "payment_received",
+  "callback_requested",
+  "refused"
+];
 
 /** Datos estructurados que Vapi extrae de la llamada (analysisPlan.structuredDataPlan). */
 export interface VapiStructuredData {
@@ -66,6 +75,7 @@ export class VapiWebhookHandler {
     private readonly config: ConfigService,
     private readonly debtorMemory: DebtorMemoryService,
     private readonly paymentPlans: PaymentPlanService,
+    private readonly contacts: ContactsService,
   ) {}
 
   async handleEndOfCall(payload: VapiWebhookPayload): Promise<void> {
@@ -112,6 +122,10 @@ export class VapiWebhookHandler {
     // Si no existía un contact previo (llamada disparada fuera de executeContact),
     // crear uno para que la llamada aparezca en /calls (lee de la tabla contacts).
     let closedContact: { id: string } | null = null;
+    const debtRow = await this.prisma.debt.findFirst({
+      where: { id: debtId, tenantId },
+      select: { debtorId: true },
+    });
     if (updated.count > 0) {
       closedContact = await this.prisma.contact.findFirst({
         where: { tenantId, debtId, channel: "voice", status: "completed" },
@@ -119,10 +133,6 @@ export class VapiWebhookHandler {
         select: { id: true },
       });
     } else {
-      const debtRow = await this.prisma.debt.findFirst({
-        where: { id: debtId, tenantId },
-        select: { debtorId: true },
-      });
       if (debtRow) {
         closedContact = await this.prisma.contact.create({
           data: {
@@ -139,6 +149,21 @@ export class VapiWebhookHandler {
           select: { id: true },
         });
       }
+    }
+
+    // 1b. El resultado de la llamada ya se conoce sincrónicamente — no hace falta esperar
+    // la ventana de respuesta: outcomes donde el deudor interactuó (aunque haya rechazado)
+    // cuentan como contacto efectivo; no-answer/voicemail/wrong-number como sin contacto.
+    if (debtRow) {
+      const responseStatus = EFFECTIVE_VOICE_OUTCOMES.includes(outcome)
+        ? "effective"
+        : "no_response";
+      await this.contacts.markResponse(
+        tenantId,
+        debtRow.debtorId,
+        responseStatus,
+        "voice",
+      );
     }
 
     // 2. Guardar transcript en tabla messages si llega; capturar debtorId para refreshMemory

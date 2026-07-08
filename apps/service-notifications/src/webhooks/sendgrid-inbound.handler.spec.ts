@@ -25,6 +25,8 @@ const mockPrisma = {
 };
 
 const mockKafka = { publish: mockPublish };
+const mockMarkResponse = vi.fn().mockResolvedValue(undefined);
+const mockContacts = { markResponse: mockMarkResponse };
 
 describe("SendgridInboundHandler", () => {
   let handler: SendgridInboundHandler;
@@ -33,7 +35,8 @@ describe("SendgridInboundHandler", () => {
     vi.clearAllMocks();
     handler = new SendgridInboundHandler(
       mockPrisma as never,
-      mockKafka as never
+      mockKafka as never,
+      mockContacts as never
     );
   });
 

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
+import { ContactsService } from "../contacts/contacts.service";
 
 export interface SendgridInboundPayload {
   from?: string;
@@ -20,7 +21,8 @@ export class SendgridInboundHandler {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly kafka: KafkaService
+    private readonly kafka: KafkaService,
+    private readonly contacts: ContactsService
   ) {}
 
   async handleInbound(payload: SendgridInboundPayload): Promise<void> {
@@ -86,6 +88,9 @@ export class SendgridInboundHandler {
       where: { id: conversation.id },
       data: { lastMessageAt: new Date() }
     });
+
+    // 9b. Cualquier respuesta entrante cierra el intento de contacto pendiente como efectivo.
+    await this.contacts.markResponse(debtor.tenantId, debtor.id, "effective", "email");
 
     // 10. Publicar evento Kafka para que el agente responda (Plan 04)
     // phone reutilizado para email address (compatibilidad con InboundMessagePayload)

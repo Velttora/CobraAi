@@ -20,7 +20,9 @@ describe("use-conversations types", () => {
       portfolio: null,
       last_message: "Hola",
       last_call_outcome: null,
-      last_call_duration: null
+      last_call_duration: null,
+      last_response_status: null,
+      last_response_attempt: null
     };
     expect(item.status).toBe("escalated");
     expect(item.debtor.name).toBe("Juan");

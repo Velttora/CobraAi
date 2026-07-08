@@ -4,11 +4,13 @@ import {
   NotFoundException
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { ensureTenantRecord, PrismaService, type Tenant } from "@cobrai/db";
+import { ensureTenantRecord, PrismaService, type Prisma, type Tenant } from "@cobrai/db";
 import { normalizeClerkRole } from "../common/types/clerk-request";
 import {
+  sanitizeContactRetryPolicy,
   toTenantProfile,
-  type TenantProfile
+  type TenantProfile,
+  type UpdateContactRetryPolicyDto
 } from "./dto/tenant-profile.dto";
 
 function slugify(value: string): string {
@@ -81,6 +83,38 @@ export class TenantService {
     });
 
     await this.syncClerkOrganizationName(tenantId, trimmed);
+
+    return toTenantProfile(tenant);
+  }
+
+  /** Actualiza (merge parcial) la política de reintento de contacto del tenant. */
+  async updateContactRetryPolicy(
+    tenantId: string,
+    patch: UpdateContactRetryPolicyDto,
+    role?: string
+  ): Promise<TenantProfile> {
+    this.assertAdmin(role);
+
+    const current = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null }
+    });
+    if (!current) {
+      throw new NotFoundException("Organización no encontrada");
+    }
+
+    const currentSettings = (current.settings ?? {}) as Record<string, unknown>;
+    const currentPolicy = sanitizeContactRetryPolicy(currentSettings.contactRetryPolicy);
+    const nextPolicy = sanitizeContactRetryPolicy(patch, currentPolicy);
+
+    const tenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        settings: {
+          ...currentSettings,
+          contactRetryPolicy: nextPolicy
+        } as Prisma.InputJsonValue
+      }
+    });
 
     return toTenantProfile(tenant);
   }

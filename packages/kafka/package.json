@@ -14,7 +14,8 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "create-topics": "node scripts/create-topics.mjs"
   },
   "dependencies": {
     "kafkajs": "^2.2.4"

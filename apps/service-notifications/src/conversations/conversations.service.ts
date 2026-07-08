@@ -109,6 +109,35 @@ export class ConversationsService {
       }
     }
 
+    // Estado de respuesta (Mensaje enviado / Contacto efectivo / Sin contacto) del intento
+    // de contacto más reciente del deudor — cualquier canal.
+    const allDebtorIds = [...new Set(items.map((c) => c.debtor.id))];
+    const lastResponseByDebtor = new Map<
+      string,
+      { responseStatus: string; attemptNumber: number }
+    >();
+
+    if (allDebtorIds.length > 0) {
+      const recentAttempts = await this.prisma.contact.findMany({
+        where: {
+          tenantId,
+          debtorId: { in: allDebtorIds },
+          deletedAt: null,
+          status: { in: ["in_progress", "completed"] }
+        },
+        orderBy: { createdAt: "desc" },
+        select: { debtorId: true, responseStatus: true, attemptNumber: true }
+      });
+      for (const c of recentAttempts) {
+        if (!lastResponseByDebtor.has(c.debtorId)) {
+          lastResponseByDebtor.set(c.debtorId, {
+            responseStatus: c.responseStatus,
+            attemptNumber: c.attemptNumber
+          });
+        }
+      }
+    }
+
     let mappedItems = items.map((c) => ({
       id: c.id,
       channel: c.channel,
@@ -118,7 +147,9 @@ export class ConversationsService {
       portfolio: c.debt?.portfolio ?? c.debtor.debts[0]?.portfolio ?? null,
       last_message: c.messages[0] ? parseMessagePayload(c.messages[0].content).text : null,
       last_call_outcome: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.outcome ?? null) : null,
-      last_call_duration: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.durationSeconds ?? null) : null
+      last_call_duration: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.durationSeconds ?? null) : null,
+      last_response_status: lastResponseByDebtor.get(c.debtor.id)?.responseStatus ?? null,
+      last_response_attempt: lastResponseByDebtor.get(c.debtor.id)?.attemptNumber ?? null
     }));
 
     // Filtro de outcome en memoria (deuda técnica: migrar a subquery para alto volumen)

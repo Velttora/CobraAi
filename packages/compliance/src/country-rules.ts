@@ -1,4 +1,4 @@
-import type { CountryRuleSet } from "./types";
+import type { ContactRetryPolicy, CountryRuleSet } from "./types";
 import {
   addLocalDays,
   getZonedParts,
@@ -20,7 +20,7 @@ export const COUNTRY_RULES: Record<string, CountryRuleSet> = {
     code: "MX",
     timezone: "America/Mexico_City",
     hours: { startHour: 7, endHour: 22, days: [1, 2, 3, 4, 5, 6] },
-    frequency: { maxPerWeek: 3 },
+    frequency: {},
     requireCreditorIdentification: true,
     requireExplicitConsent: true
   },
@@ -36,7 +36,7 @@ export const COUNTRY_RULES: Record<string, CountryRuleSet> = {
     code: "CO",
     timezone: "America/Bogota",
     hours: { startHour: 8, endHour: 18, days: [0, 1, 2, 3, 4, 5, 6] },
-    frequency: { maxChannelsPerWeek: 1, maxPerWeek: 1 },
+    frequency: {},
     requireCreditorIdentification: true,
     requireExplicitConsent: true
   }
@@ -47,6 +47,33 @@ export function resolveCountryRules(country: string): CountryRuleSet {
   return {
     ...rules,
     timezone: rules.timezone ?? timezoneForCountry(country)
+  };
+}
+
+/**
+ * Política de reintento/escalamiento de contacto. Reemplaza el bloqueo semanal fijo:
+ * en vez de contar envíos en una ventana rodante, cada intento espera `windowHours` una
+ * respuesta real antes de reintentar (hasta `maxAttempts`), y solo entonces se escala.
+ */
+export const DEFAULT_RETRY_POLICY: ContactRetryPolicy = {
+  windowHours: 24,
+  maxAttempts: 3,
+  escalation: "switch_channel",
+  escalateTo: "legal_risk"
+};
+
+export function resolveRetryPolicy(tenantSettings: unknown): ContactRetryPolicy {
+  const override =
+    tenantSettings && typeof tenantSettings === "object"
+      ? (tenantSettings as { contactRetryPolicy?: Partial<ContactRetryPolicy> })
+          .contactRetryPolicy
+      : undefined;
+
+  return {
+    windowHours: override?.windowHours ?? DEFAULT_RETRY_POLICY.windowHours,
+    maxAttempts: override?.maxAttempts ?? DEFAULT_RETRY_POLICY.maxAttempts,
+    escalation: override?.escalation ?? DEFAULT_RETRY_POLICY.escalation,
+    escalateTo: override?.escalateTo ?? DEFAULT_RETRY_POLICY.escalateTo
   };
 }
 

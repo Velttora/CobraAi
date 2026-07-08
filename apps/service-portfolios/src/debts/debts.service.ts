@@ -14,6 +14,7 @@ import {
   getQuarterDateRange
 } from "@cobrai/utils";
 import {
+  attachLastContactResponse,
   computeAgingBucket,
   computeAgingDays,
   decimalToNumber,
@@ -85,7 +86,13 @@ export class DebtsService {
       this.prisma.debt.count({ where })
     ]);
 
-    return { items, total, page, limit };
+    const itemsWithResponseStatus = await attachLastContactResponse(
+      this.prisma,
+      tenantId,
+      items
+    );
+
+    return { items: itemsWithResponseStatus, total, page, limit };
   }
 
   async create(tenantId: string, dto: CreateDebtDto): Promise<Debt> {
@@ -209,7 +216,8 @@ export class DebtsService {
     if (!debt) {
       throw new NotFoundException("Deuda no encontrada");
     }
-    return debt;
+    const [withResponseStatus] = await attachLastContactResponse(this.prisma, tenantId, [debt]);
+    return withResponseStatus!;
   }
 
   async update(tenantId: string, id: string, dto: UpdateDebtDto) {

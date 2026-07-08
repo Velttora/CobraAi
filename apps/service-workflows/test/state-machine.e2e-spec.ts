@@ -9,7 +9,7 @@ describe("state machine e2e", () => {
   it("flujo completo new → analyzing → active → contacted", () => {
     expect(resolveTransition("new", "DEBT_CREATED")).toBe("analyzing");
     expect(resolveTransition("analyzing", "DEBT_SEGMENTED")).toBe("active");
-    expect(resolveTransition("active", "CONTACT_STARTED")).toBe("contacted");
+    expect(resolveTransition("active", "CONTACT_EFFECTIVE")).toBe("contacted");
   });
 
   it("flujo pago confirmed → paid_full", () => {
@@ -19,6 +19,6 @@ describe("state machine e2e", () => {
 
   it("no permite eventos inválidos en estado terminal", () => {
     expect(listValidEvents("paid_full")).toEqual([]);
-    expect(canTransition("paid_full", "CONTACT_STARTED")).toBe(false);
+    expect(canTransition("paid_full", "CONTACT_EFFECTIVE")).toBe(false);
   });
 });

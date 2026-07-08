@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
 import type { ContactChannel } from "@cobrai/db";
+import { ComplianceService } from "@cobrai/compliance";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import { ContactsService, type ContactRequestPayload } from "../contacts/contacts.service";
 
@@ -12,6 +13,9 @@ export interface DebtorContactQueuePayload {
   template_hint?: string;
   rule_id?: string;
   priority_score?: number;
+  attempt_number?: number;
+  previous_channel?: string;
+  escalation?: "switch_channel" | "same_channel";
 }
 
 @Injectable()
@@ -20,6 +24,7 @@ export class DebtorContactCoordinatorService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly compliance: ComplianceService,
     private readonly debtorMemory: DebtorMemoryService,
     private readonly contacts: ContactsService
   ) {}
@@ -28,11 +33,16 @@ export class DebtorContactCoordinatorService {
    * Punto de entrada para contactos originados por workflows.
    *
    * Lógica:
-   * - Si el deudor ya tiene un contacto activo esta semana → registrar la deuda
-   *   como pendiente en el perfil del deudor para que el agente la mencione en
-   *   la próxima interacción.
-   * - Si no → delegar a ContactsService para ejecutar el contacto normalmente.
-   *   El agente tendrá en contexto cualquier pendingDebt registrado previamente.
+   * - Si el deudor ya tiene un contacto en curso (esperando respuesta o en cooldown de
+   *   reintento) para OTRA deuda → registrar esta deuda como pendiente en el perfil del
+   *   deudor para que el agente la mencione en la próxima interacción.
+   * - Si el contacto en curso es exactamente esta deuda (reintento/re-disparo) → dejar
+   *   pasar, es el flujo normal de reintento.
+   * - Si no hay nada en curso → delegar a ContactsService para ejecutar el contacto.
+   *
+   * El estado "en curso" se resuelve con ComplianceService.getRetryState, la misma
+   * fuente de verdad que usa el gate de envío — evita reimplementar el bloqueo semanal
+   * dos veces con lógicas distintas.
    *
    * La serialización de mensajes del consumer de Kafka (eachMessage con await)
    * garantiza que dos deudas del mismo deudor no se procesen concurrentemente,
@@ -47,25 +57,26 @@ export class DebtorContactCoordinatorService {
       return;
     }
 
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - 7);
+    const retryState = await this.compliance.getRetryState(
+      tenantId,
+      payload.debtor_id,
+      new Date()
+    );
 
-    const existingContact = await this.prisma.contact.findFirst({
-      where: {
-        tenantId,
-        debtorId: payload.debtor_id,
-        status: { in: ["scheduled", "in_progress", "completed"] },
-        createdAt: { gte: weekStart }
-      },
-      select: { id: true, debtId: true }
-    });
+    if (!retryState.allowed) {
+      const existingContact = await this.prisma.contact.findFirst({
+        where: {
+          tenantId,
+          debtorId: payload.debtor_id,
+          status: { in: ["scheduled", "in_progress", "completed"] }
+        },
+        orderBy: { createdAt: "desc" },
+        select: { debtId: true }
+      });
 
-    if (existingContact) {
-      // Si el contacto existente es exactamente esta deuda, no re-registrar como pendiente:
-      // el scheduler puede re-disparar la misma deuda en reintentos.
-      if (existingContact.debtId === payload.debt_id) {
+      if (existingContact?.debtId === payload.debt_id) {
         this.logger.log(
-          `Coordinador: deuda ${payload.debt_id} ya tiene contacto activo esta semana — ignorando redisparo`
+          `Coordinador: deuda ${payload.debt_id} ya tiene contacto en curso (${retryState.reason}) — ignorando redisparo`
         );
         return;
       }
@@ -73,7 +84,7 @@ export class DebtorContactCoordinatorService {
       return;
     }
 
-    // Sin contacto previo esta semana — este es el contacto primario del deudor.
+    // Sin contacto en curso — este es el contacto primario del deudor.
     this.logger.log(
       `Coordinador: ejecutando contacto primario debt=${payload.debt_id} debtor=${payload.debtor_id}`
     );
@@ -83,7 +94,10 @@ export class DebtorContactCoordinatorService {
       channel: payload.channel as ContactChannel | undefined,
       template_id: payload.template_id,
       template_hint: payload.template_hint,
-      rule_id: payload.rule_id
+      rule_id: payload.rule_id,
+      attempt_number: payload.attempt_number,
+      previous_channel: payload.previous_channel as ContactChannel | undefined,
+      escalation: payload.escalation
     } as ContactRequestPayload);
   }
 

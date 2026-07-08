@@ -12,6 +12,7 @@ const mockMessageFindMany = vi.fn();
 const mockMessageCount = vi.fn();
 const mockMessageCreate = vi.fn().mockResolvedValue({ id: "msg1" });
 const mockDebtorFindFirst = vi.fn();
+const mockContactFindMany = vi.fn().mockResolvedValue([]);
 
 const mockPrisma = {
   conversation: {
@@ -25,7 +26,9 @@ const mockPrisma = {
     count: mockMessageCount,
     create: mockMessageCreate
   },
-  debtor: { findFirst: mockDebtorFindFirst }
+  contact: { findMany: mockContactFindMany },
+  debtor: { findFirst: mockDebtorFindFirst },
+  $transaction: vi.fn().mockResolvedValue([])
 };
 
 // ── Adapters + compliance mocks ───────────────────────────────────────────────
@@ -47,7 +50,7 @@ const baseConv = {
   channel: ContactChannel.whatsapp,
   status: ConversationStatus.open,
   lastMessageAt: new Date(),
-  debtor: { id: "debtor1", name: "Juan", phones: ["+573001234567"], email: "juan@test.com" },
+  debtor: { id: "debtor1", name: "Juan", phones: ["+573001234567"], email: "juan@test.com", debts: [] },
   messages: [
     {
       id: "m1",

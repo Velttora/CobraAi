@@ -3,7 +3,7 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
-import { ComplianceService } from "@cobrai/compliance";
+import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "@cobrai/db";
 import type {
@@ -47,7 +47,8 @@ export class WorkflowsService {
     private readonly kafka: KafkaService,
     private readonly rules: RuleEngineService,
     private readonly config: ConfigService,
-    private readonly compliance: ComplianceService
+    private readonly compliance: ComplianceService,
+    private readonly audit: AuditService
   ) {}
 
   async handleDebtCreated(
@@ -72,39 +73,86 @@ export class WorkflowsService {
     await this.evaluateTriggerRules(tenantId, debtId, "score_updated");
   }
 
-  async handleContactCompleted(
+  /** Respuesta real del deudor a un intento de contacto — recién aquí la deuda pasa a "contacted". */
+  async handleContactEffective(
     tenantId: string,
     payload: Record<string, unknown>
   ): Promise<void> {
     const debtId = String(payload.debt_id ?? "");
-    const outcome = String(payload.outcome ?? "");
     if (!debtId) return;
 
-    const debt = await this.getDebt(tenantId, debtId);
-    const attempts =
-      Number((debt.metadata as Record<string, unknown>)?.contact_attempts ?? 0) +
-      1;
+    await this.applyTransition(tenantId, debtId, "CONTACT_EFFECTIVE");
+  }
 
-    await this.prisma.debt.update({
-      where: { id: debtId },
-      data: {
-        metadata: {
-          ...(debt.metadata as object),
-          last_contact_outcome: outcome,
-          contact_attempts: attempts
-        }
-      }
+  /**
+   * Un intento de contacto venció sin respuesta (ventana agotada o envío fallido).
+   * Decide, según la política de reintento del tenant (packages/compliance), si
+   * reintentar por el siguiente canal o, al agotar `maxAttempts`, escalar la deuda.
+   */
+  async handleContactNoResponse(
+    tenantId: string,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    const debtId = String(payload.debt_id ?? "");
+    const debtorId = String(payload.debtor_id ?? "");
+    const channel = payload.channel as ContactChannel | undefined;
+    const attemptNumber = Number(payload.attempt_number ?? 1);
+    if (!debtId || !debtorId) return;
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true }
     });
+    const policy = resolveRetryPolicy(tenant?.settings);
 
-    if (outcome === "promise_made") {
-      await this.applyTransition(tenantId, debtId, "PROMISE_MADE");
-    } else if (outcome === "refused") {
-      await this.applyTransition(tenantId, debtId, "DISPUTED");
-    } else if (outcome === "no_answer" || outcome === "voicemail") {
-      if (attempts >= 3) {
-        await this.applyTransition(tenantId, debtId, "NO_RESPONSE_THRESHOLD");
-      }
+    if (attemptNumber < policy.maxAttempts) {
+      const nextRetryAt = new Date();
+      await this.kafka.publish("cobrai.debtor.contact_queue", tenantId, {
+        debt_id: debtId,
+        debtor_id: debtorId,
+        attempt_number: attemptNumber + 1,
+        previous_channel: channel,
+        escalation: policy.escalation
+      });
+      await this.audit.logContactLifecycle({
+        tenantId,
+        debtorId,
+        action: "compliance.contact.retry_scheduled",
+        channel: channel ?? "unknown",
+        attemptNumber: attemptNumber + 1,
+        maxAttempts: policy.maxAttempts,
+        nextRetryAt
+      });
+      return;
     }
+
+    this.logger.warn(
+      `Deuda ${debtId} agotó ${policy.maxAttempts} intentos sin respuesta — escalando a ${policy.escalateTo}`
+    );
+
+    // legal_risk mueve el estado de la deuda; human deja el estado intacto y solo
+    // marca la conversación para revisión de un agente (ver kafka.consumer.ts en
+    // service-notifications, que trata cualquier target != "task" como escalamiento
+    // a la bandeja humana).
+    if (policy.escalateTo === "legal_risk") {
+      await this.applyTransition(tenantId, debtId, "NO_RESPONSE_THRESHOLD");
+    }
+
+    await this.kafka.publish("cobrai.debt.escalated", tenantId, {
+      debt_id: debtId,
+      rule_id: "contact_retry_exhausted",
+      rule_name: "Reintentos de contacto agotados",
+      target: policy.escalateTo
+    });
+    await this.audit.logContactLifecycle({
+      tenantId,
+      debtorId,
+      action: "compliance.contact.escalated",
+      channel: channel ?? "unknown",
+      attemptNumber,
+      maxAttempts: policy.maxAttempts,
+      escalationTarget: policy.escalateTo
+    });
   }
 
   async handlePaymentConfirmed(
@@ -838,10 +886,9 @@ export class WorkflowsService {
       return;
     }
 
-    if (rule.trigger !== "payment_confirmed") {
-      await this.applyTransition(tenantId, debt.id, "CONTACT_STARTED");
-    }
-
+    // Ya no se transiciona a "contacted" aquí: enviar un mensaje no es lo mismo que
+    // contactar al deudor. La transición CONTACT_EFFECTIVE solo se dispara cuando hay
+    // una respuesta real (ver handleContactEffective, consumidor de cobrai.contact.effective).
     const templateHint =
       rule.trigger === "payment_confirmed"
         ? "agradecimiento"
