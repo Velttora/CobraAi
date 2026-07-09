@@ -12,10 +12,12 @@ function resolveSasl(): SASLOptions | undefined {
   const password = process.env.KAFKA_SASL_PASSWORD?.trim();
   if (!username || !password) return undefined;
 
+  // Default to PLAIN: it's what Confluent Cloud API keys use. SCRAM stays
+  // opt-in via KAFKA_SASL_MECHANISM so a missing env can't break the broker.
   const requested = process.env.KAFKA_SASL_MECHANISM?.trim().toLowerCase();
   const mechanism = PASSWORD_SASL_MECHANISMS.includes(requested as PasswordSaslMechanism)
     ? (requested as PasswordSaslMechanism)
-    : "scram-sha-256";
+    : "plain";
 
   return { mechanism, username, password };
 }
