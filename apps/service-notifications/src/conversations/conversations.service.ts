@@ -12,10 +12,8 @@ import {
 import { parseMessagePayload } from "../common/utils/api.utils";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
+import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { ComplianceService } from "@cobrai/compliance";
-
-/** Reply-To fijo para respuestas por email (hilo bidireccional, Phase 6). */
-const EMAIL_REPLY_TO = "reply@reply.fogging.org";
 
 @Injectable()
 export class ConversationsService {

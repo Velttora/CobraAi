@@ -9,9 +9,7 @@ import { buildInstallmentSchedule } from "@cobrai/utils";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import { PaymentPlanService } from "./payment-plan.service";
-
-/** Reply-To address for outbound agent emails (fixed for v1). */
-const EMAIL_REPLY_TO = "reply@reply.fogging.org";
+import { EMAIL_REPLY_TO } from "../common/email.constants";
 
 export interface InboundMessagePayload {
   debtor_id: string;

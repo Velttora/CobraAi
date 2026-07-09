@@ -6,6 +6,7 @@ import { buildInstallmentSchedule } from "@cobrai/utils";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
+import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import { PaymentPlanService } from "../agent/payment-plan.service";
 import { ContactsService } from "../contacts/contacts.service";
@@ -491,6 +492,7 @@ export class VapiWebhookHandler {
           to: email,
           template_id: "link_pago",
           tenant_id: tenantId,
+          reply_to: EMAIL_REPLY_TO,
           variables: {
             nombre,
             monto,
