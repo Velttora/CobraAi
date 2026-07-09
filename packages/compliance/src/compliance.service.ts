@@ -221,7 +221,10 @@ export class ComplianceService {
         tenantId,
         debtorId,
         deletedAt: null,
-        status: { in: ["scheduled", "in_progress", "completed"] }
+        // "failed" incluido: un envío fallido igual cuenta como intento en curso.
+        // Si se omite, N deudas del mismo deudor cuyo 1er envío falla disparan N
+        // contactos (la dedup del coordinator no lo ve) → sobre-contacto.
+        status: { in: ["scheduled", "in_progress", "completed", "failed"] }
       },
       orderBy: { createdAt: "desc" },
       select: {

@@ -24,7 +24,9 @@ function makePrisma() {
           whatsappOptIn: true,
           emotionalProfile: null
         }
-      })
+      }),
+      // Agrupación por deudor: sin otras deudas en el portafolio → contacto de deuda única.
+      findMany: vi.fn().mockResolvedValue([])
     },
     contact: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -338,5 +340,27 @@ describe("ContactsService — email layout + subject", () => {
     expect(variables.referencia).toBe("EXT-001");
     expect(variables.external_ref).toBe("EXT-001");
     expect(variables.body).toContain("Su factura EXT-001");
+  });
+
+  it("agrupa varias deudas del mismo portafolio en un email detallado", async () => {
+    prisma.notificationTemplate.findFirst.mockResolvedValue(null);
+    prisma.debt.findMany.mockResolvedValue([
+      { id: "debt1", amountOutstanding: 500000, currency: "COP", externalRef: "EXT-001", dueDate: new Date("2026-09-30") },
+      { id: "debt2", amountOutstanding: 300000, currency: "COP", externalRef: "EXT-002", dueDate: new Date("2026-10-15") },
+      { id: "debt3", amountOutstanding: 200000, currency: "COP", externalRef: "EXT-003", dueDate: new Date("2026-11-01") }
+    ]);
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = sentEmail();
+    expect(variables.es_agrupado).toBe("true");
+    expect(variables.cantidad_deudas).toBe("3");
+    // total agregado sobrescribe el monto de la deuda individual
+    expect(variables.monto).toBe("1000000");
+    // el cuerpo detalla cada cuenta
+    expect(variables.body).toContain("3 cuentas pendientes");
+    expect(variables.body).toContain("EXT-001");
+    expect(variables.body).toContain("EXT-002");
+    expect(variables.body).toContain("EXT-003");
   });
 });

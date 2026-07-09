@@ -91,9 +91,15 @@ export class TwilioWhatsAppAdapter implements WhatsAppPort {
     const link = variables.link_pago ?? variables.link ?? "";
     const body = variables.body ?? "";
     const empresa = variables.empresa ?? "su gestor de cobranza";
+    const resumenGrupo = variables.deudas_resumen_wa;
 
     // Si viene body pre-renderizado (desde agent response), usarlo directamente
     if (body) return body;
+
+    // Agrupado: varias deudas del mismo deudor → resumen moderado (cantidad + total).
+    if (resumenGrupo) {
+      return `Hola ${nombre}, le recordamos de parte de ${empresa} que registra ${resumenGrupo}. Puede ponerse al día aquí: ${link}`;
+    }
 
     if (templateId.includes("recordatorio")) {
       return `Hola ${nombre}, le recordamos que tiene un saldo pendiente de $${monto}. Puede pagarlo aquí: ${link}`;
