@@ -269,6 +269,31 @@ describe("ConversationAgentService", () => {
     expect(mockDebtorMemory.getUnifiedContext).toHaveBeenCalledWith("org1", "debtor1", "debt1");
   });
 
+  it("deudor con varias deudas → el system prompt las lista TODAS (no solo la principal)", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({
+      ...baseDebtor,
+      debts: [
+        { id: "debt1", tenantId: "org1", externalRef: "7", amountOutstanding: 7000000, currency: "COP", dueDate: new Date("2026-06-02"), status: "contacted", strategyId: null },
+        { id: "debt2", tenantId: "org1", externalRef: "6", amountOutstanding: 6000000, currency: "COP", dueDate: new Date("2026-05-28"), status: "contacted", strategyId: null },
+        { id: "debt3", tenantId: "org1", externalRef: "2", amountOutstanding: 20000, currency: "COP", dueDate: new Date("2026-06-23"), status: "active", strategyId: null }
+      ]
+    });
+
+    await service.processInboundMessage({ ...basePayload, body: "¿Cuáles son mis deudas?" });
+
+    const callArgs = mockChatCreate.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const systemPrompt = callArgs.messages.find((m) => m.role === "system")?.content ?? "";
+
+    expect(systemPrompt).toContain("Cuentas pendientes: 3");
+    expect(systemPrompt).toContain("Cuenta 7:");
+    expect(systemPrompt).toContain("Cuenta 6:");
+    expect(systemPrompt).toContain("Cuenta 2:");
+    // La cuenta principal (mayor saldo) sigue anclando el intent → debt1.
+    expect(mockDebtorMemory.getUnifiedContext).toHaveBeenCalledWith("org1", "debtor1", "debt1");
+  });
+
   it("channel email → llama EmailAdapter con reply_to, NO llama WhatsApp", async () => {
     await service.processInboundMessage({
       ...basePayload,

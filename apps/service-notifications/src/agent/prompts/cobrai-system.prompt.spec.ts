@@ -1,4 +1,4 @@
-import { vi, describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { buildSystemPrompt } from "./cobrai-system.prompt";
 
 const baseContext = {
@@ -65,5 +65,40 @@ describe("buildSystemPrompt — DebtorHistory living summary extension", () => {
     });
 
     expect(prompt).toContain("negativo");
+  });
+});
+
+describe("buildSystemPrompt — multi-cuenta", () => {
+  it("varias cuentas → lista todas con total, en vez de una sola deuda", () => {
+    const prompt = buildSystemPrompt({
+      ...baseContext,
+      accounts: [
+        { ref: "7", amountStr: "COP 7.000.000", dueDate: "02/06/2026", status: "contacted" },
+        { ref: "6", amountStr: "COP 6.000.000", dueDate: "28/05/2026", status: "contacted" },
+        { ref: "2", amountStr: "COP 20.000", dueDate: "23/06/2026", status: "active" }
+      ],
+      totalOutstandingStr: "COP 13.020.000"
+    });
+
+    expect(prompt).toContain("Cuentas pendientes: 3");
+    expect(prompt).toContain("COP 13.020.000");
+    expect(prompt).toContain("Cuenta 7:");
+    expect(prompt).toContain("Cuenta 6:");
+    expect(prompt).toContain("Cuenta 2:");
+    // No debe usar el formato de deuda única cuando hay varias.
+    expect(prompt).not.toContain("Saldo pendiente:");
+  });
+
+  it("una sola cuenta → formato de deuda única (backward-compatible)", () => {
+    const prompt = buildSystemPrompt({
+      ...baseContext,
+      accounts: [
+        { ref: "7", amountStr: "COP 7.000.000", dueDate: "02/06/2026", status: "contacted" }
+      ],
+      totalOutstandingStr: "COP 7.000.000"
+    });
+
+    expect(prompt).toContain("Saldo pendiente:");
+    expect(prompt).not.toContain("Cuentas pendientes:");
   });
 });
