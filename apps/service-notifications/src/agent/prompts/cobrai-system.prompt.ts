@@ -6,8 +6,23 @@ export interface PromptContext {
   dueDate: string;
   paymentLink: string;
   debtStatus: string;
+  /**
+   * Todas las cuentas activas del deudor. Cuando hay más de una, el prompt las
+   * enumera para que el agente pueda responder "¿cuáles son mis deudas?".
+   * `amount`/`currency`/`dueDate`/`debtStatus`/`paymentLink` describen la cuenta principal.
+   */
+  accounts?: AccountSummary[];
+  /** Total adeudado formateado (suma de todas las cuentas activas). */
+  totalOutstandingStr?: string;
   // Nivel 1 — historial del deudor
   debtorHistory?: DebtorHistory;
+}
+
+export interface AccountSummary {
+  ref: string;
+  amountStr: string;
+  dueDate: string;
+  status: string;
 }
 
 export interface PendingDebtSummary {
@@ -43,10 +58,7 @@ NUNCA eres agresiva, amenazante ni usas lenguaje que pueda infringir la Ley 1266
 
 CONTEXTO DEL DEUDOR:
 - Nombre: ${ctx.debtorName}
-- Saldo pendiente: ${ctx.currency} ${ctx.amount}
-- Fecha vencimiento: ${ctx.dueDate}
-- Estado actual: ${ctx.debtStatus}
-- Enlace de pago: ${ctx.paymentLink}
+${buildDebtSection(ctx)}
 ${historySection}
 TU OBJETIVO: Ayudar al deudor a resolver su situación de la manera más conveniente para ambas partes.
 
@@ -59,6 +71,7 @@ REGLAS:
 6. Si dice que ya pagó: agradece, explica que el pago puede tomar 24-48h en reflejarse.
 7. Si es agresivo o pide hablar con humano: ofrece escalar a un agente.
 8. Si pide no ser contactado: respeta y confirma que no se le contactará más.
+9. Si el deudor pregunta cuántas o cuáles cuentas/deudas tiene, enuméralas TODAS con su monto y fecha de vencimiento a partir del listado de "CONTEXTO DEL DEUDOR". NUNCA afirmes que tiene una sola cuando el contexto lista varias.
 
 REGULACIÓN COLOMBIA (Ley 1266 / Habeas Data):
 - NO amenazar con acciones legales inexistentes.
@@ -80,6 +93,36 @@ FORMATO DE RESPUESTA — devuelve ÚNICAMENTE este JSON:
 Para intent "plan_request": completa "installments_count" (nº de cuotas acordado),
 "first_payment_date" (fecha de la primera cuota) e "interval_days" (días entre cuotas, normalmente 30).
 El sistema repartirá el saldo en cuotas iguales. Los demás campos van en null.`;
+}
+
+/**
+ * Renderiza el bloque de deuda(s) dentro de "CONTEXTO DEL DEUDOR".
+ * - 1 cuenta (o `accounts` ausente): formato clásico de deuda única.
+ * - varias cuentas: total + detalle enumerado, para que el agente pueda listarlas.
+ */
+function buildDebtSection(ctx: PromptContext): string {
+  const accounts = ctx.accounts ?? [];
+
+  if (accounts.length > 1) {
+    const lines = [
+      `- Cuentas pendientes: ${accounts.length} — Total adeudado: ${ctx.totalOutstandingStr ?? ""}`,
+      `- Detalle de las cuentas del deudor:`
+    ];
+    accounts.forEach((a, i) => {
+      lines.push(
+        `  ${i + 1}. Cuenta ${a.ref}: ${a.amountStr} — vence ${a.dueDate} (estado: ${a.status})`
+      );
+    });
+    lines.push(`- Enlace de pago (cuenta principal ${accounts[0]?.ref}): ${ctx.paymentLink}`);
+    return lines.join("\n");
+  }
+
+  return [
+    `- Saldo pendiente: ${ctx.currency} ${ctx.amount}`,
+    `- Fecha vencimiento: ${ctx.dueDate}`,
+    `- Estado actual: ${ctx.debtStatus}`,
+    `- Enlace de pago: ${ctx.paymentLink}`
+  ].join("\n");
 }
 
 function buildHistorySection(h: DebtorHistory): string {

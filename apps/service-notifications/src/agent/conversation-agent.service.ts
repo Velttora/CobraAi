@@ -86,7 +86,8 @@ export class ConversationAgentService {
   async processInboundMessage(payload: InboundMessagePayload): Promise<void> {
     const { debtor_id, tenant_id, conversation_id, phone, body } = payload;
 
-    // 1. Cargar deudor + deuda activa
+    // 1. Cargar deudor + TODAS sus deudas activas (no solo la principal): el agente
+    //    debe poder enumerarlas cuando el deudor pregunte "¿cuáles son mis deudas?".
     const debtor = await this.prisma.debtor.findFirst({
       where: { id: debtor_id, tenantId: tenant_id, deletedAt: null },
       include: {
@@ -104,8 +105,7 @@ export class ConversationAgentService {
               ]
             }
           },
-          orderBy: { amountOutstanding: "desc" },
-          take: 1
+          orderBy: { amountOutstanding: "desc" }
         },
         tenant: { select: { name: true } }
       }
@@ -116,11 +116,24 @@ export class ConversationAgentService {
       return;
     }
 
+    // La cuenta principal (mayor saldo) ancla el enlace de pago y las acciones de intent.
     const debt = debtor.debts[0];
     if (!debt) {
       this.logger.warn(`Sin deuda activa para deudor ${debtor_id}`);
       return;
     }
+
+    // Resumen de todas las cuentas activas para el contexto del prompt.
+    const accounts = debtor.debts.map((d) => ({
+      ref: d.externalRef ?? d.id.slice(0, 8),
+      amountStr: `${d.currency} ${Number(d.amountOutstanding).toLocaleString("es-CO")}`,
+      dueDate: new Date(d.dueDate).toLocaleDateString("es-CO"),
+      status: d.status
+    }));
+    const totalOutstanding = debtor.debts.reduce(
+      (sum, d) => sum + Number(d.amountOutstanding),
+      0
+    );
 
     // 2. Historial de mensajes (últimos 20)
     const history = await this.prisma.message.findMany({
@@ -133,6 +146,10 @@ export class ConversationAgentService {
     // 3. Cargar contexto unificado del deudor (cross-canal via DebtorMemoryService)
     const unifiedContext = await this.debtorMemory.getUnifiedContext(tenant_id, debtor_id, debt.id);
 
+    // La lista completa de `accounts` (arriba) ya es la fuente autoritativa de las deudas
+    // activas; limpiamos el subconjunto cacheado en el perfil para no mostrar dos listas.
+    unifiedContext.debtorHistory.pendingDebts = [];
+
     // 4. Construir messages para OpenAI
     const systemPrompt = buildSystemPrompt({
       debtorName: debtor.name,
@@ -142,6 +159,8 @@ export class ConversationAgentService {
       dueDate: new Date(debt.dueDate).toLocaleDateString("es-CO"),
       paymentLink: `${this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "http://localhost:3001/pay"}/${debt.id}`,
       debtStatus: debt.status,
+      accounts,
+      totalOutstandingStr: `${debt.currency} ${totalOutstanding.toLocaleString("es-CO")}`,
       debtorHistory: unifiedContext.debtorHistory
     });
 
