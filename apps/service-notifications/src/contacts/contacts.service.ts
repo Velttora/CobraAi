@@ -16,6 +16,7 @@ import { EmailAdapter } from "../adapters/email.adapter";
 import { SmsAdapter } from "../adapters/sms.adapter";
 import { VapiVoiceAdapter } from "../adapters/vapi-voice.adapter";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
+import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
 import {
   DEFAULT_EMAIL_LAYOUT,
@@ -483,7 +484,8 @@ export class ContactsService {
           to,
           template_id: template?.id ?? "default",
           variables: { ...variables, body: html, subject },
-          tenant_id: tenantId
+          tenant_id: tenantId,
+          reply_to: EMAIL_REPLY_TO
         });
         // Guardamos el mensaje legible (no el HTML) en la conversación.
         return { messageId: result.message_id, status: result.status, body: messageBody };
