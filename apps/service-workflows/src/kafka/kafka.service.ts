@@ -30,10 +30,18 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     await this.producer?.disconnect();
   }
 
+  /**
+   * @param key Clave de partición opcional. Los eventos con la misma clave caen
+   *   en la misma partición y se consumen en orden, sin concurrencia entre sí.
+   *   Se usa `debtor_id` en eventos por deudor (p. ej. cobrai.debtor.contact_queue)
+   *   para que el coordinador de contactos procese las deudas de un mismo deudor
+   *   de forma secuencial y no dispare varios mensajes (p. ej. la bienvenida).
+   */
   async publish<T>(
     eventType: string,
     tenantId: string,
-    payload: T
+    payload: T,
+    key?: string
   ): Promise<void> {
     if (!this.producer) {
       this.logger.debug(`Kafka skip ${eventType}`, payload as object);
@@ -48,7 +56,9 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     });
     await this.producer.send({
       topic: eventType,
-      messages: [{ value: JSON.stringify(envelope) }]
+      messages: [
+        { ...(key ? { key } : {}), value: JSON.stringify(envelope) }
+      ]
     });
   }
 }

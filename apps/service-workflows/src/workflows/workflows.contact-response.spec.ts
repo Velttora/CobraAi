@@ -94,7 +94,8 @@ describe("WorkflowsService — ciclo de respuesta de contacto", () => {
           attempt_number: 2,
           previous_channel: "whatsapp",
           escalation: "switch_channel"
-        })
+        }),
+        "debtor1"
       );
       expect(audit.logContactLifecycle).toHaveBeenCalledWith(
         expect.objectContaining({ action: "compliance.contact.retry_scheduled" })

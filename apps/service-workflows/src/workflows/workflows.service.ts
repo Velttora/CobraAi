@@ -58,8 +58,47 @@ export class WorkflowsService {
     const debtId = String(payload.debt_id ?? "");
     if (!debtId) return;
 
+    // La deuda avanza new→analyzing en la transición de abajo y, en el path de
+    // creación directa/import, ya llegó a "active" tras el scoring síncrono en
+    // service-portfolios. Como la regla de bienvenida filtra por status:"new",
+    // capturamos el estado "de creación" (del evento o de la BD antes de la
+    // transición) y evaluamos las reglas contra ese snapshot para que dispare.
+    const statusAtCreation = await this.resolveCreationStatus(
+      tenantId,
+      debtId,
+      payload
+    );
+
     await this.applyTransition(tenantId, debtId, "DEBT_CREATED");
-    await this.evaluateTriggerRules(tenantId, debtId, "debt_created");
+    await this.evaluateTriggerRules(
+      tenantId,
+      debtId,
+      "debt_created",
+      statusAtCreation
+    );
+  }
+
+  /**
+   * Estado de la deuda al momento de crearse, para evaluar reglas `debt_created`
+   * (p. ej. la bienvenida con condición `status:"new"`) sin que la máquina de
+   * estados ni el scoring síncrono las invaliden. Preferimos el `status` del
+   * evento; si no viene (activación diferida), lo leemos de la BD antes de que
+   * `applyTransition` lo modifique.
+   */
+  private async resolveCreationStatus(
+    tenantId: string,
+    debtId: string,
+    payload: Record<string, unknown>
+  ): Promise<DebtStatus | undefined> {
+    if (typeof payload.status === "string" && payload.status) {
+      return payload.status as DebtStatus;
+    }
+
+    const current = await this.prisma.debt.findFirst({
+      where: { id: debtId, tenantId, deletedAt: null },
+      select: { status: true }
+    });
+    return current?.status ?? undefined;
   }
 
   async handleDebtSegmented(
@@ -107,13 +146,18 @@ export class WorkflowsService {
 
     if (attemptNumber < policy.maxAttempts) {
       const nextRetryAt = new Date();
-      await this.kafka.publish("cobrai.debtor.contact_queue", tenantId, {
-        debt_id: debtId,
-        debtor_id: debtorId,
-        attempt_number: attemptNumber + 1,
-        previous_channel: channel,
-        escalation: policy.escalation
-      });
+      await this.kafka.publish(
+        "cobrai.debtor.contact_queue",
+        tenantId,
+        {
+          debt_id: debtId,
+          debtor_id: debtorId,
+          attempt_number: attemptNumber + 1,
+          previous_channel: channel,
+          escalation: policy.escalation
+        },
+        debtorId
+      );
       await this.audit.logContactLifecycle({
         tenantId,
         debtorId,
@@ -734,7 +778,8 @@ export class WorkflowsService {
   private async evaluateTriggerRules(
     tenantId: string,
     debtId: string,
-    trigger: WorkflowRule["trigger"]
+    trigger: WorkflowRule["trigger"],
+    statusOverride?: DebtStatus
   ): Promise<void> {
     const debt = await this.prisma.debt.findFirst({
       where: { id: debtId, tenantId, deletedAt: null },
@@ -749,6 +794,14 @@ export class WorkflowsService {
       select: { automationStatus: true }
     });
     if (!portfolio || portfolio.automationStatus === "none") return;
+
+    // Evaluamos (y ejecutamos) contra el estado "de creación" cuando aplica, de
+    // modo que reglas como la bienvenida (status:"new") disparen aunque la deuda
+    // ya haya avanzado a analyzing/active en la BD para cuando llega el evento.
+    const debtForRules =
+      statusOverride && statusOverride !== debt.status
+        ? { ...debt, status: statusOverride }
+        : debt;
 
     const rules = await this.prisma.workflowRule.findMany({
       where: {
@@ -765,14 +818,14 @@ export class WorkflowsService {
       if (rule.portfolioId !== debt.portfolioId) continue;
       if (
         !this.rules.matchesCondition(
-          debt,
-          debt.debtor,
+          debtForRules,
+          debtForRules.debtor,
           rule.condition as Record<string, unknown>
         )
       ) {
         continue;
       }
-      await this.executeRuleAction(tenantId, debt, rule);
+      await this.executeRuleAction(tenantId, debtForRules, rule);
     }
   }
 
@@ -898,15 +951,23 @@ export class WorkflowsService {
     // El coordinator decide si este deudor ya fue contactado esta semana
     // y, de ser así, registra la deuda como pendiente para mencionarla en
     // el próximo contacto.
-    await this.kafka.publish("cobrai.debtor.contact_queue", tenantId, {
-      debt_id: debt.id,
-      debtor_id: debt.debtorId,
-      channel,
-      rule_id: rule.id,
-      template_id: rule.templateId ?? undefined,
-      template_hint: templateHint,
-      priority_score: debt.priorityScore ?? 0
-    });
+    await this.kafka.publish(
+      "cobrai.debtor.contact_queue",
+      tenantId,
+      {
+        debt_id: debt.id,
+        debtor_id: debt.debtorId,
+        channel,
+        rule_id: rule.id,
+        template_id: rule.templateId ?? undefined,
+        template_hint: templateHint,
+        priority_score: debt.priorityScore ?? 0
+      },
+      // Particionar por deudor: garantiza que todas las deudas de un mismo deudor
+      // se procesen en orden y el coordinador consolide el contacto (una sola
+      // bienvenida por deudor, no una por deuda).
+      debt.debtorId
+    );
   }
 
   private async escalateDebt(
