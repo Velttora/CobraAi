@@ -68,7 +68,7 @@ export class DebtorContactCoordinatorService {
         where: {
           tenantId,
           debtorId: payload.debtor_id,
-          status: { in: ["scheduled", "in_progress", "completed"] }
+          status: { in: ["scheduled", "in_progress", "completed", "failed"] }
         },
         orderBy: { createdAt: "desc" },
         select: { debtId: true }

@@ -216,6 +216,13 @@ export class ContactsService {
     const attemptNumber = input.attempt_number ?? 1;
 
     const variables = this.buildVariables(debt, debtor, empresa);
+    // Agrupar todas las deudas activas del deudor EN EL MISMO PORTAFOLIO en un
+    // solo contacto (email detallado, WhatsApp/voz moderado). Sobrescribe monto
+    // por el total para que las plantillas genéricas muestren el agregado.
+    Object.assign(
+      variables,
+      await this.buildGroupVariables(tenantId, debtor.id, debt)
+    );
     const contact = await this.prisma.contact.create({
       data: {
         tenantId,
@@ -260,7 +267,13 @@ export class ContactsService {
           // por él; se marca sin_contacto de inmediato para que el reintento no espere
           // la ventana completa por algo que ya sabemos que no se entregó.
           ...(sendFailed
-            ? { responseStatus: "no_response" as const, respondedAt: new Date() }
+            ? {
+                responseStatus: "no_response" as const,
+                respondedAt: new Date(),
+                nextRetryAt: new Date(
+                  Date.now() + policy.windowHours * 60 * 60 * 1000
+                )
+              }
             : {})
         }
       });
@@ -308,7 +321,8 @@ export class ContactsService {
           status: "failed",
           endedAt: new Date(),
           responseStatus: "no_response",
-          respondedAt: new Date()
+          respondedAt: new Date(),
+          nextRetryAt: new Date(Date.now() + policy.windowHours * 60 * 60 * 1000)
         }
       });
       await this.kafka.publish("cobrai.contact.no_response", tenantId, {
@@ -369,17 +383,25 @@ export class ContactsService {
     status: "effective" | "no_response",
     via?: ContactChannel
   ): Promise<void> {
-    await this.prisma.contact.update({
-      where: { id: pending.id },
-      data: { responseStatus: status, respondedAt: new Date() }
-    });
-
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { settings: true }
     });
     const policy = resolveRetryPolicy(tenant?.settings);
     const debtorId = pending.debtorId;
+
+    await this.prisma.contact.update({
+      where: { id: pending.id },
+      data: {
+        responseStatus: status,
+        respondedAt: new Date(),
+        // Persistir el cooldown de reintento: sin esto getRetryState nunca lo aplica
+        // y los reintentos se disparan sin espaciado (sobre-contacto).
+        ...(status === "no_response"
+          ? { nextRetryAt: new Date(Date.now() + policy.windowHours * 60 * 60 * 1000) }
+          : {})
+      }
+    });
 
     if (status === "effective") {
       await this.debtorMemory.clearPendingDebts(tenantId, debtorId);
@@ -490,7 +512,17 @@ export class ContactsService {
       case "voice": {
         const phone = phonesFromDebtor(debtor.phones)[0];
         if (!phone) throw new BadRequestException("Deudor sin teléfono");
-        const callHistory = await this.loadVoiceCallHistory(debtor.id, tenantId, debt.id, debtor.name, String(decimalToNumber(debt.amountOutstanding)), new Date(debt.dueDate).toISOString(), variables.empresa ?? "CobraAI");
+        const callHistory = await this.loadVoiceCallHistory(
+          debtor.id,
+          tenantId,
+          debt.id,
+          debtor.name,
+          String(decimalToNumber(debt.amountOutstanding)),
+          new Date(debt.dueDate).toISOString(),
+          variables.empresa ?? "CobraAI",
+          Number(variables.cantidad_deudas ?? "1"),
+          variables.total_adeudado ?? String(decimalToNumber(debt.amountOutstanding))
+        );
         const result = await this.voice.initiateCall({
           debt_id: debt.id,
           debtor_phone: phone,
@@ -529,6 +561,17 @@ export class ContactsService {
   /** Cuerpo cordial por defecto cuando la regla no define plantilla. */
   private defaultEmailMessage(variables: Record<string, string>): string {
     const nombre = (variables.nombre ?? "").split(" ")[0] || "estimado/a";
+    // Agrupado: detalle super específico de cada cuenta + total.
+    if (variables.es_agrupado === "true") {
+      return (
+        `Hola ${nombre},\n\n` +
+        `Le recordamos de manera cordial que registra ${variables.cantidad_deudas} cuentas pendientes con nosotros, ` +
+        `por un total de ${variables.total_adeudado_formato}. El detalle es el siguiente:\n\n` +
+        `${variables.deudas_detalle_email}\n\n` +
+        `Queremos ayudarle a resolverlo de la forma más conveniente para usted. ` +
+        `Si ya realizó alguno de estos pagos, ignore ese punto; puede tardar 24-48h en reflejarse.`
+      );
+    }
     const montoNum = Number(variables.amount ?? variables.monto ?? 0);
     const monto =
       Number.isFinite(montoNum) && montoNum > 0
@@ -612,10 +655,19 @@ export class ContactsService {
     nombre: string,
     montoRaw: string,
     dueDateIso: string,
-    empresa: string
+    empresa: string,
+    grupoCount = 1,
+    grupoTotalRaw?: string
   ): Promise<Record<string, string>> {
     const monto = montoEspanol(montoRaw);
     const fecha = fechaEspanol(dueDateIso);
+    // Cuando el deudor tiene varias deudas en el portafolio, la llamada se agrupa:
+    // Carlos menciona la cantidad de cuentas y el total, no una sola deuda.
+    const agrupado = grupoCount > 1;
+    const montoGrupo = agrupado ? montoEspanol(grupoTotalRaw ?? montoRaw) : monto;
+    const deudaFrase = agrupado
+      ? `${grupoCount} cuentas pendientes por un total de ${montoGrupo}`
+      : `una deuda de ${monto} con fecha límite el ${fecha}`;
 
     // Unified debtor context — enriches Vapi variables with cross-channel profile
     const ctx = await this.debtorMemory.getUnifiedContext(tenantId, debtorId);
@@ -643,14 +695,15 @@ export class ContactsService {
 
     let firstMessage: string;
     if (count === 0) {
-      firstMessage = `Hola, ¿es usted ${nombre}? Le habla Carlos de ${empresa}. Le llamo porque tiene una deuda de ${monto} con fecha límite el ${fecha}. ¿Cómo podemos ayudarle a resolver esta situación?`;
+      firstMessage = `Hola, ¿es usted ${nombre}? Le habla Carlos de ${empresa}. Le llamo porque tiene ${deudaFrase}. ¿Cómo podemos ayudarle a resolver esta situación?`;
     } else if (pendingPromise) {
       const fechaPromesa = fechaEspanol(new Date(pendingPromise.promisedDate).toISOString());
       firstMessage = `Hola ${nombre}, le llama Carlos de ${empresa}. Le contacto porque usted prometió realizar un pago el ${fechaPromesa} y quería confirmar si pudo realizarlo.`;
     } else if (brokenCount > 0) {
-      firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Hemos hablado anteriormente sobre su deuda de ${monto}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
+      const refFrase = agrupado ? "sus cuentas pendientes" : `su deuda de ${monto}`;
+      firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Hemos hablado anteriormente sobre ${refFrase}. Entiendo que las cosas no siempre salen como planeamos, ¿podemos encontrar juntos una solución?`;
     } else {
-      firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Le llamo de nuevo respecto a su deuda de ${monto} con vencimiento el ${fecha}. ¿Tiene un momento para hablar?`;
+      firstMessage = `Hola ${nombre}, soy Carlos de ${empresa}. Le llamo de nuevo respecto a ${deudaFrase}. ¿Tiene un momento para hablar?`;
     }
 
     const pendingDebtsText = (ctx.emotionalProfile?.pendingDebts ?? [])
@@ -743,6 +796,67 @@ export class ContactsService {
         : "",
       discount_expiration_date: discountDate,
       fecha_limite_pronto_pago: discountDate ? formatDate(discountDate) : ""
+    };
+  }
+
+  /**
+   * Agrupa todas las deudas activas del deudor EN EL MISMO PORTAFOLIO en un solo
+   * contacto. Devuelve variables agregadas (total, cantidad y detalle por canal).
+   * Si el deudor tiene una sola deuda en el portafolio, devuelve es_agrupado=false
+   * y no altera el mensaje (comportamiento de deuda única intacto).
+   */
+  private async buildGroupVariables(
+    tenantId: string,
+    debtorId: string,
+    debt: Debt
+  ): Promise<Record<string, string>> {
+    const group =
+      (await this.prisma.debt.findMany({
+        where: {
+          tenantId,
+          debtorId,
+          portfolioId: debt.portfolioId,
+          deletedAt: null,
+          // Solo deudas aún por cobrar (excluye promised/pagadas/legal/disputadas).
+          status: {
+            in: ["new", "analyzing", "active", "contacted", "upcoming", "legal_risk"]
+          }
+        },
+        orderBy: { dueDate: "asc" }
+      })) ?? [];
+
+    if (group.length <= 1) {
+      return { es_agrupado: "false", cantidad_deudas: String(group.length || 1) };
+    }
+
+    const currency = debt.currency ?? "COP";
+    const total = group.reduce(
+      (sum, d) => sum + decimalToNumber(d.amountOutstanding),
+      0
+    );
+    // Email: super específico — una línea por cuenta con referencia, monto y vencimiento.
+    const detalleEmail = group
+      .map((d, i) => {
+        const ref = d.externalRef?.trim() || d.id.slice(0, 8);
+        const amt = `${formatMoney(decimalToNumber(d.amountOutstanding))} ${d.currency}`;
+        const venc = formatDate(new Date(d.dueDate));
+        return `${i + 1}. Cuenta ${ref}: ${amt} — vence ${venc}`;
+      })
+      .join("\n");
+    const totalFormato = `${formatMoney(total)} ${currency}`;
+
+    return {
+      es_agrupado: "true",
+      cantidad_deudas: String(group.length),
+      total_adeudado: String(total),
+      total_adeudado_formato: totalFormato,
+      deudas_detalle_email: detalleEmail,
+      // WhatsApp/voz: moderado — solo cantidad + total.
+      deudas_resumen_wa: `${group.length} cuentas pendientes por un total de ${totalFormato}`,
+      // Sobrescribir monto genérico por el total agregado.
+      monto: String(total),
+      amount: String(total),
+      monto_formato: totalFormato
     };
   }
 
