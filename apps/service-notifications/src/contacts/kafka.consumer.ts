@@ -19,7 +19,12 @@ const CONSUMED_TOPICS = [
   "cobrai.contact.requested",
   "cobrai.debtor.contact_queue",
   "cobrai.whatsapp.message_received",
-  "cobrai.voice.call_completed",
+  // NOTA: NO consumimos "cobrai.voice.call_completed" aquí. El fin de una llamada
+  // lo procesa por completo VapiWebhookHandler (cierra el contacto, marca la
+  // respuesta, registra promesa, entrega link) y publica ese evento para OTROS
+  // servicios. Re-consumirlo aquí para volver a llamar creaba un loop infinito de
+  // re-marcado (cada llamada terminada disparaba otra). El reintento/escalado lo
+  // maneja WorkflowsService vía cobrai.contact.no_response / contact.effective.
   "cobrai.email.message_received",
   "cobrai.escalation.requested",
   "cobrai.debt.escalated"
@@ -106,13 +111,9 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
           payload as unknown as InboundMessagePayload
         );
         break;
-      case "cobrai.voice.call_completed":
-        this.logger.log(`voice.call_completed recibido`, payload);
-        await this.contacts.handleContactRequested(tenantId, {
-          debt_id: String(payload["debt_id"] ?? ""),
-          channel: "voice"
-        } as ContactRequestPayload);
-        break;
+      // "cobrai.voice.call_completed" se maneja íntegramente en VapiWebhookHandler
+      // (respuesta, promesa, link) y el reintento en WorkflowsService — no re-marcar
+      // aquí (causaba un loop de llamadas). Ver nota en CONSUMED_TOPICS.
 
       case "cobrai.debt.escalated": {
         const target = String(payload["target"] ?? "");
