@@ -1,7 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import OpenAI from "openai";
-import { PrismaService, ConversationStatus, ContactChannel } from "@cobrai/db";
+import {
+  PrismaService,
+  ConversationStatus,
+  ContactChannel,
+  type Debt
+} from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
@@ -46,6 +51,15 @@ interface AgentResponse {
   first_payment_date?: string | null;
   /** Días entre cuotas (por defecto 30). */
   interval_days?: number | null;
+  /**
+   * Cuentas (refs, tal como aparecen en el listado del prompt) a las que el deudor
+   * confirmó EXPLÍCITAMENTE aplicar la acción (promesa/plan/disputa). Vacío/null
+   * mientras el agente aún está preguntando "¿a cuál cuenta?" — sin esto (y sin
+   * apply_to_all) el backend NO aplica la acción cuando hay varias cuentas.
+   */
+  target_accounts?: string[] | null;
+  /** El deudor pidió aplicar la acción a TODAS sus cuentas activas. */
+  apply_to_all?: boolean | null;
 }
 
 const FALLBACK_RESPONSE: AgentResponse = {
@@ -114,19 +128,26 @@ export class ConversationAgentService {
       return;
     }
 
-    // La cuenta principal (mayor saldo) ancla el enlace de pago y las acciones de intent.
+    // La cuenta principal (mayor saldo) ancla el contexto por defecto y la escalación;
+    // las acciones (promesa/plan/disputa) se aplican a la(s) cuenta(s) que el deudor
+    // confirme (ver resolveTargetDebts / applyIntent), no siempre a esta.
     const debt = debtor.debts[0];
     if (!debt) {
       this.logger.warn(`Sin deuda activa para deudor ${debtor_id}`);
       return;
     }
 
-    // Resumen de todas las cuentas activas para el contexto del prompt.
+    const payBase =
+      this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "http://localhost:3001/pay";
+
+    // Resumen de todas las cuentas activas para el contexto del prompt (cada una con
+    // su propio enlace de pago, para que el agente envíe solo el de la cuenta confirmada).
     const accounts = debtor.debts.map((d) => ({
       ref: d.externalRef ?? d.id.slice(0, 8),
       amountStr: `${d.currency} ${Number(d.amountOutstanding).toLocaleString("es-CO")}`,
       dueDate: new Date(d.dueDate).toLocaleDateString("es-CO"),
-      status: d.status
+      status: d.status,
+      paymentLink: `${payBase}/${d.id}`
     }));
     const totalOutstanding = debtor.debts.reduce(
       (sum, d) => sum + Number(d.amountOutstanding),
@@ -155,7 +176,7 @@ export class ConversationAgentService {
       amount: String(debt.amountOutstanding),
       currency: debt.currency,
       dueDate: new Date(debt.dueDate).toLocaleDateString("es-CO"),
-      paymentLink: `${this.config.get<string>("PAYMENT_LINK_BASE_URL") ?? "http://localhost:3001/pay"}/${debt.id}`,
+      paymentLink: `${payBase}/${debt.id}`,
       debtStatus: debt.status,
       accounts,
       totalOutstandingStr: `${debt.currency} ${totalOutstanding.toLocaleString("es-CO")}`,
@@ -236,67 +257,118 @@ export class ConversationAgentService {
       }
     }
 
-    // 7. Acciones según intent
-    await this.applyIntent(agentResponse, {
+    // 7. Acciones según intent — sobre la(s) cuenta(s) que el deudor confirmó.
+    //    Con una sola cuenta activa, es esa; con varias, solo las de target_accounts
+    //    / apply_to_all. Si hay varias y ninguna confirmada, no se aplica nada (el
+    //    agente está preguntando cuál) — evita marcar la deuda equivocada.
+    const targets = this.resolveTargetDebts(agentResponse, debtor.debts);
+    await this.applyIntent(agentResponse, targets, {
       tenant_id,
-      debt_id: debt.id,
+      primary_debt_id: debt.id,
       debtor_id,
       conversation_id,
-      channel: (payload.channel ?? "whatsapp") as ContactChannel,
-      amount_outstanding: Number(debt.amountOutstanding)
+      channel: (payload.channel ?? "whatsapp") as ContactChannel
+    });
+  }
+
+  /**
+   * Resuelve a qué deudas aplica una acción (promesa/plan/disputa) cuando el deudor
+   * tiene varias cuentas. Con una sola cuenta activa, es esa (sin desambiguar). Con
+   * varias: todas si `apply_to_all`, o las que matcheen `target_accounts` por
+   * `external_ref` o prefijo de id; si no hay ninguna confirmada, devuelve [] y la
+   * acción no se aplica (el agente aún está preguntando).
+   */
+  private resolveTargetDebts(response: AgentResponse, activeDebts: Debt[]): Debt[] {
+    if (activeDebts.length <= 1) return activeDebts;
+    if (response.apply_to_all) return activeDebts;
+    const refs = (response.target_accounts ?? [])
+      .map((r) => r.trim().toLowerCase())
+      .filter(Boolean);
+    if (refs.length === 0) return [];
+    return activeDebts.filter((d) => {
+      const ext = (d.externalRef ?? "").trim().toLowerCase();
+      const idPrefix = d.id.slice(0, 8).toLowerCase();
+      return refs.some(
+        (r) => r === ext || r === idPrefix || r === d.id.toLowerCase()
+      );
     });
   }
 
   private async applyIntent(
     response: AgentResponse,
+    targets: Debt[],
     ctx: {
       tenant_id: string;
-      debt_id: string;
       debtor_id: string;
       conversation_id: string;
       channel: ContactChannel;
-      amount_outstanding: number;
+      /** Cuenta principal (mayor saldo): contexto de la escalación, no de las acciones. */
+      primary_debt_id: string;
     }
   ): Promise<void> {
     switch (response.intent) {
-      case "promise_to_pay":
-        await this.prisma.debt.updateMany({
-          where: { id: ctx.debt_id, tenantId: ctx.tenant_id },
-          data: { status: "promised" }
-        });
-        if (response.promise_date) {
-          await this.prisma.promiseToPay.create({
-            data: {
-              tenantId: ctx.tenant_id,
-              debtId: ctx.debt_id,
-              amount: response.promise_amount ?? 0,
-              promisedDate: new Date(response.promise_date),
-              status: "pending"
+      case "promise_to_pay": {
+        if (targets.length === 0) {
+          this.logger.log(
+            `promise_to_pay sin cuenta confirmada (deudor ${ctx.debtor_id}) — el agente está desambiguando; no se registra promesa`
+          );
+          break;
+        }
+        for (const t of targets) {
+          // Con una sola cuenta objetivo usamos el monto que dijo el deudor; con
+          // varias, cada cuenta promete su propio saldo.
+          const amount =
+            targets.length === 1
+              ? response.promise_amount ?? 0
+              : Number(t.amountOutstanding);
+          await this.prisma.debt.updateMany({
+            where: { id: t.id, tenantId: ctx.tenant_id },
+            data: { status: "promised" }
+          });
+          if (response.promise_date) {
+            await this.prisma.promiseToPay.create({
+              data: {
+                tenantId: ctx.tenant_id,
+                debtId: t.id,
+                amount,
+                promisedDate: new Date(response.promise_date),
+                status: "pending"
+              }
+            });
+          }
+          await this.kafka.publish(
+            "cobrai.debt.promise_registered",
+            ctx.tenant_id,
+            {
+              debt_id: t.id,
+              channel: ctx.channel,
+              promise_date: response.promise_date ?? null,
+              promise_amount: amount
             }
+          );
+        }
+        break;
+      }
+
+      case "dispute": {
+        if (targets.length === 0) {
+          this.logger.log(
+            `dispute sin cuenta confirmada (deudor ${ctx.debtor_id}) — el agente está desambiguando; no se marca disputa`
+          );
+          break;
+        }
+        for (const t of targets) {
+          await this.prisma.debt.updateMany({
+            where: { id: t.id, tenantId: ctx.tenant_id },
+            data: { status: "disputed" }
+          });
+          await this.kafka.publish("cobrai.debt.disputed", ctx.tenant_id, {
+            debt_id: t.id,
+            channel: ctx.channel
           });
         }
-        await this.kafka.publish(
-          "cobrai.debt.promise_registered",
-          ctx.tenant_id,
-          {
-            debt_id: ctx.debt_id,
-            channel: ctx.channel,
-            promise_date: response.promise_date ?? null,
-            promise_amount: response.promise_amount ?? null
-          }
-        );
         break;
-
-      case "dispute":
-        await this.prisma.debt.updateMany({
-          where: { id: ctx.debt_id, tenantId: ctx.tenant_id },
-          data: { status: "disputed" }
-        });
-        await this.kafka.publish("cobrai.debt.disputed", ctx.tenant_id, {
-          debt_id: ctx.debt_id,
-          channel: ctx.channel
-        });
-        break;
+      }
 
       case "escalate_human":
         await this.prisma.conversation.update({
@@ -308,7 +380,7 @@ export class ConversationAgentService {
           ctx.tenant_id,
           {
             conversation_id: ctx.conversation_id,
-            debt_id: ctx.debt_id,
+            debt_id: ctx.primary_debt_id,
             debtor_id: ctx.debtor_id,
             channel: ctx.channel,
             reason: "deudor_solicito_humano"
@@ -329,9 +401,24 @@ export class ConversationAgentService {
         });
         break;
 
-      case "plan_request":
-        await this.registerPaymentPlan(response, ctx);
+      case "plan_request": {
+        if (targets.length === 0) {
+          this.logger.log(
+            `plan_request sin cuenta confirmada (deudor ${ctx.debtor_id}) — el agente está desambiguando; no se crea plan`
+          );
+          break;
+        }
+        // Un plan por cada cuenta confirmada, repartiendo el saldo de esa cuenta.
+        for (const t of targets) {
+          await this.registerPaymentPlan(response, {
+            tenant_id: ctx.tenant_id,
+            debt_id: t.id,
+            channel: ctx.channel,
+            amount_outstanding: Number(t.amountOutstanding)
+          });
+        }
         break;
+      }
 
       default:
         // unrelated, payment_confirmed — solo registrado en BD
