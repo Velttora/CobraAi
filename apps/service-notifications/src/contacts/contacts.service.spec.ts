@@ -362,5 +362,7 @@ describe("ContactsService — email layout + subject", () => {
     expect(variables.body).toContain("EXT-001");
     expect(variables.body).toContain("EXT-002");
     expect(variables.body).toContain("EXT-003");
+    // Cada cuenta lleva su etapa de mora en tono neutral (Ley 1266).
+    expect(variables.body).toMatch(/\((por vencer|vencida hace \d+ días?)\)/);
   });
 });

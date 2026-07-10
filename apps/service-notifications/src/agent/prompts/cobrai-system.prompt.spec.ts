@@ -73,9 +73,9 @@ describe("buildSystemPrompt — multi-cuenta", () => {
     const prompt = buildSystemPrompt({
       ...baseContext,
       accounts: [
-        { ref: "7", amountStr: "COP 7.000.000", dueDate: "02/06/2026", status: "contacted" },
-        { ref: "6", amountStr: "COP 6.000.000", dueDate: "28/05/2026", status: "contacted" },
-        { ref: "2", amountStr: "COP 20.000", dueDate: "23/06/2026", status: "active" }
+        { ref: "7", amountStr: "COP 7.000.000", dueDate: "02/06/2026", status: "contacted", paymentLink: "http://pay/debt1" },
+        { ref: "6", amountStr: "COP 6.000.000", dueDate: "28/05/2026", status: "contacted", paymentLink: "http://pay/debt2" },
+        { ref: "2", amountStr: "COP 20.000", dueDate: "23/06/2026", status: "active", paymentLink: "http://pay/debt3" }
       ],
       totalOutstandingStr: "COP 13.020.000"
     });
@@ -93,7 +93,7 @@ describe("buildSystemPrompt — multi-cuenta", () => {
     const prompt = buildSystemPrompt({
       ...baseContext,
       accounts: [
-        { ref: "7", amountStr: "COP 7.000.000", dueDate: "02/06/2026", status: "contacted" }
+        { ref: "7", amountStr: "COP 7.000.000", dueDate: "02/06/2026", status: "contacted", paymentLink: "http://pay/debt1" }
       ],
       totalOutstandingStr: "COP 7.000.000"
     });

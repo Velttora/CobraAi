@@ -842,7 +842,8 @@ export class ContactsService {
         const ref = d.externalRef?.trim() || d.id.slice(0, 8);
         const amt = `${formatMoney(decimalToNumber(d.amountOutstanding))} ${d.currency}`;
         const venc = formatDate(new Date(d.dueDate));
-        return `${i + 1}. Cuenta ${ref}: ${amt} — vence ${venc}`;
+        const mora = this.agingLabel(new Date(d.dueDate));
+        return `${i + 1}. Cuenta ${ref}: ${amt} — vence ${venc} (${mora})`;
       })
       .join("\n");
     const totalFormato = `${formatMoney(total)} ${currency}`;
@@ -860,6 +861,18 @@ export class ContactsService {
       amount: String(total),
       monto_formato: totalFormato
     };
+  }
+
+  /**
+   * Etiqueta neutral de mora por cuenta para la notificación agrupada. Tono seguro
+   * (Ley 1266): sin jerga interna de aging — solo "por vencer" o los días vencidos.
+   */
+  private agingLabel(dueDate: Date): string {
+    const MS_DAY = 24 * 60 * 60 * 1000;
+    const dayIndex = (d: Date) => Math.floor(d.getTime() / MS_DAY);
+    const overdue = dayIndex(new Date()) - dayIndex(dueDate);
+    if (overdue <= 0) return "por vencer";
+    return `vencida hace ${overdue} día${overdue === 1 ? "" : "s"}`;
   }
 
   private async resolveTemplate(

@@ -89,9 +89,7 @@ const basePayload = {
   body: "Hola, ¿cuánto debo?"
 };
 
-function makeAgentResponse(partial: Partial<{
-  intent: string; response: string; promise_date: string | null; promise_amount: number | null
-}>) {
+function makeAgentResponse(partial: Record<string, unknown>) {
   return {
     choices: [{
       message: {
@@ -290,8 +288,78 @@ describe("ConversationAgentService", () => {
     expect(systemPrompt).toContain("Cuenta 7:");
     expect(systemPrompt).toContain("Cuenta 6:");
     expect(systemPrompt).toContain("Cuenta 2:");
-    // La cuenta principal (mayor saldo) sigue anclando el intent → debt1.
+    // La cuenta principal (mayor saldo) ancla el contexto por defecto → debt1.
     expect(mockDebtorMemory.getUnifiedContext).toHaveBeenCalledWith("org1", "debtor1", "debt1");
+  });
+
+  const multiDebtor = {
+    ...baseDebtor,
+    debts: [
+      { id: "debt1", tenantId: "org1", externalRef: "7", amountOutstanding: 7000000, currency: "COP", dueDate: new Date("2026-06-02"), status: "contacted", strategyId: null },
+      { id: "debt2", tenantId: "org1", externalRef: "6", amountOutstanding: 6000000, currency: "COP", dueDate: new Date("2026-05-28"), status: "contacted", strategyId: null },
+      { id: "debt3", tenantId: "org1", externalRef: "2", amountOutstanding: 20000, currency: "COP", dueDate: new Date("2026-06-23"), status: "active", strategyId: null }
+    ]
+  };
+
+  const updatedDebtIds = () =>
+    mockDebtUpdateMany.mock.calls.map(
+      (c) => (c[0] as { where: { id: string } }).where.id
+    );
+
+  it("varias deudas + target_accounts=['6'] → promesa SOLO en esa cuenta (no la mayor)", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce(multiDebtor);
+    mockChatCreate.mockResolvedValueOnce(
+      makeAgentResponse({
+        intent: "promise_to_pay",
+        response: "Confirmado para la cuenta 6.",
+        promise_date: "2026-06-15",
+        target_accounts: ["6"]
+      })
+    );
+
+    await service.processInboundMessage(basePayload);
+
+    // Solo la cuenta ref "6" (debt2) — nunca la de mayor saldo (debt1).
+    expect(updatedDebtIds()).toEqual(["debt2"]);
+    expect(mockPromiseCreate).toHaveBeenCalledTimes(1);
+    expect(mockPromiseCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ debtId: "debt2" }) })
+    );
+  });
+
+  it("varias deudas + sin cuenta confirmada → NO aplica nada (el agente desambigua)", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce(multiDebtor);
+    mockChatCreate.mockResolvedValueOnce(
+      makeAgentResponse({
+        intent: "promise_to_pay",
+        response: "¿A cuál de sus cuentas se refiere?",
+        promise_date: "2026-06-15",
+        target_accounts: [],
+        apply_to_all: false
+      })
+    );
+
+    await service.processInboundMessage(basePayload);
+
+    expect(mockDebtUpdateMany).not.toHaveBeenCalled();
+    expect(mockPromiseCreate).not.toHaveBeenCalled();
+  });
+
+  it("varias deudas + apply_to_all → promesa en TODAS las cuentas", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce(multiDebtor);
+    mockChatCreate.mockResolvedValueOnce(
+      makeAgentResponse({
+        intent: "promise_to_pay",
+        response: "Confirmado para todas sus cuentas.",
+        promise_date: "2026-06-15",
+        apply_to_all: true
+      })
+    );
+
+    await service.processInboundMessage(basePayload);
+
+    expect(updatedDebtIds()).toEqual(["debt1", "debt2", "debt3"]);
+    expect(mockPromiseCreate).toHaveBeenCalledTimes(3);
   });
 
   it("channel email → llama EmailAdapter con reply_to, NO llama WhatsApp", async () => {

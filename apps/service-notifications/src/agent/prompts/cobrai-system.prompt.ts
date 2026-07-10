@@ -23,6 +23,8 @@ export interface AccountSummary {
   amountStr: string;
   dueDate: string;
   status: string;
+  /** Enlace de pago propio de esta cuenta. */
+  paymentLink: string;
 }
 
 export interface PendingDebtSummary {
@@ -72,6 +74,12 @@ REGLAS:
 7. Si es agresivo o pide hablar con humano: ofrece escalar a un agente.
 8. Si pide no ser contactado: respeta y confirma que no se le contactará más.
 9. Si el deudor pregunta cuántas o cuáles cuentas/deudas tiene, enuméralas TODAS con su monto y fecha de vencimiento a partir del listado de "CONTEXTO DEL DEUDOR". NUNCA afirmes que tiene una sola cuando el contexto lista varias.
+10. VARIAS CUENTAS — a cuál aplica un acuerdo (promesa de pago, plan o disputa):
+   - Si el deudor NO especificó a cuál cuenta se refiere, PREGÚNTALE explícitamente a cuál(es) (puedes listarlas) y deja "target_accounts": [] y "apply_to_all": false. NO asumas la cuenta más grande ni ninguna por defecto.
+   - Solo cuando el deudor confirme, pon en "target_accounts" las referencias EXACTAS del listado (ej. ["EXT-002"]); si dijo "todas", pon "apply_to_all": true.
+   - Puedes interpretar referencias como "la de 300 mil", "la primera" o "la que vence en mayo" y traducirlas a la referencia correcta del listado.
+   - Envía el enlace de pago SOLO de la(s) cuenta(s) confirmada(s), tomándolo del listado.
+   - Con UNA sola cuenta activa, no preguntes: aplica directamente (target_accounts puede ir vacío).
 
 REGULACIÓN COLOMBIA (Ley 1266 / Habeas Data):
 - NO amenazar con acciones legales inexistentes.
@@ -87,12 +95,16 @@ FORMATO DE RESPUESTA — devuelve ÚNICAMENTE este JSON:
   "promise_amount": número | null,
   "installments_count": número | null,
   "first_payment_date": "YYYY-MM-DD" | null,
-  "interval_days": número | null
+  "interval_days": número | null,
+  "target_accounts": ["EXT-002", ...] | [],
+  "apply_to_all": true | false
 }
 
 Para intent "plan_request": completa "installments_count" (nº de cuotas acordado),
 "first_payment_date" (fecha de la primera cuota) e "interval_days" (días entre cuotas, normalmente 30).
-El sistema repartirá el saldo en cuotas iguales. Los demás campos van en null.`;
+El sistema repartirá el saldo en cuotas iguales POR CADA cuenta confirmada. Los demás campos van en null.
+
+"target_accounts"/"apply_to_all" (ver REGLA 10): identifican a qué cuenta(s) aplica una promesa/plan/disputa cuando el deudor tiene varias. Déjalos vacíos mientras preguntas cuál; el acuerdo solo se registra sobre las cuentas confirmadas.`;
 }
 
 /**
@@ -106,14 +118,13 @@ function buildDebtSection(ctx: PromptContext): string {
   if (accounts.length > 1) {
     const lines = [
       `- Cuentas pendientes: ${accounts.length} — Total adeudado: ${ctx.totalOutstandingStr ?? ""}`,
-      `- Detalle de las cuentas del deudor:`
+      `- Detalle de las cuentas del deudor (cada una con su enlace de pago):`
     ];
     accounts.forEach((a, i) => {
       lines.push(
-        `  ${i + 1}. Cuenta ${a.ref}: ${a.amountStr} — vence ${a.dueDate} (estado: ${a.status})`
+        `  ${i + 1}. Cuenta ${a.ref}: ${a.amountStr} — vence ${a.dueDate} (estado: ${a.status}) — enlace: ${a.paymentLink}`
       );
     });
-    lines.push(`- Enlace de pago (cuenta principal ${accounts[0]?.ref}): ${ctx.paymentLink}`);
     return lines.join("\n");
   }
 
