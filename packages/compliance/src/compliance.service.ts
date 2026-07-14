@@ -5,13 +5,15 @@ import {
   resolveCountryRules,
   resolveRetryPolicy
 } from "./country-rules";
+import { addLocalDays, getZonedParts, zonedTimeToUtc } from "./timezone";
 import { ConsentService } from "./consent.service";
 import { OptOutService } from "./opt-out.service";
 import { AuditService } from "./audit.service";
 import {
   countryFromAddress,
   type ContactCheckInput,
-  type ContactCheckResult
+  type ContactCheckResult,
+  type CountryHours
 } from "./types";
 
 export class ComplianceService {
@@ -60,6 +62,17 @@ export class ComplianceService {
         allowed: false,
         reason: "outside_hours",
         next_allowed_at: nextValidSendTime(at, rules.hours, rules.timezone)
+      };
+    } else if (country === "CO" && (await this.isHoliday(at))) {
+      // Colombian national holiday: no proactive contact today, regardless of hours.
+      result = {
+        allowed: false,
+        reason: "holiday",
+        next_allowed_at: await this.nextNonHolidaySendTime(
+          at,
+          rules.hours,
+          rules.timezone
+        )
       };
     } else {
       const dayBlocked = await this.isDayFrequencyBlocked(
@@ -131,7 +144,9 @@ export class ComplianceService {
     debtorId: string;
     channel: ContactCheckInput["channel"];
     country?: string;
+    at?: Date;
   }): Promise<ContactCheckResult> {
+    const at = input.at ?? new Date();
     const debtor = await this.prisma.debtor.findFirst({
       where: {
         id: input.debtorId,
@@ -167,7 +182,60 @@ export class ComplianceService {
       return { allowed: false, reason: "no_consent" };
     }
 
+    // A Colombian holiday blocks every send, including debtor-requested transactional
+    // messages — not just proactive outreach.
+    if (country === "CO" && (await this.isHoliday(at))) {
+      return {
+        allowed: false,
+        reason: "holiday",
+        next_allowed_at: await this.nextNonHolidaySendTime(
+          at,
+          rules.hours,
+          rules.timezone
+        )
+      };
+    }
+
     return { allowed: true };
+  }
+
+  /**
+   * Returns true when `at` falls on a Colombian national holiday. The lookup key is the
+   * America/Bogota civil date at UTC-midnight, matching how the seed stores each holiday.
+   */
+  private async isHoliday(at: Date): Promise<boolean> {
+    const parts = getZonedParts(at, "America/Bogota");
+    const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    const row = await this.prisma.holiday.findFirst({ where: { date } });
+    return Boolean(row);
+  }
+
+  /**
+   * Next send instant that is both inside the contact window AND not a holiday. Starts
+   * from the next valid window opening and skips forward over consecutive holidays
+   * (bounded to avoid an unbounded loop on anomalous data).
+   */
+  private async nextNonHolidaySendTime(
+    at: Date,
+    hours: CountryHours,
+    timeZone: string
+  ): Promise<Date> {
+    let candidate = nextValidSendTime(at, hours, timeZone);
+    for (let i = 0; i < 30; i++) {
+      if (!(await this.isHoliday(candidate))) return candidate;
+      let local = getZonedParts(candidate, timeZone);
+      do {
+        local = addLocalDays(local, 1, timeZone);
+      } while (!hours.days.includes(local.dayOfWeek));
+      candidate = zonedTimeToUtc(
+        local.year,
+        local.month,
+        local.day,
+        hours.startHour,
+        timeZone
+      );
+    }
+    return candidate;
   }
 
   /** Tope anti-spam del mismo día (ortogonal al ciclo de reintentos, ver getRetryState). */

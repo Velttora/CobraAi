@@ -5,6 +5,7 @@ export type ContactCheckReason =
   | "opt_out_global"
   | "opt_out_channel"
   | "outside_hours"
+  | "holiday"
   | "frequency_limit"
   | "awaiting_response"
   | "retry_cooldown"
