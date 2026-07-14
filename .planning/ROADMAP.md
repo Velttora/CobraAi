@@ -6,11 +6,13 @@
 ---
 
 ## Phase 1: WhatsApp Real (Twilio WA Business API)
+
 **Goal:** Envíos reales por WhatsApp + recepción de mensajes inbound.
 **Entrada:** `whatsapp.adapter.ts` es un stub que publica Kafka pero no envía nada.
 **Salida:** Los deudores reciben el mensaje en WhatsApp real; sus respuestas llegan al sistema.
 
 **Scope:**
+
 - `TwilioWhatsAppAdapter` implementa `WhatsAppPort` con SDK `twilio`
 - Envío de HSM templates por Twilio WA Sandbox → producción
 - Webhook `POST /api/v1/webhooks/twilio-whatsapp` en service-notifications
@@ -24,11 +26,13 @@
 ---
 
 ## Phase 2: Voice Agent Real (Vapi.ai)
+
 **Goal:** Llamadas outbound reales con agente de IA en español colombiano.
 **Entrada:** `voice.adapter.ts` es un stub que publica Kafka pero no llama a nadie.
 **Salida:** El sistema hace llamadas reales; se guarda transcript y outcome.
 
 **Scope:**
+
 - `VapiVoiceAdapter` implementa `VoiceAgentPort` con HTTP client → Vapi REST API
 - Configurar Vapi Agent: prompt en español CO, ElevenLabs Multilingual v2, end-call function
 - Webhook `POST /api/v1/webhooks/vapi` en service-notifications
@@ -43,11 +47,13 @@
 ---
 
 ## Phase 3: LLM Conversational Agent (WhatsApp bidireccional)
+
 **Goal:** Responder automáticamente a mensajes de deudores por WhatsApp con LLM.
 **Entrada:** `cobrai.whatsapp.message_received` evento llega al sistema pero nadie responde.
 **Salida:** Agente GPT-4o-mini responde en WhatsApp, detecta intents y actualiza estado de deuda.
 
 **Scope:**
+
 - Kafka consumer en service-notifications que consume `cobrai.whatsapp.message_received`
 - `ConversationAgentService`:
   - Carga contexto: deuda, historial de mensajes, StrategyContext
@@ -66,11 +72,13 @@
 ---
 
 ## Phase 4: Dashboard Conversaciones y Escalaciones
+
 **Goal:** Visibilidad de conversaciones WA y transcripts de voz en el admin.
 **Entrada:** Datos en BD pero sin UI.
 **Salida:** Agentes humanos pueden ver, responder y gestionar escalaciones.
 
 **Scope:**
+
 - `/conversations` — lista de conversaciones activas por canal (WA / Voz / Email / SMS)
 - `/conversations/[id]` — hilo completo de mensajes con input para respuesta manual humana
 - `/calls` — lista de llamadas con estado, duración, transcript (collapsable)
@@ -84,11 +92,13 @@
 ---
 
 ## Phase 5: Memoria Unificada del Deudor
+
 **Goal:** Consolidar el histórico del deudor a través de TODOS los canales, con análisis y resumen vivo, para que cualquier agente se comunique con memoria y coherencia.
 **Entrada:** Conversaciones fragmentadas en silos por canal; `sentimentScore` nunca se calcula; el único resumen lo genera Vapi por llamada; la voz "ciega" al resto (solo lee conteos), el email sin memoria.
 **Salida:** Un `DebtorMemoryService` que recopila histórico cross-canal, lo analiza (sentimiento + intención + comportamiento de pago), mantiene un "resumen vivo" y lo sirve a los agentes de WhatsApp y voz.
 
 **Scope:**
+
 - `DebtorMemoryService` nuevo en service-notifications:
   - **Recopila** cross-canal: contacts (todos los canales), mensajes de TODAS las conversaciones del deudor, promesas (pending/broken), transcripts de voz
   - **Analiza** la última interacción con LLM (OpenAI gpt-4o-mini): sentimiento, intención, comportamiento de pago
@@ -105,6 +115,7 @@
 **Plans:** 4 plans (2 waves) — 4/4 complete
 
 Plans:
+
 - [x] 05-01-PLAN.md — DebtorMemoryService + MemoryModule + extensión del contrato DebtorHistory (Wave 1)
 - [x] 05-02-PLAN.md — Integración WhatsApp: ConversationAgentService usa getUnifiedContext (Wave 2)
 - [x] 05-03-PLAN.md — Integración voz: loadVoiceCallHistory enriquecido con perfil unificado (Wave 2)
@@ -115,11 +126,13 @@ Plans:
 ---
 
 ## Phase 6: Email Bidireccional con Agente
+
 **Goal:** Convertir el email en un canal conversacional bidireccional con agente, igual que WhatsApp, usando la memoria unificada de la Phase 5.
 **Entrada:** Email solo outbound (SendGrid); las respuestas del deudor no se capturan; el `ConversationAgentService` está cableado a WhatsApp.
 **Salida:** El deudor responde un email → el sistema lo captura → el agente responde automáticamente con contexto unificado.
 
 **Scope:**
+
 - **SendGrid Inbound Parse**: registro MX en `reply.fogging.org` (Cloudflare) → webhook
 - Webhook `POST /api/v1/webhooks/sendgrid-inbound` + `SendgridInboundHandler`:
   - Parsea remitente + cuerpo, ubica al deudor por email, guarda mensaje inbound
@@ -132,6 +145,7 @@ Plans:
 **Plans:** 4 plans (3 waves)
 
 Plans:
+
 - [x] 06-01-PLAN.md — EmailAdapter pasa reply_to al body v3 de SendGrid (emails outbound repliables) (Wave 1)
 - [x] 06-02-PLAN.md — SendgridInboundHandler + endpoint POST sendgrid-inbound (captura inbound, opt-out, loop-prevention, publica cobrai.email.message_received) (Wave 1)
 - [x] 06-03-PLAN.md — ConversationAgentService multi-canal (responde por EmailAdapter/WhatsApp según channel) (Wave 2)
@@ -155,9 +169,31 @@ Phase 4 requiere Phase 1, 2 y 3 completas.
 Phase 5 requiere Phase 3 completa (extiende el agente con memoria cross-canal).
 Phase 6 requiere Phase 5 completa (el agente de email usa la memoria unificada).
 
+### Phase 7: Días Festivos (Colombia)
+
+**Goal:** Los festivos nacionales de Colombia bloquean el envío de CUALQUIER notificación (proactiva y transaccional).
+**Entrada:** El motor de compliance solo bloquea por horario/consentimiento/opt-out/frecuencia; ignora los festivos, así que en un festivo CO igual salen envíos.
+**Salida:** En un día festivo colombiano ningún envío pasa el gate de compliance; `next_allowed_at` apunta al próximo día hábil no festivo.
+
+**Scope:**
+- Modelo Prisma `Holiday { id, date @unique, name }` + migración (tabla mínima, Colombia).
+- Seed idempotente (upsert) con festivos CO 2026 y 2027; script anual re-corrible siguiendo el patrón `packages/db/src/seed-*.ts`.
+- Chequeo `isHoliday(localDate)` en `packages/compliance` (ComplianceService), aplicado tanto en `checkContact` como en `isChannelEligible`; nueva razón `"holiday"` en `ContactCheckResult`, con `next_allowed_at` al próximo día hábil no festivo.
+- Tests unitarios (vitest).
+
+**Requirements**: TBD
+**Depends on:** Ninguna (independiente de las phases conversacionales; toca `packages/compliance` + `packages/db`)
+**Plans:** 2 plans (2 waves) — 2/2 complete
+
+Plans:
+
+- [x] 07-01-PLAN.md — Modelo Prisma `Holiday` + migración `add_holidays` + seed idempotente CO 2026/2027 + script `db:seed:holidays` (Wave 1)
+- [x] 07-02-PLAN.md — Razón `holiday` + `isHoliday`/`nextNonHolidaySendTime` + gate en `checkContact` e `isChannelEligible` + tests (Wave 2)
+
 ---
 
 ## Definition of Done (global)
+
 - [ ] Deudor recibe mensaje real por WhatsApp
 - [ ] Deudor responde → sistema detecta intent → agente responde automáticamente
 - [ ] Sistema hace llamada outbound real → guarda transcript y outcome

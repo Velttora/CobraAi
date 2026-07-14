@@ -21,7 +21,8 @@ describe("ComplianceService", () => {
     contact: { findFirst: vi.fn(), count: vi.fn() },
     tenant: { findUnique: vi.fn() },
     auditLog: { create: vi.fn() },
-    contactConsent: { findFirst: vi.fn() }
+    contactConsent: { findFirst: vi.fn() },
+    holiday: { findFirst: vi.fn() }
   };
 
   let service: ComplianceService;
@@ -35,6 +36,7 @@ describe("ComplianceService", () => {
     prisma.auditLog.create.mockResolvedValue({});
     prisma.contact.count.mockResolvedValue(0);
     prisma.tenant.findUnique.mockResolvedValue({ settings: {} });
+    prisma.holiday.findFirst.mockResolvedValue(null); // default: not a holiday
   });
 
   it("bloquea México domingo", async () => {
@@ -240,5 +242,97 @@ describe("ComplianceService", () => {
 
     expect(result.allowed).toBe(true);
     expect(prisma.auditLog.create).toHaveBeenCalled();
+  });
+
+  it("bloquea contacto proactivo en festivo colombiano", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.findFirst.mockResolvedValue(null);
+    prisma.holiday.findFirst.mockResolvedValue({
+      id: "h1",
+      date: new Date("2026-05-26T00:00:00.000Z"),
+      name: "Festivo de prueba"
+    });
+
+    const result = await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "email",
+      at: new Date("2026-05-26T15:00:00.000Z") // 10:00 Bogotá, dentro de horario
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("holiday");
+    expect(result.next_allowed_at).toBeInstanceOf(Date);
+  });
+
+  it("fuera de horario reporta outside_hours aunque sea festivo", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.findFirst.mockResolvedValue(null);
+    prisma.holiday.findFirst.mockResolvedValue({
+      id: "h1",
+      date: new Date("2026-05-26T00:00:00.000Z"),
+      name: "Festivo de prueba"
+    });
+
+    const result = await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "email",
+      at: new Date("2026-05-26T10:00:00.000Z") // 05:00 Bogotá, antes de las 08:00
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("outside_hours");
+  });
+
+  it("isChannelEligible bloquea mensajes transaccionales en festivo colombiano", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.holiday.findFirst.mockResolvedValue({
+      id: "h1",
+      date: new Date("2026-05-26T00:00:00.000Z"),
+      name: "Festivo de prueba"
+    });
+
+    const result = await service.isChannelEligible({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "email",
+      at: new Date("2026-05-26T15:00:00.000Z") // 10:00 Bogotá
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("holiday");
+  });
+
+  it("no aplica festivos colombianos a deudores de otro país", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "MX" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.findFirst.mockResolvedValue(null);
+    prisma.holiday.findFirst.mockResolvedValue({
+      id: "h1",
+      date: new Date("2026-05-26T00:00:00.000Z"),
+      name: "Festivo de prueba"
+    });
+
+    const result = await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "email",
+      at: new Date("2026-05-26T16:00:00.000Z") // 10:00 CDMX, martes dentro de horario
+    });
+
+    expect(result.reason).not.toBe("holiday");
+    expect(result.allowed).toBe(true);
   });
 });

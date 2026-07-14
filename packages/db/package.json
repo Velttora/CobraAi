@@ -28,6 +28,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:seed:align": "tsx src/seed-align.ts",
+    "db:seed:holidays": "tsx src/seed-holidays.ts",
     "db:backfill-consents": "tsx src/backfill-consents.ts",
     "db:backfill-escalations": "tsx src/backfill-escalations.ts",
     "db:backfill-payment-thank-you": "tsx src/backfill-payment-thank-you.ts",

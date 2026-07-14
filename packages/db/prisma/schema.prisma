@@ -747,3 +747,16 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@map("audit_logs")
 }
+
+// Colombian national public holidays. National holidays are global (no tenant, no
+// country column — the table is Colombia-only by design), so the compliance engine
+// can block outbound contact on these dates. `date` is a civil calendar date and is
+// unique so the seed can upsert idempotently.
+model Holiday {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date      DateTime @unique @map("date") @db.Date
+  name      String   @map("name")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("holidays")
+}
