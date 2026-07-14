@@ -183,11 +183,12 @@ Phase 6 requiere Phase 5 completa (el agente de email usa la memoria unificada).
 
 **Requirements**: TBD
 **Depends on:** Ninguna (independiente de las phases conversacionales; toca `packages/compliance` + `packages/db`)
-**Plans:** 0 plans
+**Plans:** 2 plans (2 waves) — 2/2 complete
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 7 to break down)
+- [x] 07-01-PLAN.md — Modelo Prisma `Holiday` + migración `add_holidays` + seed idempotente CO 2026/2027 + script `db:seed:holidays` (Wave 1)
+- [x] 07-02-PLAN.md — Razón `holiday` + `isHoliday`/`nextNonHolidaySendTime` + gate en `checkContact` e `isChannelEligible` + tests (Wave 2)
 
 ---
 

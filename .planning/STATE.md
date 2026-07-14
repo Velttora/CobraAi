@@ -19,7 +19,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 4 | Dashboard Conversaciones y Escalaciones | 🔲 pendiente |
 | 5 | Memoria Unificada del Deudor | ✅ completa (4/4 planes — sentimentScore + emotionalProfile activos) |
 | 6 | Email Bidireccional con Agente | ✅ completa (4/4 planes) |
-| 7 | Días Festivos (Colombia) | 🔲 pendiente (por planificar) |
+| 7 | Días Festivos (Colombia) | ✅ completa (2/2 planes) |
 
 ## Contexto acumulado
 - `packages/ports/src/whatsapp.port.ts` — contrato WhatsAppPort
