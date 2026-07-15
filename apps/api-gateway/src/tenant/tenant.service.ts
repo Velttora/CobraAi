@@ -7,10 +7,12 @@ import { ConfigService } from "@nestjs/config";
 import { ensureTenantRecord, PrismaService, type Prisma, type Tenant } from "@cobrai/db";
 import { normalizeClerkRole } from "../common/types/clerk-request";
 import {
+  normalizeWhatsappFromNumber,
   sanitizeContactRetryPolicy,
   toTenantProfile,
   type TenantProfile,
-  type UpdateContactRetryPolicyDto
+  type UpdateContactRetryPolicyDto,
+  type UpdateWhatsappSenderDto
 } from "./dto/tenant-profile.dto";
 
 function slugify(value: string): string {
@@ -112,6 +114,59 @@ export class TenantService {
         settings: {
           ...currentSettings,
           contactRetryPolicy: nextPolicy
+        } as Prisma.InputJsonValue
+      }
+    });
+
+    return toTenantProfile(tenant);
+  }
+
+  /**
+   * Asigna (o limpia) el número de WhatsApp Business propio del tenant. Necesario
+   * cuando el mismo deudor le debe a varios tenants: cada uno debe tener su propio
+   * número para que WhatsApp separe los hilos y el webhook de entrada pueda
+   * resolver el tenant por el número al que le escribieron, sin ambigüedad.
+   */
+  async updateWhatsappSender(
+    tenantId: string,
+    patch: UpdateWhatsappSenderDto,
+    role?: string
+  ): Promise<TenantProfile> {
+    this.assertAdmin(role);
+
+    const normalized = normalizeWhatsappFromNumber(patch.whatsappFromNumber);
+
+    if (normalized) {
+      const conflict = await this.prisma.$queryRaw<
+        Array<{ id: string; name: string }>
+      >`
+        SELECT id, name FROM tenants
+        WHERE deleted_at IS NULL AND id != ${tenantId}
+        AND settings->>'whatsappFromNumber' = ${normalized}
+        LIMIT 1
+      `;
+      if (conflict[0]) {
+        throw new ForbiddenException(
+          `Ese número ya está asignado a otra organización (${conflict[0].name})`
+        );
+      }
+    }
+
+    const current = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null }
+    });
+    if (!current) {
+      throw new NotFoundException("Organización no encontrada");
+    }
+
+    const currentSettings = (current.settings ?? {}) as Record<string, unknown>;
+
+    const tenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        settings: {
+          ...currentSettings,
+          whatsappFromNumber: normalized
         } as Prisma.InputJsonValue
       }
     });

@@ -39,7 +39,9 @@ describe("TwilioWaWebhookHandler", () => {
   });
 
   it("mensaje normal → deudor encontrado → guarda mensaje y publica Kafka", async () => {
-    mockQueryRaw.mockResolvedValueOnce([{ id: "debtor1", tenant_id: "org1" }]);
+    mockQueryRaw
+      .mockResolvedValueOnce([]) // resolveTenantByToNumber: número compartido, sin tenant dedicado
+      .mockResolvedValueOnce([{ id: "debtor1", tenant_id: "org1" }]); // findDebtorByPhone
     mockDebtorFindUnique.mockResolvedValueOnce({
       id: "debtor1",
       tenantId: "org1"
@@ -65,6 +67,33 @@ describe("TwilioWaWebhookHandler", () => {
     expect(mockPublish).toHaveBeenCalledWith(
       "cobrai.whatsapp.message_received",
       "org1",
+      expect.objectContaining({ debtor_id: "debtor1" })
+    );
+  });
+
+  it("To coincide con whatsappFromNumber de un tenant → busca al deudor solo en ese tenant", async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ id: "org_dedicated" }]) // resolveTenantByToNumber: tenant con número propio
+      .mockResolvedValueOnce([{ id: "debtor1", tenant_id: "org_dedicated" }]); // findDebtorByPhone
+    mockDebtorFindUnique.mockResolvedValueOnce({
+      id: "debtor1",
+      tenantId: "org_dedicated"
+    });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
+
+    await handler.handleInbound({
+      MessageSid: "SMtest",
+      From: "whatsapp:+573001234567",
+      To: "whatsapp:+19998887777",
+      Body: "Hola",
+      AccountSid: "ACtest"
+    });
+
+    const debtorQuery = mockQueryRaw.mock.calls[1]?.[0] as TemplateStringsArray;
+    expect(debtorQuery.join("")).toContain("tenant_id = ");
+    expect(mockPublish).toHaveBeenCalledWith(
+      "cobrai.whatsapp.message_received",
+      "org_dedicated",
       expect.objectContaining({ debtor_id: "debtor1" })
     );
   });
@@ -100,7 +129,9 @@ describe("TwilioWaWebhookHandler", () => {
   });
 
   it("deudor no encontrado → solo log, sin error ni Kafka", async () => {
-    mockQueryRaw.mockResolvedValueOnce([]);
+    mockQueryRaw
+      .mockResolvedValueOnce([]) // resolveTenantByToNumber
+      .mockResolvedValueOnce([]); // findDebtorByPhone: sin coincidencia
 
     await expect(
       handler.handleInbound({
@@ -116,7 +147,9 @@ describe("TwilioWaWebhookHandler", () => {
   });
 
   it("conversación no existe → crea una nueva", async () => {
-    mockQueryRaw.mockResolvedValueOnce([{ id: "debtor1", tenant_id: "org1" }]);
+    mockQueryRaw
+      .mockResolvedValueOnce([]) // resolveTenantByToNumber
+      .mockResolvedValueOnce([{ id: "debtor1", tenant_id: "org1" }]); // findDebtorByPhone
     mockDebtorFindUnique.mockResolvedValueOnce({
       id: "debtor1",
       tenantId: "org1"

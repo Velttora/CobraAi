@@ -4,7 +4,8 @@ import { TwilioWhatsAppAdapter } from "./twilio-whatsapp.adapter";
 
 const mockCreate = vi.fn();
 const mockPrisma = {
-  contactConsent: { findFirst: vi.fn() }
+  contactConsent: { findFirst: vi.fn() },
+  tenant: { findUnique: vi.fn().mockResolvedValue(null) }
 };
 
 vi.mock("twilio", () => ({
@@ -113,6 +114,21 @@ describe("TwilioWhatsAppAdapter", () => {
     });
     const callArg = mockCreate.mock.calls[0]?.[0] as { body: string };
     expect(callArg?.body).toBe("Entendido, le confirmo su pago.");
+  });
+
+  it("tenant con whatsappFromNumber propio → lo usa en vez del número compartido", async () => {
+    mockPrisma.tenant.findUnique.mockResolvedValueOnce({
+      settings: { whatsappFromNumber: "whatsapp:+19998887777" }
+    });
+    await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "recordatorio",
+      variables: {},
+      tenant_id: "org_own_number"
+    });
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "whatsapp:+19998887777" })
+    );
   });
 
   it("isOptedIn con consent en BD → retorna true", async () => {

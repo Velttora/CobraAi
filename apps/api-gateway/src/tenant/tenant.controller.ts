@@ -4,7 +4,8 @@ import { Roles } from "../common/decorators/roles.decorator";
 import { successResponse } from "../common/utils/api.utils";
 import type {
   UpdateContactRetryPolicyDto,
-  UpdateTenantDto
+  UpdateTenantDto,
+  UpdateWhatsappSenderDto
 } from "./dto/tenant-profile.dto";
 import { TenantService } from "./tenant.service";
 
@@ -42,6 +43,21 @@ export class TenantController {
   ) {
     return successResponse(
       await this.tenantService.updateContactRetryPolicy(
+        user.tenantId,
+        dto,
+        user.role
+      )
+    );
+  }
+
+  @Roles("admin")
+  @Patch("whatsapp-sender")
+  async updateWhatsappSender(
+    @CurrentUser() user: CurrentUserContext,
+    @Body() dto: UpdateWhatsappSenderDto
+  ) {
+    return successResponse(
+      await this.tenantService.updateWhatsappSender(
         user.tenantId,
         dto,
         user.role

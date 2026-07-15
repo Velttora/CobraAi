@@ -1,3 +1,4 @@
+import { BadRequestException } from "@nestjs/common";
 import { DEFAULT_RETRY_POLICY, type ContactRetryPolicy } from "@cobrai/compliance";
 
 export type TenantProfile = {
@@ -6,6 +7,7 @@ export type TenantProfile = {
   slug: string;
   plan: string;
   contactRetryPolicy: ContactRetryPolicy;
+  whatsappFromNumber: string | null;
 };
 
 export type UpdateTenantDto = {
@@ -13,6 +15,10 @@ export type UpdateTenantDto = {
 };
 
 export type UpdateContactRetryPolicyDto = Partial<ContactRetryPolicy>;
+
+export type UpdateWhatsappSenderDto = {
+  whatsappFromNumber: string | null;
+};
 
 const MIN_WINDOW_HOURS = 1;
 const MAX_WINDOW_HOURS = 24 * 14; // 2 semanas
@@ -56,12 +62,36 @@ export function toTenantProfile(tenant: {
   plan: string;
   settings?: unknown;
 }): TenantProfile {
-  const settings = (tenant.settings ?? {}) as { contactRetryPolicy?: unknown };
+  const settings = (tenant.settings ?? {}) as {
+    contactRetryPolicy?: unknown;
+    whatsappFromNumber?: unknown;
+  };
   return {
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
     plan: tenant.plan,
-    contactRetryPolicy: sanitizeContactRetryPolicy(settings.contactRetryPolicy)
+    contactRetryPolicy: sanitizeContactRetryPolicy(settings.contactRetryPolicy),
+    whatsappFromNumber:
+      typeof settings.whatsappFromNumber === "string"
+        ? settings.whatsappFromNumber
+        : null
   };
+}
+
+const WHATSAPP_E164_RE = /^\+[1-9]\d{6,14}$/;
+
+/**
+ * Normaliza y valida el número propio de WhatsApp Business del tenant (E.164).
+ * `null` o vacío limpia el número (el tenant vuelve a usar el compartido/global).
+ */
+export function normalizeWhatsappFromNumber(raw: string | null): string | null {
+  if (raw === null || raw.trim() === "") return null;
+  const digits = raw.trim().replace(/^whatsapp:/, "");
+  if (!WHATSAPP_E164_RE.test(digits)) {
+    throw new BadRequestException(
+      "Número de WhatsApp inválido: usa formato E.164, ej. +14155551234"
+    );
+  }
+  return `whatsapp:${digits}`;
 }
