@@ -343,6 +343,12 @@ export class ContactsService {
    * deuda/canal — el coordinator ya agrupa las deudas de un deudor en un solo ciclo
    * de contacto activo). Se llama desde las vías inbound: WhatsApp, email y el
    * resultado real de una llamada de voz.
+   *
+   * Si no hay ningún intento "pending" (el sweep ya venció la ventana y lo cerró
+   * como no_response) pero tampoco existe un intento más nuevo todavía, una
+   * respuesta tardía del deudor sigue contando como respuesta real — si no, el
+   * badge se queda en "sin contacto" y el ciclo de reintento bloquea contactos
+   * nuevos (retry_cooldown) pese a que el deudor está conversando en este momento.
    */
   async markResponse(
     tenantId: string,
@@ -360,9 +366,22 @@ export class ContactsService {
       },
       orderBy: { createdAt: "desc" }
     });
-    if (!pending) return;
 
-    await this.finalizeResponse(tenantId, pending, status, via);
+    const target =
+      pending ??
+      (await this.prisma.contact.findFirst({
+        where: {
+          tenantId,
+          debtorId,
+          deletedAt: null,
+          responseStatus: "no_response",
+          status: { in: ["scheduled", "in_progress", "completed"] }
+        },
+        orderBy: { createdAt: "desc" }
+      }));
+    if (!target) return;
+
+    await this.finalizeResponse(tenantId, target, status, via);
   }
 
   /**

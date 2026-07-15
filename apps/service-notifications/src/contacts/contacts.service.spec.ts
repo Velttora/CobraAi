@@ -30,8 +30,12 @@ function makePrisma() {
     },
     contact: {
       findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "contact1" }),
       update: vi.fn().mockResolvedValue({ id: "contact1", status: "completed" })
+    },
+    tenant: {
+      findUnique: vi.fn().mockResolvedValue(null)
     },
     conversation: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -364,5 +368,77 @@ describe("ContactsService — email layout + subject", () => {
     expect(variables.body).toContain("EXT-003");
     // Cada cuenta lleva su etapa de mora en tono neutral (Ley 1266).
     expect(variables.body).toMatch(/\((por vencer|vencida hace \d+ días?)\)/);
+  });
+});
+
+describe("ContactsService.markResponse", () => {
+  let service: ContactsService;
+  let prisma: ReturnType<typeof makePrisma>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+    service = new ContactsService(
+      prisma as never,
+      makeCompliance() as never,
+      makeAudit() as never,
+      makeEmail() as never,
+      makeSms() as never,
+      makeWhatsapp() as never,
+      makeVoice() as never,
+      makeKafka() as never,
+      makeWaterfall() as never,
+      makeConfig() as never,
+      makeDebtorMemory() as never
+    );
+  });
+
+  it("con un intento pending → lo marca efectivo (comportamiento existente)", async () => {
+    prisma.contact.findFirst.mockResolvedValueOnce({
+      id: "contact_pending",
+      debtId: "debt1",
+      debtorId: "debtor1",
+      channel: "email",
+      attemptNumber: 1
+    });
+
+    await service.markResponse("org1", "debtor1", "effective", "whatsapp");
+
+    expect(prisma.contact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "contact_pending" },
+        data: expect.objectContaining({ responseStatus: "effective" })
+      })
+    );
+  });
+
+  it("sin intento pending, pero con uno no_response reciente → respuesta tardía lo marca efectivo igual", async () => {
+    // Primera búsqueda (pending): nada. Segunda búsqueda (no_response): el intento vencido.
+    prisma.contact.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "contact_expired",
+        debtId: "debt1",
+        debtorId: "debtor1",
+        channel: "email",
+        attemptNumber: 2
+      });
+
+    await service.markResponse("org1", "debtor1", "effective", "whatsapp");
+
+    expect(prisma.contact.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "contact_expired" },
+        data: expect.objectContaining({ responseStatus: "effective" })
+      })
+    );
+  });
+
+  it("sin ningún intento pending ni no_response → no hace nada (no hay contacto que actualizar)", async () => {
+    prisma.contact.findFirst.mockResolvedValue(null);
+
+    await service.markResponse("org1", "debtor1", "effective", "whatsapp");
+
+    expect(prisma.contact.update).not.toHaveBeenCalled();
   });
 });
