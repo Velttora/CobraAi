@@ -117,13 +117,28 @@ export class TwilioWaWebhookHandler {
     this.logger.log(`Opt-out WA registrado para ${phone}`);
   }
 
+  /**
+   * El mismo teléfono puede existir en deudores de tenants distintos (el número de
+   * WhatsApp del sandbox/cuenta es compartido y no trae contexto de tenant). Para
+   * desambiguar, prioriza al deudor con un contacto "pending" (esperando su
+   * respuesta) — es la señal más fuerte de a quién le está respondiendo el deudor.
+   * Si ninguno tiene un contacto pendiente, usa el deudor actualizado más reciente.
+   */
   private async findDebtorByPhone(phone: string) {
     const rows = await this.prisma.$queryRaw<
       Array<{ id: string; tenant_id: string }>
     >`
-      SELECT id, tenant_id FROM debtors
-      WHERE deleted_at IS NULL
-      AND phones::text LIKE ${`%${phone}%`}
+      SELECT d.id, d.tenant_id FROM debtors d
+      WHERE d.deleted_at IS NULL
+      AND d.phones::text LIKE ${`%${phone}%`}
+      ORDER BY
+        EXISTS (
+          SELECT 1 FROM contacts c
+          WHERE c.debtor_id = d.id
+          AND c.deleted_at IS NULL
+          AND c.response_status = 'pending'
+        ) DESC,
+        d.updated_at DESC
       LIMIT 1
     `;
 
