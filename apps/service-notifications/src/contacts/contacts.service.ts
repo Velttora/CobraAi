@@ -246,6 +246,8 @@ export class ContactsService {
         variables
       );
 
+      const sendFailed = sendResult.status === "failed";
+
       await this.recordConversationMessage(
         tenantId,
         debtor.id,
@@ -254,10 +256,9 @@ export class ContactsService {
         template,
         variables,
         sendResult.messageId,
-        sendResult.body
+        sendResult.body,
+        sendResult.status
       );
-
-      const sendFailed = sendResult.status === "failed";
 
       const completed = await this.prisma.contact.update({
         where: { id: contact.id },
@@ -294,7 +295,7 @@ export class ContactsService {
       await this.audit.logContactLifecycle({
         tenantId,
         debtorId: debtor.id,
-        action: "compliance.contact.sent",
+        action: sendFailed ? "compliance.contact.send_failed" : "compliance.contact.sent",
         channel: input.channel,
         attemptNumber,
         maxAttempts: policy.maxAttempts,
@@ -609,7 +610,8 @@ export class ContactsService {
     template: NotificationTemplate | null,
     variables: Record<string, string>,
     providerMessageId: string,
-    body: string
+    body: string,
+    sendStatus: "sent" | "failed"
   ): Promise<void> {
     let conversation = await this.prisma.conversation.findFirst({
       where: { tenantId, debtorId, channel, deletedAt: null }
@@ -643,7 +645,7 @@ export class ContactsService {
           template ? renderTemplate(template.content, variables) : body,
           providerMessageId
         ),
-        status: "sent",
+        status: sendStatus,
         templateId: template?.id,
         sentAt: new Date()
       }

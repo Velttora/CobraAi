@@ -4,6 +4,7 @@ import type { ContactCheckReason } from "./types";
 
 export type ContactLifecycleAction =
   | "compliance.contact.sent"
+  | "compliance.contact.send_failed"
   | "compliance.contact.effective"
   | "compliance.contact.no_response"
   | "compliance.contact.retry_scheduled"

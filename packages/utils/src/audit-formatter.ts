@@ -73,6 +73,7 @@ export const AUDIT_ACTION_FILTER_OPTIONS: AuditActionFilterOption[] = [
   { label: "Contactos bloqueados", value: "compliance.contact.blocked" },
   { label: "Contactos permitidos", value: "compliance.contact.allowed" },
   { label: "Mensajes enviados", value: "compliance.contact.sent" },
+  { label: "Envíos fallidos", value: "compliance.contact.send_failed" },
   { label: "Contactos efectivos", value: "compliance.contact.effective" },
   { label: "Sin contacto (sin respuesta)", value: "compliance.contact.no_response" },
   { label: "Reintentos programados", value: "compliance.contact.retry_scheduled" },
@@ -176,6 +177,18 @@ export function describeAuditLog(row: AuditLogLike): ReadableAudit {
             attemptLabel(changes),
             windowHours ? `espera respuesta ${windowHours}h` : null
           ]
+            .filter(Boolean)
+            .join(" · ") || null
+      };
+    }
+    case "compliance.contact.send_failed": {
+      const channel = channelLabel(changes.channel);
+      return {
+        action: "Envío fallido",
+        resource,
+        resourceLabel,
+        detail:
+          [channel ? `canal ${channel}` : null, attemptLabel(changes)]
             .filter(Boolean)
             .join(" · ") || null
       };
