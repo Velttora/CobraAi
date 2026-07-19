@@ -241,6 +241,36 @@ describe("ContactsService — voice enrichment via DebtorMemoryService", () => {
     expect(vars["contactos_previos"]).toBeDefined();
     expect(vars["first_message_override"]).toBeDefined();
   });
+
+  it("voice: persiste el saludo real, no el guion del template", async () => {
+    // A voice template authored as a full call script: scaffolding plus a variable
+    // ({{promise_payment_date}}) that only exists after the debtor answers.
+    prisma.notificationTemplate.findFirst.mockResolvedValue({
+      id: "tpl-voice",
+      tenantId: "org1",
+      channel: "voice",
+      subject: null,
+      content:
+        "Hola {{nombre}}.\n\n[Esperar respuesta]\n\nHe registrado un compromiso de pago para el día {{promise_payment_date}}.",
+      isApproved: true,
+      language: "es"
+    });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "voice" });
+
+    const createArg = prisma.message.create.mock.calls[0]![0] as {
+      data: { content: string };
+    };
+    const stored = JSON.parse(createArg.data.content) as { text: string };
+    const vars = voice.initiateCall.mock.calls[0]![0]!.strategy_context
+      .variables as Record<string, string>;
+
+    // Stores the opening line Vapi actually speaks…
+    expect(stored.text).toBe(vars["first_message_override"]);
+    // …never the raw script scaffolding or unresolved template variables.
+    expect(stored.text).not.toContain("[Esperar respuesta]");
+    expect(stored.text).not.toContain("para el día");
+  });
 });
 
 describe("ContactsService — email layout + subject", () => {

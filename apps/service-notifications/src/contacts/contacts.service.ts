@@ -561,7 +561,9 @@ export class ContactsService {
         return {
           messageId: result.call_id,
           status: result.status === "failed" ? "failed" : "sent",
-          body: "Llamada encolada"
+          // Persist the actual opening line Vapi delivers, not the voice script
+          // template (which Vapi ignores — it uses its own assistant prompt).
+          body: callHistory.first_message_override ?? "Llamada encolada"
         };
       }
       default:
@@ -661,7 +663,12 @@ export class ContactsService {
         direction: "out",
         channel,
         content: buildMessageContent(
-          template ? renderTemplate(template.content, variables) : body,
+          // For voice, the template is not what the debtor hears (Vapi drives the
+          // call from its own assistant), so rendering it would persist raw script
+          // scaffolding and unresolved variables. Store the clean call body instead.
+          channel !== "voice" && template
+            ? renderTemplate(template.content, variables)
+            : body,
           providerMessageId
         ),
         status: sendStatus,
