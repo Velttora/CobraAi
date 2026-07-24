@@ -23,10 +23,12 @@ import { useConversations } from "../../hooks/use-conversations";
 import { useCalls } from "../../hooks/use-calls";
 import { useWorkflowStats } from "../../hooks/use-workflows";
 import {
+  computeAverageSentiment,
   computeDashboardMetrics,
   formatMetricAmount,
   formatMetricDso,
-  formatMetricRecoveryRate
+  formatMetricRecoveryRate,
+  formatMetricSentiment
 } from "../../lib/dashboard-metrics";
 import { OpsDrawer, type OpsDrawerKind } from "./OpsDrawer";
 
@@ -51,6 +53,7 @@ export function DashboardView() {
   const waConvsQuery = useConversations({ channel: "whatsapp", limit: 100 });
   const callsQuery = useCalls();
   const workflowStatsQuery = useWorkflowStats();
+  const sentimentConvsQuery = useConversations({ limit: 100 });
 
   const tableDebts = tableQuery.data?.data.items ?? [];
   const allDebts = metricsQuery.data?.data.items ?? [];
@@ -74,6 +77,13 @@ export function DashboardView() {
     allCalls.length > 0 ? Math.round((answeredCalls / allCalls.length) * 100) : 0;
 
   const opsStats = workflowStatsQuery.data?.data;
+
+  // KPI: sentimiento promedio de las conversaciones recientes con score calculado
+  const sentimentConvs = sentimentConvsQuery.data?.data.items ?? [];
+  const averageSentiment = useMemo(
+    () => computeAverageSentiment(sentimentConvs),
+    [sentimentConvs]
+  );
 
   useEffect(() => {
     if (error) {
@@ -142,7 +152,7 @@ export function DashboardView() {
             </p>
           ) : null}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
             <KPICard
               hint="vs. mes anterior (estimado)"
               label="Tasa de recuperación"
@@ -190,6 +200,21 @@ export function DashboardView() {
                 positive: callAttendanceRate >= 50
               }}
               value={`${callAttendanceRate}%`}
+            />
+            <KPICard
+              hint={
+                averageSentiment === null
+                  ? "Sin conversaciones con score aún"
+                  : `Score promedio: ${averageSentiment.toFixed(2)}`
+              }
+              label="Sentimiento promedio"
+              loading={sentimentConvsQuery.isLoading}
+              trend={
+                averageSentiment === null
+                  ? undefined
+                  : { value: formatMetricSentiment(averageSentiment), positive: averageSentiment >= 0 }
+              }
+              value={formatMetricSentiment(averageSentiment)}
             />
           </div>
 

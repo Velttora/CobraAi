@@ -59,3 +59,25 @@ export function formatMetricAmount(amount: number, currency: string): string {
 export function formatMetricDso(days: number): string {
   return `${Math.round(days)} días`;
 }
+
+/**
+ * Promedio de sentimiento (-1.0 hostil a 1.0 positivo) sobre las conversaciones que
+ * ya tienen un score calculado. null cuando ninguna conversación de la muestra tiene
+ * score todavía (agente conversacional recién empezando a operar en el tenant).
+ */
+export function computeAverageSentiment(
+  items: Array<{ last_sentiment_score: number | null }>
+): number | null {
+  const scored = items
+    .map((i) => i.last_sentiment_score)
+    .filter((s): s is number => s !== null);
+  if (scored.length === 0) return null;
+  return scored.reduce((sum, s) => sum + s, 0) / scored.length;
+}
+
+export function formatMetricSentiment(score: number | null): string {
+  if (score === null) return "—";
+  if (score > 0.2) return "Positivo";
+  if (score < -0.2) return "Negativo";
+  return "Neutro";
+}

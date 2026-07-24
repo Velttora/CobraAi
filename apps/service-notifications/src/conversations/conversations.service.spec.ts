@@ -100,6 +100,32 @@ describe("ConversationsService", () => {
     });
   });
 
+  it("listConversations → mapea last_sentiment_score del Contact más reciente con score", async () => {
+    mockConversationCount.mockResolvedValueOnce(1);
+    // baseConv es canal whatsapp → no dispara la query de lastCallByDebtor (solo voice
+    // la dispara), así que las únicas 2 llamadas a contact.findMany son, en orden:
+    // lastResponseByDebtor y lastSentimentByDebtor.
+    mockConversationFindMany.mockResolvedValueOnce([baseConv]);
+    mockContactFindMany.mockResolvedValueOnce([]); // lastResponseByDebtor
+    mockContactFindMany.mockResolvedValueOnce([
+      { debtorId: "debtor1", sentimentScore: 0.4 }
+    ]); // lastSentimentByDebtor
+
+    const result = await service.listConversations("org1", { page: 1, limit: 25 });
+
+    expect(result.items[0]?.last_sentiment_score).toBe(0.4);
+  });
+
+  it("listConversations → sin Contact con score → last_sentiment_score null", async () => {
+    mockConversationCount.mockResolvedValueOnce(1);
+    mockConversationFindMany.mockResolvedValueOnce([baseConv]);
+    mockContactFindMany.mockResolvedValue([]);
+
+    const result = await service.listConversations("org1", { page: 1, limit: 25 });
+
+    expect(result.items[0]?.last_sentiment_score).toBeNull();
+  });
+
   it("listConversations con channel inválido → no filtra por channel", async () => {
     mockConversationCount.mockResolvedValueOnce(0);
     mockConversationFindMany.mockResolvedValueOnce([]);

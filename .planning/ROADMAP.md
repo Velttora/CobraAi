@@ -77,15 +77,26 @@
 **Entrada:** Datos en BD pero sin UI.
 **Salida:** Agentes humanos pueden ver, responder y gestionar escalaciones.
 
+**Estado: ✅ completa — verificada retroactivamente 2026-07-23.** El código se
+construyó (commit `021d34b feat(dashboard): Phase 4 — Dashboard conversaciones y
+llamadas de voz` + follow-ups `5507b68`, `a2d323e`, `938a956`, `c3bf61e`, `71f4710`)
+pero `STATE.md`/este roadmap nunca se actualizaron — quedó marcada "🔲 pendiente"
+mientras el código ya estaba en `main`. Auditoría línea por línea contra el scope
+original el 2026-07-23; ver desviaciones abajo.
+
 **Scope:**
 
-- `/conversations` — lista de conversaciones activas por canal (WA / Voz / Email / SMS)
-- `/conversations/[id]` — hilo completo de mensajes con input para respuesta manual humana
-- `/calls` — lista de llamadas con estado, duración, transcript (collapsable)
-- Bandeja de escalaciones (`escalate_human` intent → badge en sidebar)
-- POST `/api/v1/conversations/:id/reply` — agente humano responde manualmente por WA
-- KPIs en dashboard: ratio promesa de pago WA, ratio atención llamada, sentimiento promedio
-- Tests: componentes React (RTL), E2E Playwright básico
+- [x] `/conversations` — lista de conversaciones activas por canal (WA / Voz / Email), con filtros de canal/estado/portafolio/resultado de llamada
+- [x] `/conversations/[id]` — hilo completo de mensajes con input para respuesta manual humana (`ReplyInput`, deshabilitado en SMS)
+- [x] Bandeja de escalaciones (`escalate_human` → badge rojo con conteo en Sidebar, polling 30s) + modal "Resolver escalación" (outcome pending/promised + nota)
+- [x] POST `/api/v1/conversations/:id/reply` — agente humano responde manualmente (WA o email, no solo WA como decía el scope original)
+- [x] KPIs en dashboard: ratio promesa de pago WA, ratio atención llamada, **sentimiento promedio** (este último faltaba — implementado 2026-07-23: `Contact.sentimentScore` expuesto como `last_sentiment_score` en `GET /v1/conversations`, promediado client-side en `computeAverageSentiment`)
+- [x] Tests: componentes React (RTL) — agregada infraestructura `@testing-library/react` + jsdom (no existía en el repo); tests de `MessageBubble`, `ConversationThread`, `ReplyInput`. E2E Playwright básico (`e2e/conversations.spec.ts`)
+
+**Desviaciones del scope original (decisiones de diseño, no gaps):**
+- `/calls` como ruta separada **no se construyó**; su función (lista de llamadas + transcript colapsable) quedó integrada al inbox unificado de `/conversations` (tab "Voz" + `VoiceCallBubble` dentro de `MessageBubble.tsx`) — un solo inbox en vez de dos, cobertura funcional equivalente.
+- `TranscriptViewer.tsx` como componente separado no se construyó; su lógica vive inline en `VoiceCallBubble` (mismo archivo `MessageBubble.tsx`).
+- SMS quedó fuera de los filtros de canal de `/conversations` porque el canal está deshabilitado globalmente por flag (sin proveedor CO) — no hay datos que listar.
 
 **Duración estimada:** 1 semana
 

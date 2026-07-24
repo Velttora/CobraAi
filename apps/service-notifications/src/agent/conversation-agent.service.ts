@@ -7,6 +7,7 @@ import {
   ContactChannel,
   type Debt
 } from "@cobrai/db";
+import { ComplianceService } from "@cobrai/compliance";
 import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
@@ -82,7 +83,8 @@ export class ConversationAgentService {
     private readonly whatsapp: TwilioWhatsAppAdapter,
     private readonly debtorMemory: DebtorMemoryService,
     private readonly email: EmailAdapter,
-    private readonly paymentPlans: PaymentPlanService
+    private readonly paymentPlans: PaymentPlanService,
+    private readonly compliance: ComplianceService
   ) {
     const apiKey = config.get<string>("OPENAI_API_KEY");
     this.openai = apiKey ? new OpenAI({ apiKey }) : null;
@@ -134,6 +136,24 @@ export class ConversationAgentService {
     const debt = debtor.debts[0];
     if (!debt) {
       this.logger.warn(`Sin deuda activa para deudor ${debtor_id}`);
+      return;
+    }
+
+    // El STOP/opt-out del mensaje actual ya lo filtra el webhook con una regex exacta
+    // antes de llegar aquí; esto cubre el resto de casos (opt-out global, opt-out de
+    // OTRO canal, consentimiento revocado) que no dependen de las palabras del mensaje
+    // entrante. Se corta antes de llamar a OpenAI para no gastar tokens en un deudor
+    // al que no le podemos responder.
+    const channel = payload.channel ?? "whatsapp";
+    const eligible = await this.compliance.isChannelEligible({
+      tenantId: tenant_id,
+      debtorId: debtor_id,
+      channel
+    });
+    if (!eligible.allowed) {
+      this.logger.warn(
+        `Agente bloqueado por compliance debtor=${debtor_id} channel=${channel} reason=${eligible.reason}`
+      );
       return;
     }
 

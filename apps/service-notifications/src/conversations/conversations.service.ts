@@ -136,6 +136,28 @@ export class ConversationsService {
       }
     }
 
+    // Sentimiento del intento de contacto más reciente con score calculado (cualquier
+    // canal) — alimenta el KPI de sentimiento promedio del dashboard.
+    const lastSentimentByDebtor = new Map<string, number>();
+
+    if (allDebtorIds.length > 0) {
+      const recentScored = await this.prisma.contact.findMany({
+        where: {
+          tenantId,
+          debtorId: { in: allDebtorIds },
+          deletedAt: null,
+          sentimentScore: { not: null }
+        },
+        orderBy: { createdAt: "desc" },
+        select: { debtorId: true, sentimentScore: true }
+      });
+      for (const c of recentScored) {
+        if (!lastSentimentByDebtor.has(c.debtorId) && c.sentimentScore !== null) {
+          lastSentimentByDebtor.set(c.debtorId, c.sentimentScore);
+        }
+      }
+    }
+
     let mappedItems = items.map((c) => ({
       id: c.id,
       channel: c.channel,
@@ -147,7 +169,8 @@ export class ConversationsService {
       last_call_outcome: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.outcome ?? null) : null,
       last_call_duration: c.channel === "voice" ? (lastCallByDebtor.get(c.debtor.id)?.durationSeconds ?? null) : null,
       last_response_status: lastResponseByDebtor.get(c.debtor.id)?.responseStatus ?? null,
-      last_response_attempt: lastResponseByDebtor.get(c.debtor.id)?.attemptNumber ?? null
+      last_response_attempt: lastResponseByDebtor.get(c.debtor.id)?.attemptNumber ?? null,
+      last_sentiment_score: lastSentimentByDebtor.get(c.debtor.id) ?? null
     }));
 
     // Filtro de outcome en memoria (deuda técnica: migrar a subquery para alto volumen)

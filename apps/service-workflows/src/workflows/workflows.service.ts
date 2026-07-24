@@ -913,6 +913,30 @@ export class WorkflowsService {
     channel: ContactChannel,
     rule: WorkflowRule
   ): Promise<void> {
+    // El segmento "critical" (aging>180 o score muy bajo + monto alto) es una señal
+    // más amplia que shouldEscalateLegal (que exige aging+score+monto A LA VEZ, o
+    // >=5 promesas rotas, o sin consentimiento) — una deuda puede ser "critical" y
+    // seguir en estado active/contacted indefinidamente. Cortamos el contacto
+    // automático aquí, en el único choke point de send_notification (schedule Y
+    // trigger rules), y escalamos a humano en lugar de dejarla huérfana.
+    if (debt.aiSegment === "critical") {
+      this.logger.warn(
+        `Contacto descartado debt=${debt.id} channel=${channel} reason=segment_critical`
+      );
+      await this.prisma.workflowExecution.create({
+        data: {
+          tenantId,
+          debtId: debt.id,
+          ruleId: rule.id,
+          status: "skipped",
+          executedAt: new Date(),
+          result: { blocked: true, reason: "segment_critical", channel }
+        }
+      });
+      await this.escalateDebt(tenantId, debt.id, rule.id, "human", rule.name);
+      return;
+    }
+
     // Solo verificamos elegibilidad permanente (opt-out, consentimiento, WhatsApp opt-in).
     // La frecuencia semanal la gestiona el DebtorContactCoordinator en service-notifications,
     // que agrupa todas las deudas del mismo deudor antes de disparar un único contacto.

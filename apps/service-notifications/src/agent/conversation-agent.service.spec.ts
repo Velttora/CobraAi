@@ -44,6 +44,10 @@ const mockDebtorMemory = {
   refreshMemory: vi.fn().mockResolvedValue(undefined)
 };
 
+const mockCompliance = {
+  isChannelEligible: vi.fn().mockResolvedValue({ allowed: true })
+};
+
 function makeConfig(): ConfigService {
   const map: Record<string, string> = {
     OPENAI_API_KEY: "sk-test",
@@ -112,6 +116,7 @@ describe("ConversationAgentService", () => {
     vi.clearAllMocks();
     mockDebtorFindFirst.mockResolvedValue(baseDebtor);
     mockMessageFindMany.mockResolvedValue([]);
+    mockCompliance.isChannelEligible.mockResolvedValue({ allowed: true });
     mockChatCreate.mockResolvedValue(makeAgentResponse({ intent: "unrelated", response: "Hola, le informamos..." }));
     mockDebtorMemory.getUnifiedContext.mockResolvedValue({
       debtorHistory: {
@@ -137,7 +142,8 @@ describe("ConversationAgentService", () => {
       mockWhatsapp as never,
       mockDebtorMemory as never,
       mockEmail as never,
-      { createPlan: vi.fn().mockResolvedValue("plan-1") } as never
+      { createPlan: vi.fn().mockResolvedValue("plan-1") } as never,
+      mockCompliance as never
     );
   });
 
@@ -245,6 +251,24 @@ describe("ConversationAgentService", () => {
     await service.processInboundMessage(basePayload);
 
     expect(mockChatCreate).not.toHaveBeenCalled();
+  });
+
+  it("deudor con opt-out vigente (no por la palabra STOP) → no llama OpenAI ni envía", async () => {
+    mockCompliance.isChannelEligible.mockResolvedValueOnce({
+      allowed: false,
+      reason: "opt_out_channel"
+    });
+
+    await service.processInboundMessage(basePayload);
+
+    expect(mockCompliance.isChannelEligible).toHaveBeenCalledWith({
+      tenantId: "org1",
+      debtorId: "debtor1",
+      channel: "whatsapp"
+    });
+    expect(mockChatCreate).not.toHaveBeenCalled();
+    expect(mockWhatsapp.sendTemplate).not.toHaveBeenCalled();
+    expect(mockMessageCreate).not.toHaveBeenCalled();
   });
 
   it("historial de mensajes → incluidos como context en llamada GPT", async () => {
