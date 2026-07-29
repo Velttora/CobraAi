@@ -798,9 +798,21 @@ export class WorkflowsService {
     // Evaluamos (y ejecutamos) contra el estado "de creación" cuando aplica, de
     // modo que reglas como la bienvenida (status:"new") disparen aunque la deuda
     // ya haya avanzado a analyzing/active en la BD para cuando llega el evento.
+    const creationStatus = statusOverride ?? debt.status;
+
+    // A welcome message greets the debtor when the debt enters the portfolio, which
+    // has to happen regardless of whether the debt is collectable yet. Every
+    // `debt_created` rule shipped by the packages filters by status:"new", so we
+    // normalise the creation snapshot here instead of relaxing each definition.
+    const statusForRules =
+      trigger === "debt_created" &&
+      (creationStatus === "future" || creationStatus === "upcoming")
+        ? "new"
+        : creationStatus;
+
     const debtForRules =
-      statusOverride && statusOverride !== debt.status
-        ? { ...debt, status: statusOverride }
+      statusForRules !== debt.status
+        ? { ...debt, status: statusForRules }
         : debt;
 
     const rules = await this.prisma.workflowRule.findMany({
@@ -825,6 +837,18 @@ export class WorkflowsService {
       ) {
         continue;
       }
+
+      // `cobrai.debt.created` is emitted twice for a deferred debt: once on import and
+      // again when the daily sweep flips upcoming→new. Without this guard the debtor
+      // would be welcomed twice for the same debt.
+      if (trigger === "debt_created") {
+        const alreadyRan = await this.prisma.workflowExecution.findFirst({
+          where: { tenantId, debtId, ruleId: rule.id, deletedAt: null },
+          select: { id: true }
+        });
+        if (alreadyRan) continue;
+      }
+
       await this.executeRuleAction(tenantId, debtForRules, rule);
     }
   }

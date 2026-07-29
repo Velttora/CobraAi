@@ -45,6 +45,7 @@ function makePrisma(dbStatus = "active") {
       findMany: vi.fn().mockResolvedValue([WELCOME_RULE])
     },
     workflowExecution: {
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "exec1" }),
       update: vi.fn().mockResolvedValue({})
     }
@@ -118,6 +119,44 @@ describe("WorkflowsService — bienvenida en debt_created", () => {
       expect.objectContaining({ debt_id: "debt1", channel: "whatsapp" }),
       "debtor1"
     );
+  });
+
+  it.each(["future", "upcoming"])(
+    "dispara la bienvenida para una deuda creada como '%s'",
+    async (creationStatus) => {
+      const prisma = makePrisma(creationStatus);
+      const kafka = makeKafka();
+      const service = build(prisma, kafka);
+
+      await service.handleDebtCreated("org1", {
+        debt_id: "debt1",
+        status: creationStatus
+      });
+
+      expect(kafka.publish).toHaveBeenCalledWith(
+        "cobrai.debtor.contact_queue",
+        "org1",
+        expect.objectContaining({ debt_id: "debt1", channel: "whatsapp" }),
+        "debtor1"
+      );
+    }
+  );
+
+  it("no vuelve a saludar si la regla ya se ejecutó para esa deuda", async () => {
+    const prisma = makePrisma("new");
+    prisma.workflowExecution.findFirst.mockResolvedValue({ id: "exec-previo" });
+    const kafka = makeKafka();
+    const service = build(prisma, kafka);
+
+    await service.handleDebtCreated("org1", {
+      debt_id: "debt1",
+      source: "deferred_activation"
+    });
+
+    const contactQueueCalls = kafka.publish.mock.calls.filter(
+      ([topic]) => topic === "cobrai.debtor.contact_queue"
+    );
+    expect(contactQueueCalls).toHaveLength(0);
   });
 
   it("no dispara la bienvenida si el status de creación no es 'new'", async () => {

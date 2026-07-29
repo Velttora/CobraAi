@@ -148,10 +148,10 @@ export class DebtsService {
 
     await this.refreshPortfolioTotals(tenantId, dto.portfolio_id);
 
-    if (status === "future" || status === "upcoming") {
-      return debt;
-    }
-
+    // The welcome rules (trigger `debt_created`) greet the debtor as soon as the debt
+    // enters the portfolio, so the event must go out even for debts that are not
+    // collectable yet. The collection pipeline below (scoring, segmentation) stays
+    // skipped for future/upcoming — only the creation event is emitted.
     await this.kafka.publish("cobrai.debt.created", tenantId, {
       debt_id: debt.id,
       portfolio_id: debt.portfolioId,
@@ -159,6 +159,10 @@ export class DebtsService {
       status: debt.status,
       due_date: dueDate.toISOString()
     });
+
+    if (status === "future" || status === "upcoming") {
+      return debt;
+    }
 
     if (status === "new") {
       debt = await this.prisma.debt.update({
