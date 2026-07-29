@@ -40,11 +40,21 @@ describe("deferred collection logic", () => {
     expect(getInitialDebtStatus(due, scheduled, today).status).toBe("future");
   });
 
-  it("future no publica kafka en create (contrato)", () => {
-    const shouldPublish = (status: string) =>
-      status === "new" || status === "analyzing" || status === "active";
-    expect(shouldPublish("future")).toBe(false);
-    expect(shouldPublish("new")).toBe(true);
+  // El evento de creación sale para todos los estados: las reglas de bienvenida
+  // (trigger debt_created) deben saludar al deudor apenas la deuda entra al
+  // portafolio, aunque todavía no sea gestionable. Lo que sigue reservado a las
+  // deudas gestionables es el pipeline de scoring/segmentación.
+  it("create publica cobrai.debt.created también para future/upcoming (contrato)", () => {
+    const shouldPublish = () => true;
+    expect(shouldPublish()).toBe(true);
+  });
+
+  it("future/upcoming no entran al pipeline de scoring (contrato)", () => {
+    const runsScoring = (status: string) =>
+      status !== "future" && status !== "upcoming";
+    expect(runsScoring("future")).toBe(false);
+    expect(runsScoring("upcoming")).toBe(false);
+    expect(runsScoring("new")).toBe(true);
   });
 });
 

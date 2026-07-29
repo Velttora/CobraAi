@@ -42,6 +42,7 @@ function makePrisma(aiSegment: string | null) {
       findMany: vi.fn().mockResolvedValue([WELCOME_RULE])
     },
     workflowExecution: {
+      findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "exec1" }),
       update: vi.fn().mockResolvedValue({})
     }
