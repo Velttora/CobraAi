@@ -7,6 +7,13 @@ export {
   resolveAppliedById
 } from "./apply-package";
 export {
+  DEFAULT_AUTOMATION_GRACE_HOURS,
+  WELCOME_ELIGIBLE_STATUSES,
+  computeAutomationStartsAt,
+  isAutomationGraceActive,
+  resolveAutomationGraceHours
+} from "./automation-grace";
+export {
   getWorkflowPackageDefinition,
   getWorkflowPackageDefinitions,
   resetWorkflowPackageCache,

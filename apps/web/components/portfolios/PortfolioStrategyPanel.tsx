@@ -23,6 +23,7 @@ import {
 } from "../../lib/workflow-rules";
 import { WorkflowPackageCard } from "../workflows/WorkflowPackageCard";
 import { WorkflowRulesManager } from "../workflows/WorkflowRulesManager";
+import { PortfolioAutomationBanner } from "./PortfolioAutomationBanner";
 import { StrategyPill } from "./StrategyPill";
 
 export function PortfolioStrategyPanel({
@@ -108,6 +109,13 @@ export function PortfolioStrategyPanel({
           onSave={() => void saveQuickStrategy()}
           onSelect={setPendingStrategy}
         />
+
+        <div className="mt-3">
+          <PortfolioAutomationBanner
+            automationStartsAt={portfolio?.automationStartsAt}
+            automationStatus={portfolio?.automationStatus}
+          />
+        </div>
       </article>
 
       <article className="rounded-xl border border-[#D85A30]/30 bg-gradient-to-br from-orange-50/80 to-white p-5 dark:border-[#D85A30]/40 dark:from-slate-900 dark:to-slate-950">

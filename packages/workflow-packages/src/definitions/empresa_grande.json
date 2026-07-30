@@ -1,13 +1,15 @@
 {
   "id": "empresa_grande",
-  "name": "Empresa grande (B2B)",
-  "description": "Estrategia formal para carteras corporativas con montos altos, ciclos largos y escalamiento progresivo.",
-  "profile": "Ideal para facturación B2B, cuentas por cobrar empresariales y carteras con pocos deudores de alto valor.",
+  "name": "Cobranza corporativa",
+  "description": "Estrategia formal para cuentas por cobrar B2B: montos altos, ciclos largos y escalamiento progresivo.",
+  "profile": "Facturación empresarial, carteras concentradas y deudores de alto valor.",
   "rules": [
     {
       "name": "Bienvenida — email formal",
       "trigger": "debt_created",
-      "condition": { "status": "new" },
+      "condition": {
+        "status": ["new", "upcoming", "analyzing", "active"]
+      },
       "action": "send_notification",
       "channel": "email",
       "delay_hours": 0,

@@ -389,7 +389,8 @@ export class ImportService implements OnModuleInit, OnModuleDestroy {
             debtor_tax_id: row.debtor_tax_id,
             phones: row.debtor_phone ? [row.debtor_phone] : [],
             debtor_email: row.debtor_email,
-            whatsapp_opt_in: false
+            // Teléfono presente ⇒ opt-in WA para poder contactar por ese canal.
+            whatsapp_opt_in: Boolean(row.debtor_phone?.trim())
           }
         });
         state.success_rows += 1;

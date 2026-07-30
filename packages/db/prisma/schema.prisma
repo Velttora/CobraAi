@@ -315,16 +315,18 @@ model Portfolio {
   name              String
   description       String?
   status            PortfolioStatus           @default(active)
-  automationStatus  PortfolioAutomationStatus @default(none) @map("automation_status")
-  activePackageSlug String?                   @map("active_package_slug")
-  totalDebts        Int                       @default(0) @map("total_debts")
-  totalAmount       Decimal                   @default(0) @map("total_amount") @db.Decimal(15, 2)
-  currency          String                    @default("COP") @db.Char(3)
-  importedAt        DateTime?                 @map("imported_at")
-  createdById       String?                   @map("created_by")
-  createdAt         DateTime                  @default(now()) @map("created_at")
-  updatedAt         DateTime                  @updatedAt @map("updated_at")
-  deletedAt         DateTime?                 @map("deleted_at")
+  automationStatus   PortfolioAutomationStatus @default(none) @map("automation_status")
+  activePackageSlug  String?                   @map("active_package_slug")
+  /// When set in the future, send_notification rules wait until this instant (config grace).
+  automationStartsAt DateTime?                 @map("automation_starts_at")
+  totalDebts         Int                       @default(0) @map("total_debts")
+  totalAmount        Decimal                   @default(0) @map("total_amount") @db.Decimal(15, 2)
+  currency           String                    @default("COP") @db.Char(3)
+  importedAt         DateTime?                 @map("imported_at")
+  createdById        String?                   @map("created_by")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+  deletedAt          DateTime?                 @map("deleted_at")
 
   tenant              Tenant                        @relation(fields: [tenantId], references: [id])
   createdBy           User?                         @relation("PortfolioCreatedBy", fields: [createdById], references: [id])

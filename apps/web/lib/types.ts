@@ -45,6 +45,8 @@ export interface Portfolio {
   status: string;
   automationStatus?: "none" | "package" | "custom";
   activePackageSlug?: string | null;
+  /** ISO date; contacts wait until this time after enabling automation. */
+  automationStartsAt?: string | null;
   rulesCount?: number;
   totalDebts: number;
   totalAmount: string | number;

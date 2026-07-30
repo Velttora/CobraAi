@@ -67,7 +67,10 @@ export function PortfolioCard({ portfolio }: { portfolio: Portfolio }) {
         <PipelineSection currency={portfolio.currency} quarters={quarters} />
       ) : null}
 
-      <PortfolioAutomationBanner automationStatus={portfolio.automationStatus} />
+      <PortfolioAutomationBanner
+        automationStartsAt={portfolio.automationStartsAt}
+        automationStatus={portfolio.automationStatus}
+      />
 
       <CardActions portfolio={portfolio} />
     </article>

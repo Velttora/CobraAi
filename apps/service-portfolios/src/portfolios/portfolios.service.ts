@@ -8,9 +8,11 @@ import { ensureTenantRecord, PrismaService } from "@cobrai/db";
 import { Prisma, type Portfolio, type WorkflowRule } from "@cobrai/db";
 import {
   applyPackageToPortfolio,
+  computeAutomationStartsAt,
   countActivePortfolioRules,
   deactivatePortfolioRules,
-  resolveAppliedById
+  resolveAppliedById,
+  resolveAutomationGraceHours
 } from "@cobrai/workflow-packages";
 import {
   getCollectionQuarter,
@@ -214,7 +216,11 @@ export class PortfoliosService {
       await deactivatePortfolioRules(this.prisma, tenantId, id);
       await this.prisma.portfolio.update({
         where: { id },
-        data: { automationStatus: "none", activePackageSlug: null }
+        data: {
+          automationStatus: "none",
+          activePackageSlug: null,
+          automationStartsAt: null
+        }
       });
       await this.prisma.portfolioPackageApplication.create({
         data: {
@@ -233,9 +239,15 @@ export class PortfoliosService {
     }
 
     if (dto.strategy === "custom") {
+      const graceHours = resolveAutomationGraceHours(
+        process.env.AUTOMATION_GRACE_HOURS
+      );
       await this.prisma.portfolio.update({
         where: { id },
-        data: { automationStatus: "custom" }
+        data: {
+          automationStatus: "custom",
+          automationStartsAt: computeAutomationStartsAt(new Date(), graceHours)
+        }
       });
       await this.prisma.portfolioPackageApplication.create({
         data: {

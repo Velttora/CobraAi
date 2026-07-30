@@ -18,7 +18,7 @@ const FEATURES = [
   },
   {
     title: "Paquetes pre-configurados",
-    body: "Empresa grande, PyME fintech o cartera personas: empieza en minutos."
+    body: "Cobranza corporativa, digital o de consumo: empieza en minutos."
   },
   {
     title: "Omnicanal nativo",

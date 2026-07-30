@@ -148,10 +148,9 @@ export class DebtsService {
 
     await this.refreshPortfolioTotals(tenantId, dto.portfolio_id);
 
-    // The welcome rules (trigger `debt_created`) greet the debtor as soon as the debt
-    // enters the portfolio, so the event must go out even for debts that are not
-    // collectable yet. The collection pipeline below (scoring, segmentation) stays
-    // skipped for future/upcoming — only the creation event is emitted.
+    // Bienvenida (debt_created): el evento sale aunque la deuda aún no sea
+    // gestionable. Scoring/segmentación abajo sigue omitiéndose para future/upcoming.
+    // Workflows aplica gracia de automatización antes de contactar.
     await this.kafka.publish("cobrai.debt.created", tenantId, {
       debt_id: debt.id,
       portfolio_id: debt.portfolioId,

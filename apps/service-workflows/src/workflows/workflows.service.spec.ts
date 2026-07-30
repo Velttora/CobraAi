@@ -36,7 +36,10 @@ function makePrisma(aiSegment: string | null) {
       update: vi.fn().mockResolvedValue(debtRow)
     },
     portfolio: {
-      findFirst: vi.fn().mockResolvedValue({ automationStatus: "package" })
+      findFirst: vi.fn().mockResolvedValue({
+        automationStatus: "package",
+        automationStartsAt: null
+      })
     },
     workflowRule: {
       findMany: vi.fn().mockResolvedValue([WELCOME_RULE])

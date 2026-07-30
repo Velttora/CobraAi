@@ -20,6 +20,7 @@ import {
   PROMISE_SAFE_DEBT_STATUSES
 } from "@cobrai/utils";
 import { startOfTodayUtc } from "@cobrai/utils";
+import { isAutomationGraceActive } from "@cobrai/workflow-packages";
 import {
   computeAgingDays,
   decimalToNumber
@@ -572,13 +573,31 @@ export class WorkflowsService {
         deletedAt: null,
         automationStatus: { not: "none" }
       },
-      select: { id: true }
+      select: { id: true, automationStartsAt: true }
     });
 
     let contacts = 0;
     const byPortfolio: Record<string, number> = {};
+    const now = new Date();
 
     for (const portfolio of enabledPortfolios) {
+      if (isAutomationGraceActive(portfolio.automationStartsAt, now)) {
+        this.logger.log(
+          `Portfolio ${portfolio.id}: gracia de automatización hasta ${portfolio.automationStartsAt?.toISOString()} — sin contactos`
+        );
+        continue;
+      }
+
+      // Bienvenida pendiente (p. ej. import durante la gracia) antes del schedule.
+      const welcomeSent = await this.runPendingWelcomesForPortfolio(
+        tenantId,
+        portfolio.id
+      );
+      contacts += welcomeSent;
+      if (welcomeSent > 0) {
+        byPortfolio[portfolio.id] = (byPortfolio[portfolio.id] ?? 0) + welcomeSent;
+      }
+
       const scheduleRules = await this.prisma.workflowRule.findMany({
         where: {
           tenantId,
@@ -604,6 +623,12 @@ export class WorkflowsService {
 
       let portfolioContacts = 0;
       for (const debt of debts) {
+        // No disparar pre-vencimiento/mora si el deudor aún no recibió bienvenida
+        // y el portafolio tiene regla debt_created de notificación activa.
+        if (await this.shouldHoldScheduleForWelcome(tenantId, debt)) {
+          continue;
+        }
+
         for (const rule of scheduleRules) {
           if (
             !this.rules.ruleAppliesToDebt(
@@ -629,7 +654,8 @@ export class WorkflowsService {
       }
 
       if (portfolioContacts > 0) {
-        byPortfolio[portfolio.id] = portfolioContacts;
+        byPortfolio[portfolio.id] =
+          (byPortfolio[portfolio.id] ?? 0) + portfolioContacts;
       }
     }
 
@@ -791,19 +817,24 @@ export class WorkflowsService {
 
     const portfolio = await this.prisma.portfolio.findFirst({
       where: { id: debt.portfolioId, tenantId, deletedAt: null },
-      select: { automationStatus: true }
+      select: { automationStatus: true, automationStartsAt: true }
     });
     if (!portfolio || portfolio.automationStatus === "none") return;
+
+    if (isAutomationGraceActive(portfolio.automationStartsAt)) {
+      this.logger.log(
+        `Trigger ${trigger} diferido (gracia) debt=${debtId} hasta ${portfolio.automationStartsAt?.toISOString()}`
+      );
+      return;
+    }
 
     // Evaluamos (y ejecutamos) contra el estado "de creación" cuando aplica, de
     // modo que reglas como la bienvenida (status:"new") disparen aunque la deuda
     // ya haya avanzado a analyzing/active en la BD para cuando llega el evento.
     const creationStatus = statusOverride ?? debt.status;
 
-    // A welcome message greets the debtor when the debt enters the portfolio, which
-    // has to happen regardless of whether the debt is collectable yet. Every
-    // `debt_created` rule shipped by the packages filters by status:"new", so we
-    // normalise the creation snapshot here instead of relaxing each definition.
+    // Bienvenida: paquetes filtran status:"new"; normalizamos future/upcoming
+    // al snapshot de creación para no relajar cada definición de regla.
     const statusForRules =
       trigger === "debt_created" &&
       (creationStatus === "future" || creationStatus === "upcoming")
@@ -828,11 +859,15 @@ export class WorkflowsService {
 
     for (const rule of rules) {
       if (rule.portfolioId !== debt.portfolioId) continue;
+      const condition = this.expandWelcomeStatusCondition(
+        trigger,
+        rule.condition as Record<string, unknown>
+      );
       if (
         !this.rules.matchesCondition(
           debtForRules,
           debtForRules.debtor,
-          rule.condition as Record<string, unknown>
+          condition
         )
       ) {
         continue;
@@ -851,6 +886,122 @@ export class WorkflowsService {
 
       await this.executeRuleAction(tenantId, debtForRules, rule);
     }
+  }
+
+  /**
+   * Reglas legacy de bienvenida con `status: "new"` también deben aplicar a
+   * `upcoming` (pipeline) para el primer contacto antes del pre-vencimiento.
+   */
+  private expandWelcomeStatusCondition(
+    trigger: WorkflowRule["trigger"],
+    condition: Record<string, unknown>
+  ): Record<string, unknown> {
+    if (trigger !== "debt_created") return condition;
+    if (condition.status !== "new") return condition;
+    return {
+      ...condition,
+      status: ["new", "upcoming", "analyzing", "active"]
+    };
+  }
+
+  /**
+   * Tras la gracia: dispara debt_created (bienvenida) una vez por deudor que aún
+   * no tiene ningún contacto en el portafolio.
+   */
+  private async runPendingWelcomesForPortfolio(
+    tenantId: string,
+    portfolioId: string
+  ): Promise<number> {
+    const welcomeRules = await this.prisma.workflowRule.findMany({
+      where: {
+        tenantId,
+        portfolioId,
+        trigger: "debt_created",
+        action: "send_notification",
+        isActive: true,
+        deletedAt: null
+      },
+      orderBy: { priority: "asc" }
+    });
+    if (welcomeRules.length === 0) return 0;
+
+    const debts = await this.prisma.debt.findMany({
+      where: {
+        tenantId,
+        portfolioId,
+        deletedAt: null,
+        status: { in: ["new", "upcoming", "analyzing", "active"] }
+      },
+      include: { debtor: true },
+      orderBy: { createdAt: "asc" }
+    });
+
+    let sent = 0;
+    const seenDebtors = new Set<string>();
+
+    for (const debt of debts) {
+      if (seenDebtors.has(debt.debtorId)) continue;
+      seenDebtors.add(debt.debtorId);
+
+      const priorContact = await this.prisma.contact.findFirst({
+        where: {
+          tenantId,
+          debtorId: debt.debtorId,
+          deletedAt: null,
+          status: { in: ["completed", "in_progress", "scheduled"] }
+        },
+        select: { id: true }
+      });
+      if (priorContact) continue;
+
+      for (const rule of welcomeRules) {
+        const condition = this.expandWelcomeStatusCondition(
+          "debt_created",
+          rule.condition as Record<string, unknown>
+        );
+        if (!this.rules.matchesCondition(debt, debt.debtor, condition)) {
+          continue;
+        }
+        if (await this.executeRuleAction(tenantId, debt, rule)) {
+          sent += 1;
+        }
+        break;
+      }
+    }
+
+    return sent;
+  }
+
+  /** true si hay bienvenida activa y el deudor aún no fue contactado. */
+  private async shouldHoldScheduleForWelcome(
+    tenantId: string,
+    debt: DebtContext & { debtorId: string; portfolioId: string | null }
+  ): Promise<boolean> {
+    if (!debt.portfolioId) return false;
+
+    const welcomeRule = await this.prisma.workflowRule.findFirst({
+      where: {
+        tenantId,
+        portfolioId: debt.portfolioId,
+        trigger: "debt_created",
+        action: "send_notification",
+        isActive: true,
+        deletedAt: null
+      },
+      select: { id: true }
+    });
+    if (!welcomeRule) return false;
+
+    const priorContact = await this.prisma.contact.findFirst({
+      where: {
+        tenantId,
+        debtorId: debt.debtorId,
+        deletedAt: null,
+        status: { in: ["completed", "in_progress", "scheduled"] }
+      },
+      select: { id: true }
+    });
+    return !priorContact;
   }
 
   private async executeRuleAction(
@@ -874,15 +1025,21 @@ export class WorkflowsService {
     });
 
     try {
+      let queued = true;
+      let skipReason: string | undefined;
+
       switch (rule.action) {
-        case "send_notification":
-          await this.requestContact(
+        case "send_notification": {
+          const result = await this.requestContact(
             tenantId,
             debt,
             (rule.channel ?? debt.bestChannel ?? "email") as ContactChannel,
             rule
           );
+          queued = result.queued;
+          skipReason = result.reason;
           break;
+        }
         case "escalate_human":
           await this.escalateDebt(tenantId, debt.id, rule.id, "human", rule.name);
           break;
@@ -905,6 +1062,22 @@ export class WorkflowsService {
           break;
       }
 
+      if (!queued) {
+        await this.prisma.workflowExecution.update({
+          where: { id: execution.id },
+          data: {
+            status: "skipped",
+            result: {
+              action: rule.action,
+              channel: rule.channel,
+              blocked: true,
+              reason: skipReason ?? "not_queued"
+            }
+          }
+        });
+        return false;
+      }
+
       await this.prisma.workflowExecution.update({
         where: { id: execution.id },
         data: {
@@ -912,7 +1085,8 @@ export class WorkflowsService {
           result: {
             action: rule.action,
             channel: rule.channel,
-            alert: rule.action === "escalate_human"
+            alert: rule.action === "escalate_human",
+            queued: rule.action === "send_notification"
           }
         }
       });
@@ -936,34 +1110,17 @@ export class WorkflowsService {
     debt: DebtContext,
     channel: ContactChannel,
     rule: WorkflowRule
-  ): Promise<void> {
+  ): Promise<{ queued: boolean; reason?: string }> {
     // El segmento "critical" (aging>180 o score muy bajo + monto alto) es una señal
-    // más amplia que shouldEscalateLegal (que exige aging+score+monto A LA VEZ, o
-    // >=5 promesas rotas, o sin consentimiento) — una deuda puede ser "critical" y
-    // seguir en estado active/contacted indefinidamente. Cortamos el contacto
-    // automático aquí, en el único choke point de send_notification (schedule Y
-    // trigger rules), y escalamos a humano en lugar de dejarla huérfana.
+    // más amplia que shouldEscalateLegal — cortamos el contacto automático aquí.
     if (debt.aiSegment === "critical") {
       this.logger.warn(
         `Contacto descartado debt=${debt.id} channel=${channel} reason=segment_critical`
       );
-      await this.prisma.workflowExecution.create({
-        data: {
-          tenantId,
-          debtId: debt.id,
-          ruleId: rule.id,
-          status: "skipped",
-          executedAt: new Date(),
-          result: { blocked: true, reason: "segment_critical", channel }
-        }
-      });
       await this.escalateDebt(tenantId, debt.id, rule.id, "human", rule.name);
-      return;
+      return { queued: false, reason: "segment_critical" };
     }
 
-    // Solo verificamos elegibilidad permanente (opt-out, consentimiento, WhatsApp opt-in).
-    // La frecuencia semanal la gestiona el DebtorContactCoordinator en service-notifications,
-    // que agrupa todas las deudas del mismo deudor antes de disparar un único contacto.
     const check = await this.compliance.isChannelEligible({
       tenantId,
       debtorId: debt.debtorId,
@@ -974,31 +1131,16 @@ export class WorkflowsService {
       this.logger.warn(
         `Contacto descartado debt=${debt.id} channel=${channel} reason=${check.reason}`
       );
-      await this.prisma.workflowExecution.create({
-        data: {
-          tenantId,
-          debtId: debt.id,
-          ruleId: rule.id,
-          status: "skipped",
-          executedAt: new Date(),
-          result: { blocked: true, reason: check.reason, channel }
-        }
-      });
-      return;
+      return { queued: false, reason: check.reason };
     }
 
-    // Ya no se transiciona a "contacted" aquí: enviar un mensaje no es lo mismo que
-    // contactar al deudor. La transición CONTACT_EFFECTIVE solo se dispara cuando hay
-    // una respuesta real (ver handleContactEffective, consumidor de cobrai.contact.effective).
     const templateHint =
       rule.trigger === "payment_confirmed"
         ? "agradecimiento"
-        : "workflow_automation";
+        : rule.trigger === "debt_created"
+          ? "bienvenida"
+          : "workflow_automation";
 
-    // Publicar al coordinator en lugar de al executor directo.
-    // El coordinator decide si este deudor ya fue contactado esta semana
-    // y, de ser así, registra la deuda como pendiente para mencionarla en
-    // el próximo contacto.
     await this.kafka.publish(
       "cobrai.debtor.contact_queue",
       tenantId,
@@ -1011,11 +1153,10 @@ export class WorkflowsService {
         template_hint: templateHint,
         priority_score: debt.priorityScore ?? 0
       },
-      // Particionar por deudor: garantiza que todas las deudas de un mismo deudor
-      // se procesen en orden y el coordinador consolide el contacto (una sola
-      // bienvenida por deudor, no una por deuda).
       debt.debtorId
     );
+
+    return { queued: true };
   }
 
   private async escalateDebt(

@@ -170,7 +170,10 @@ export function buildRuleCondition(input: {
   }
 
   if (input.trigger === "debt_created" && base.status === undefined) {
-    return { ...base, status: "new" };
+    return {
+      ...base,
+      status: ["new", "upcoming", "analyzing", "active"]
+    };
   }
 
   return base;

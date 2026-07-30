@@ -1,4 +1,8 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import {
+  computeAutomationStartsAt,
+  resolveAutomationGraceHours
+} from "./automation-grace";
 import { getWorkflowPackageDefinition } from "./registry";
 import {
   PACKAGE_SOURCE_KEY,
@@ -259,11 +263,15 @@ export async function applyPackageToPortfolio(
     }
   }
 
+  const graceHours = resolveAutomationGraceHours(
+    process.env.AUTOMATION_GRACE_HOURS
+  );
   await prisma.portfolio.update({
     where: { id: portfolioId },
     data: {
       automationStatus: "package",
-      activePackageSlug: packageId
+      activePackageSlug: packageId,
+      automationStartsAt: computeAutomationStartsAt(new Date(), graceHours)
     }
   });
 

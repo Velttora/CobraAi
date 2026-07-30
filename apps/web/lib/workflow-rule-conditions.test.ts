@@ -61,6 +61,19 @@ describe("buildRuleCondition", () => {
     });
   });
 
+  it("debt_created sin status → incluye upcoming para bienvenida en pipeline", () => {
+    expect(
+      buildRuleCondition({
+        trigger: "debt_created",
+        agingMinDays: "",
+        agingMaxDays: "",
+        existing: {}
+      })
+    ).toEqual({
+      status: ["new", "upcoming", "analyzing", "active"]
+    });
+  });
+
   it("elimina aging_bucket al guardar rango nuevo", () => {
     expect(
       applyAgingRangeToCondition(

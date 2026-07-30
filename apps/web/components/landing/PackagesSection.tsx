@@ -1,7 +1,7 @@
 const PACKAGES = [
   {
     id: "empresa_grande",
-    name: "Empresa grande",
+    name: "Cobranza corporativa",
     rules: 8,
     uplift: "+35% recuperación B2B",
     channels: ["email", "whatsapp", "voice (stub)"],
@@ -9,7 +9,7 @@ const PACKAGES = [
   },
   {
     id: "pyme_fintech",
-    name: "PyME / Fintech",
+    name: "Cobranza digital",
     rules: 7,
     uplift: "+41% en 90 días",
     channels: ["whatsapp", "email"],
@@ -17,11 +17,11 @@ const PACKAGES = [
   },
   {
     id: "cartera_personas",
-    name: "Cartera personas",
+    name: "Cobranza de consumo",
     rules: 8,
     uplift: "+33% promesas cumplidas",
     channels: ["whatsapp", "voice (stub)"],
-    description: "Alto volumen consumo: contacto frecuente y escalamiento legal."
+    description: "Alto volumen de consumo: contacto frecuente y escalamiento legal."
   }
 ];
 

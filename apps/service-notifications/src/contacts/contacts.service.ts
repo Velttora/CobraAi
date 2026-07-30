@@ -921,7 +921,9 @@ export class ContactsService {
         ? "recordatorio"
         : hint === "agradecimiento"
           ? "agradecimiento"
-          : hint;
+          : hint === "bienvenida"
+            ? "bienvenida"
+            : hint;
     if (nameHint) {
       const byName = await this.prisma.notificationTemplate.findFirst({
         where: {
