@@ -16,6 +16,8 @@ export interface DebtorContactQueuePayload {
   attempt_number?: number;
   previous_channel?: string;
   escalation?: "switch_channel" | "same_channel";
+  /** WorkflowExecution que encoló este contacto — se marca skipped si el coordinador descarta. */
+  execution_id?: string;
 }
 
 @Injectable()
@@ -78,9 +80,19 @@ export class DebtorContactCoordinatorService {
         this.logger.log(
           `Coordinador: deuda ${payload.debt_id} ya tiene contacto en curso (${retryState.reason}) — ignorando redisparo`
         );
+        await this.markExecutionSkipped(
+          tenantId,
+          payload,
+          retryState.reason ?? "awaiting_response"
+        );
         return;
       }
       await this.deferDebt(tenantId, payload.debtor_id, payload.debt_id);
+      await this.markExecutionSkipped(
+        tenantId,
+        payload,
+        retryState.reason ?? "awaiting_response"
+      );
       return;
     }
 
@@ -99,6 +111,31 @@ export class DebtorContactCoordinatorService {
       previous_channel: payload.previous_channel as ContactChannel | undefined,
       escalation: payload.escalation
     } as ContactRequestPayload);
+  }
+
+  private async markExecutionSkipped(
+    tenantId: string,
+    payload: DebtorContactQueuePayload,
+    reason: string
+  ): Promise<void> {
+    if (!payload.execution_id) return;
+
+    await this.prisma.workflowExecution.updateMany({
+      where: {
+        id: payload.execution_id,
+        tenantId,
+        deletedAt: null
+      },
+      data: {
+        status: "skipped",
+        result: {
+          action: "send_notification",
+          channel: payload.channel,
+          blocked: true,
+          reason
+        }
+      }
+    });
   }
 
   private async deferDebt(

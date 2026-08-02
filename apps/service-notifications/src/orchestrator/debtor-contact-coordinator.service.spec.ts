@@ -14,6 +14,9 @@ function makePrisma() {
         currency: "COP",
         dueDate: new Date("2026-01-01")
       })
+    },
+    workflowExecution: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 })
     }
   };
 }
@@ -99,11 +102,24 @@ describe("DebtorContactCoordinatorService", () => {
 
     await service.handleQueuedRequest("org1", {
       debt_id: "debt1",
-      debtor_id: "debtor1"
+      debtor_id: "debtor1",
+      execution_id: "exec1",
+      channel: "whatsapp"
     });
 
     expect(contacts.handleContactRequested).not.toHaveBeenCalled();
     expect(debtorMemory.registerPendingDebt).not.toHaveBeenCalled();
+    expect(prisma.workflowExecution.updateMany).toHaveBeenCalledWith({
+      where: { id: "exec1", tenantId: "org1", deletedAt: null },
+      data: expect.objectContaining({
+        status: "skipped",
+        result: expect.objectContaining({
+          blocked: true,
+          reason: "retry_cooldown",
+          channel: "whatsapp"
+        })
+      })
+    });
   });
 
   it("propaga attempt_number/previous_channel/escalation al ejecutar el contacto", async () => {
@@ -123,6 +139,48 @@ describe("DebtorContactCoordinatorService", () => {
         escalation: "switch_channel"
       })
     );
+  });
+
+  it("al diferir otra deuda marca la execution como skipped si hay execution_id", async () => {
+    compliance.getRetryState.mockResolvedValueOnce({
+      allowed: false,
+      reason: "awaiting_response"
+    });
+    prisma.contact.findFirst.mockResolvedValueOnce({ debtId: "other-debt" });
+
+    await service.handleQueuedRequest("org1", {
+      debt_id: "debt1",
+      debtor_id: "debtor1",
+      execution_id: "exec-defer",
+      channel: "email"
+    });
+
+    expect(debtorMemory.registerPendingDebt).toHaveBeenCalled();
+    expect(prisma.workflowExecution.updateMany).toHaveBeenCalledWith({
+      where: { id: "exec-defer", tenantId: "org1", deletedAt: null },
+      data: expect.objectContaining({
+        status: "skipped",
+        result: expect.objectContaining({
+          reason: "awaiting_response",
+          channel: "email"
+        })
+      })
+    });
+  });
+
+  it("sin execution_id no intenta actualizar WorkflowExecution al descartar", async () => {
+    compliance.getRetryState.mockResolvedValueOnce({
+      allowed: false,
+      reason: "awaiting_response"
+    });
+    prisma.contact.findFirst.mockResolvedValueOnce({ debtId: "debt1" });
+
+    await service.handleQueuedRequest("org1", {
+      debt_id: "debt1",
+      debtor_id: "debtor1"
+    });
+
+    expect(prisma.workflowExecution.updateMany).not.toHaveBeenCalled();
   });
 
   it("ignora payloads inválidos sin debt_id o debtor_id", async () => {
