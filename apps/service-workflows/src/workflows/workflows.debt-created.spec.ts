@@ -51,6 +51,12 @@ function makePrisma(dbStatus = "active") {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({ id: "exec1" }),
       update: vi.fn().mockResolvedValue({})
+    },
+    contact: {
+      findFirst: vi.fn().mockResolvedValue(null)
+    },
+    tenant: {
+      findUnique: vi.fn().mockResolvedValue({ settings: {} })
     }
   };
 }
@@ -62,6 +68,7 @@ function makeKafka() {
 function makeCompliance() {
   return {
     isChannelEligible: vi.fn().mockResolvedValue({ allowed: true }),
+    getRetryState: vi.fn().mockResolvedValue({ allowed: true }),
     checkContact: vi.fn()
   };
 }
@@ -162,14 +169,14 @@ describe("WorkflowsService — bienvenida en debt_created", () => {
     expect(contactQueueCalls).toHaveLength(0);
   });
 
-  it("no dispara la bienvenida si el status de creación no es 'new'", async () => {
-    const prisma = makePrisma("active");
+  it("no dispara la bienvenida si el status de creación no es elegible (p. ej. contacted)", async () => {
+    const prisma = makePrisma("contacted");
     const kafka = makeKafka();
     const service = build(prisma, kafka);
 
     await service.handleDebtCreated("org1", {
       debt_id: "debt1",
-      status: "active"
+      status: "contacted"
     });
 
     const contactQueueCalls = kafka.publish.mock.calls.filter(

@@ -27,7 +27,11 @@ function makeAudit() {
 }
 
 function makeCompliance() {
-  return { isChannelEligible: vi.fn(), checkContact: vi.fn() };
+  return {
+    isChannelEligible: vi.fn(),
+    getRetryState: vi.fn().mockResolvedValue({ allowed: true }),
+    checkContact: vi.fn()
+  };
 }
 
 function makeRules() {

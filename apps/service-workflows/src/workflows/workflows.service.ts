@@ -328,18 +328,22 @@ export class WorkflowsService {
         createdAt: { gte: today },
         status: { in: ["completed", "running", "pending"] }
       },
-      select: { debtId: true }
+      select: { debtId: true, ruleId: true }
     });
-    const executedSet = new Set(alreadyExecuted.map((e) => e.debtId));
+    const executedSet = new Set(
+      alreadyExecuted.map((e) => `${e.debtId}:${e.ruleId}`)
+    );
 
     const items = Object.values(grouped).map((group) => ({
       ...group,
-      debts: group.debts.filter(
-        (d) => !executedSet.has((d as { debt_id: string }).debt_id)
-      ),
-      count: group.debts.filter(
-        (d) => !executedSet.has((d as { debt_id: string }).debt_id)
-      ).length
+      debts: group.debts.filter((d) => {
+        const row = d as { debt_id: string; rule_id: string };
+        return !executedSet.has(`${row.debt_id}:${row.rule_id}`);
+      }),
+      count: group.debts.filter((d) => {
+        const row = d as { debt_id: string; rule_id: string };
+        return !executedSet.has(`${row.debt_id}:${row.rule_id}`);
+      }).length
     }));
 
     const deferred = await this.prisma.debt.findMany({
@@ -639,6 +643,37 @@ export class WorkflowsService {
           ) {
             continue;
           }
+
+          // Dedup diario deuda+regla: como máximo 1 fila completed/skipped por día.
+          const today = startOfTodayUtc();
+          const todayExecs = await this.prisma.workflowExecution.findMany({
+            where: {
+              tenantId,
+              debtId: debt.id,
+              ruleId: rule.id,
+              deletedAt: null,
+              createdAt: { gte: today },
+              status: { in: ["completed", "skipped", "running", "pending"] }
+            },
+            select: { status: true }
+          });
+          const hasCompleted = todayExecs.some((e) => e.status === "completed");
+          if (hasCompleted) {
+            break;
+          }
+
+          const retry = await this.compliance.getRetryState(
+            tenantId,
+            debt.debtorId,
+            now
+          );
+          if (
+            !retry.allowed &&
+            todayExecs.some((e) => e.status === "skipped")
+          ) {
+            break;
+          }
+
           const sent = await this.executeRuleAction(tenantId, debt, rule);
           if (sent) {
             contacts += 1;
@@ -1034,7 +1069,8 @@ export class WorkflowsService {
             tenantId,
             debt,
             (rule.channel ?? debt.bestChannel ?? "email") as ContactChannel,
-            rule
+            rule,
+            execution.id
           );
           queued = result.queued;
           skipReason = result.reason;
@@ -1109,7 +1145,9 @@ export class WorkflowsService {
     tenantId: string,
     debt: DebtContext,
     channel: ContactChannel,
-    rule: WorkflowRule
+    rule: WorkflowRule,
+    executionId: string,
+    attemptNumberOverride?: number
   ): Promise<{ queued: boolean; reason?: string }> {
     // El segmento "critical" (aging>180 o score muy bajo + monto alto) es una señal
     // más amplia que shouldEscalateLegal — cortamos el contacto automático aquí.
@@ -1134,6 +1172,50 @@ export class WorkflowsService {
       return { queued: false, reason: check.reason };
     }
 
+    const now = new Date();
+    const retryState = await this.compliance.getRetryState(
+      tenantId,
+      debt.debtorId,
+      now
+    );
+    if (!retryState.allowed) {
+      this.logger.warn(
+        `Contacto descartado debt=${debt.id} channel=${channel} reason=${retryState.reason}`
+      );
+      return { queued: false, reason: retryState.reason };
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { settings: true }
+    });
+    const policy = resolveRetryPolicy(tenant?.settings);
+
+    let nextAttempt = attemptNumberOverride;
+    if (nextAttempt === undefined) {
+      const latest = await this.prisma.contact.findFirst({
+        where: {
+          tenantId,
+          debtorId: debt.debtorId,
+          deletedAt: null,
+          status: { in: ["scheduled", "in_progress", "completed", "failed"] }
+        },
+        orderBy: { createdAt: "desc" },
+        select: { responseStatus: true, attemptNumber: true }
+      });
+      nextAttempt =
+        latest?.responseStatus === "no_response"
+          ? latest.attemptNumber + 1
+          : 1;
+    }
+
+    if (nextAttempt > policy.maxAttempts) {
+      this.logger.warn(
+        `Contacto descartado debt=${debt.id} channel=${channel} reason=max_attempts_reached attempt=${nextAttempt}`
+      );
+      return { queued: false, reason: "max_attempts_reached" };
+    }
+
     const templateHint =
       rule.trigger === "payment_confirmed"
         ? "agradecimiento"
@@ -1151,7 +1233,9 @@ export class WorkflowsService {
         rule_id: rule.id,
         template_id: rule.templateId ?? undefined,
         template_hint: templateHint,
-        priority_score: debt.priorityScore ?? 0
+        priority_score: debt.priorityScore ?? 0,
+        attempt_number: nextAttempt,
+        execution_id: executionId
       },
       debt.debtorId
     );
