@@ -302,9 +302,11 @@ describe("ContactsService — email layout + subject", () => {
   });
 
   function sentEmail() {
+    // buildVariables devuelve un diccionario de plantilla, no solo body/subject:
+    // referencia, monto, es_agrupado, cantidad_deudas… todas son claves válidas.
     return email.sendTemplate.mock.calls[0]![0]! as {
       to: string;
-      variables: { body: string; subject: string };
+      variables: Record<string, string>;
     };
   }
 

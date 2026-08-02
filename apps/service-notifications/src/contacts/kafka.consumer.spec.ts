@@ -79,10 +79,29 @@ describe("KafkaConsumerService", () => {
     );
   });
 
-  it("dispatch cobrai.debt.escalated target=legal → NO crea entrada en la bandeja", async () => {
+  // Un escalamiento legal SÍ necesita bandeja: alguien tiene que recoger la deuda.
+  // El único target que no la abre es "task" — ver el comentario en
+  // WorkflowsService.handleContactNoResponse.
+  it("dispatch cobrai.debt.escalated target=legal_risk → escala la conversación a la bandeja", async () => {
     const envelope = {
       tenant_id: "org1",
-      payload: { debt_id: "debt2", rule_name: "Legal", target: "legal" }
+      payload: { debt_id: "debt2", rule_name: "Legal", target: "legal_risk" }
+    };
+
+    await (
+      consumer as unknown as {
+        dispatch(topic: string, envelope: unknown): Promise<void>;
+      }
+    ).dispatch("cobrai.debt.escalated", envelope);
+
+    expect(mockEscalateByWorkflow).toHaveBeenCalledOnce();
+    expect(mockEscalateByWorkflow).toHaveBeenCalledWith("org1", "debt2", "Legal");
+  });
+
+  it("dispatch cobrai.debt.escalated target=task → NO crea entrada en la bandeja", async () => {
+    const envelope = {
+      tenant_id: "org1",
+      payload: { debt_id: "debt3", rule_name: "Tarea interna", target: "task" }
     };
 
     await (
