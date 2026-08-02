@@ -3,7 +3,6 @@ import {
   ContactChannel,
   DebtStatus,
   PrismaClient,
-  RiskSegment,
   TenantPlan,
   UserRole,
   WorkflowAction,
