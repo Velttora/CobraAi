@@ -15,8 +15,6 @@ import {
 } from "@cobrai/utils";
 import {
   attachLastContactResponse,
-  computeAgingBucket,
-  computeAgingDays,
   decimalToNumber,
   parseFilters,
   parsePagination,

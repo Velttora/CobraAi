@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import axios, { type AxiosInstance } from "axios";
+import { type AxiosInstance } from "axios";
 import { useMemo } from "react";
 import { createBrowserApiClient } from "../lib/api-client";
 

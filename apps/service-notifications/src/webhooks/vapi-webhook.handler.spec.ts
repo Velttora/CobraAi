@@ -97,6 +97,7 @@ describe("VapiWebhookHandler", () => {
     };
     const config = { get: vi.fn().mockReturnValue("http://localhost:3001/pay"), getOrThrow: vi.fn() };
     const contacts = { markResponse: vi.fn().mockResolvedValue(undefined) };
+    /* eslint-disable @typescript-eslint/no-explicit-any -- partial test doubles, not full implementations of each collaborator */
     handler = new VapiWebhookHandler(
       prisma as any,
       kafka as any,
@@ -108,6 +109,7 @@ describe("VapiWebhookHandler", () => {
       { createPlan: vi.fn().mockResolvedValue(null) } as any,
       contacts as any,
     );
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   });
 
   describe("handleEndOfCall", () => {

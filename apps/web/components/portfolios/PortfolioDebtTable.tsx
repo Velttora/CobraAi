@@ -308,15 +308,6 @@ export function PortfolioDebtTable({
 
   const hasDeferredRows = sortedDebts.some(isDeferredDebt);
 
-  const totalAmount = useMemo(
-    () =>
-      sortedDebts.reduce(
-        (sum, d) => sum + toNumber(d.amountOutstanding),
-        0
-      ),
-    [sortedDebts]
-  );
-
   const quarterMeta = useMemo(() => {
     const map = new Map<string, PortfolioQuarterStat>();
     for (const q of quarters) {

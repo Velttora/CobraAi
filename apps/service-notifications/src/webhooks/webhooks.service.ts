@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService, type MessageStatus } from "@cobrai/db";
-import { AuditService, ConsentService } from "@cobrai/compliance";
+import { ConsentService } from "@cobrai/compliance";
 import { parseMessagePayload } from "../common/utils/api.utils";
 
 @Injectable()
