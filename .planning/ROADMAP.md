@@ -94,6 +94,7 @@ original el 2026-07-23; ver desviaciones abajo.
 - [x] Tests: componentes React (RTL) — agregada infraestructura `@testing-library/react` + jsdom (no existía en el repo); tests de `MessageBubble`, `ConversationThread`, `ReplyInput`. E2E Playwright básico (`e2e/conversations.spec.ts`)
 
 **Desviaciones del scope original (decisiones de diseño, no gaps):**
+
 - `/calls` como ruta separada **no se construyó**; su función (lista de llamadas + transcript colapsable) quedó integrada al inbox unificado de `/conversations` (tab "Voz" + `VoiceCallBubble` dentro de `MessageBubble.tsx`) — un solo inbox en vez de dos, cobertura funcional equivalente.
 - `TranscriptViewer.tsx` como componente separado no se construyó; su lógica vive inline en `VoiceCallBubble` (mismo archivo `MessageBubble.tsx`).
 - SMS quedó fuera de los filtros de canal de `/conversations` porque el canal está deshabilitado globalmente por flag (sin proveedor CO) — no hay datos que listar.
@@ -187,6 +188,7 @@ Phase 6 requiere Phase 5 completa (el agente de email usa la memoria unificada).
 **Salida:** En un día festivo colombiano ningún envío pasa el gate de compliance; `next_allowed_at` apunta al próximo día hábil no festivo.
 
 **Scope:**
+
 - Modelo Prisma `Holiday { id, date @unique, name }` + migración (tabla mínima, Colombia).
 - Seed idempotente (upsert) con festivos CO 2026 y 2027; script anual re-corrible siguiendo el patrón `packages/db/src/seed-*.ts`.
 - Chequeo `isHoliday(localDate)` en `packages/compliance` (ComplianceService), aplicado tanto en `checkContact` como en `isChannelEligible`; nueva razón `"holiday"` en `ContactCheckResult`, con `next_allowed_at` al próximo día hábil no festivo.
@@ -200,6 +202,51 @@ Plans:
 
 - [x] 07-01-PLAN.md — Modelo Prisma `Holiday` + migración `add_holidays` + seed idempotente CO 2026/2027 + script `db:seed:holidays` (Wave 1)
 - [x] 07-02-PLAN.md — Razón `holiday` + `isHoliday`/`nextNonHolidaySendTime` + gate en `checkContact` e `isChannelEligible` + tests (Wave 2)
+
+### Phase 8: Configuración por Tenant (BYO): canales e identidad de cobro
+
+**Goal:** Toda comunicación y todo cobro salen a título de la empresa cliente (tenant), con sus propias credenciales y su propio enlace de pago — la plataforma solo orquesta.
+**Entrada:** Twilio, SendGrid, Vapi y los gateways de pago usan credenciales globales de plataforma (`.env`); lo único por tenant hoy es `settings.whatsappFromNumber`. Los adaptadores de cobro existentes son `conekta` (México), `mercadopago` (con `MP_ACCESS_TOKEN` global) y `transfer`, y `GatewayService` lee las llaves desde `ConfigService`.
+**Salida:** Cada tenant registra sus credenciales (Twilio, SendGrid, Vapi) y su método de cobro; los mensajes salen desde su número/dominio/voz y el deudor recibe un enlace de pago de la cuenta del tenant. Un tenant sin credenciales para un canal no envía por ese canal, y sin gateway solo puede cobrar por transferencia manual.
+
+**Alcance: backend y frontend.** Incluye la sección `Settings > Integraciones` del dashboard.
+
+**Decisiones tomadas (2026-07-29 / 2026-08-04, con el usuario — detalle completo en `08-CONTEXT.md`):**
+
+- **Comunicaciones: modelo híbrido — managed por defecto, BYO opcional.** Por defecto la plataforma aprovisiona vía API la infraestructura del tenant (subcuenta de Twilio, subuser de SendGrid) para que configure lo mínimo; un tenant que ya tiene proveedor propio puede traer sus credenciales. El adaptador resuelve credenciales igual en ambos modos.
+- **WhatsApp + voz: Twilio vía el programa Tech Provider (ISV).** El tenant hace Embedded Signup, lo que crea **su propio WABA bajo su Meta Business**; la plataforma crea su subcuenta de Twilio y conecta el WABA con la Senders API. Twilio permite un solo WABA por cuenta → una subcuenta por tenant.
+- **Email: subusers de SendGrid** creados por API. El tenant solo publica los CNAME de autenticación en su DNS — irreducible si el correo ha de salir firmado a su nombre.
+- **Voz: Vapi sigue siendo de la plataforma** (credencial global). Lo que cambia por tenant es el número saliente: se importa su número de Twilio a la cuenta Vapi vía API y se persiste el `vapiPhoneNumberId`.
+- **Pagos: BYO obligatorio, sin modelo managed.** Stripe lista "debt collection agencies" en negocios prohibidos y Colombia no está soportada para cuentas conectadas de Connect; Mercado Pago prohíbe terceros que procesen pagos de compañías de cobranza. Nunca centralizar dinero bajo la cuenta de la plataforma.
+- **Gateways a implementar:** Stripe, Wompi (Bancolombia), PayU Colombia, ePayco, Mercado Pago Colombia, y **enlace externo** como plantilla con `{monto}`/`{ref}`.
+- **Riesgo aceptado:** bajo el modelo ISV el titular ante Twilio es la plataforma, y Twilio puede suspender la cuenta entera por tráfico no conforme de un solo cliente. Su AUP prohíbe *third-party* debt collection; el tenant cobrando deuda propia es primera parte. El modo BYO queda como válvula de escape.
+- **Fuera de alcance:** SMS (deshabilitado por flag, con Bird), dLocal Go, `conekta` (México, se deprecia), y el wizard de onboarding obligatorio.
+
+**Investigación (2026-07-29 / 2026-08-04):**
+
+- Gateways que exigen entidad colombiana (NIT + RUT + cuenta local): **Wompi** (desembolsa solo a cuenta Bancolombia a nombre del NIT), **ePayco**, **PayU CO**, **Mercado Pago CO**. **Stripe** solo admite entidad de EE. UU. y no procesa PSE ni wallets locales.
+- Opciones LLC-friendly con PSE (**dLocal Go**, EBANX, Nuvei, Rapyd) quedaron fuera: con BYO puro en pagos, el tenant colombiano usa su propio gateway con su NIT.
+
+**Scope:**
+
+- Modelo `TenantIntegration` (`unique(tenantId, provider)`, `mode: managed | byo`) con secretos **cifrados AES-256-GCM** y `keyVersion` rotable — no en `Tenant.settings`, que se expone vía `tenant-profile.dto.ts`. No existe ninguna utilidad de cifrado en el repo todavía.
+- Aprovisionamiento vía API: creación de subcuenta de Twilio y subuser de SendGrid, registro del sender de WhatsApp con la Senders API, e importación del número a Vapi. Verificación síncrona contra el proveedor al guardar (`verified | failed` + `verifiedAt`).
+- Resolución de credenciales **por request** en cada adapter (`TwilioWhatsAppAdapter`, `EmailAdapter`, `VapiVoiceAdapter`), que hoy las cachean en el constructor, sin romper la firma de `contacts.service.ts`.
+- `GatewayService` deja de leer `ConfigService`; `PaymentLink` separa `provider` de `method` (el enum actual mezcla ambos) con migración de datos; adaptadores Stripe/Wompi/PayU/ePayco/MP + enlace externo con plantilla.
+- **Ruteo de webhooks por URL con token opaco** (`/webhooks/{proveedor}/{token}`) para Twilio WA, SendGrid Inbound Parse y cada gateway, **fail closed** si falta el secreto de firma. El webhook de Vapi sigue compartido, porque la cuenta es de la plataforma.
+- Razón nueva `channel_not_configured` en `ComplianceService`: el canal se marca no elegible, el workflow salta al siguiente configurado y escala a humano si no queda ninguno. El **modo simulado** (hoy los cinco adaptadores devuelven `sent` sin enviar nada) queda tras flag explícito y bloqueado en `NODE_ENV=production`.
+- Migración de datos idempotente que siembra las credenciales globales actuales como `TenantIntegration` de los tenants existentes, para que el corte no tumbe a nadie.
+- Identidad de marca del tenant inyectada en `variables.empresa` de las plantillas, en los prompts del agente LLM y en `strategy_context.variables` de Vapi. El reply del email pasa a usar siempre el dominio del tenant.
+- **Frontend:** `Settings > Integraciones` con cuatro pantallas — conexión de canales (incluido el flujo de navegador de Embedded Signup con el SDK de Meta), configuración de cobro con campos write-only, identidad de marca con vista previa del mensaje, y estado/salud de integraciones con las deudas no contactadas por falta de configuración.
+- Tests unitarios + integración de webhooks + tests de la UI de settings.
+
+**Requirements**: TBD
+**Depends on:** Phases 1, 2, 3, 6 (reemplaza la configuración global que esas fases introdujeron)
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 8 to break down)
 
 ---
 

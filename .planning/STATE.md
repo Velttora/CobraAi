@@ -21,6 +21,11 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 5 | Memoria Unificada del Deudor | ✅ completa (4/4 planes — sentimentScore + emotionalProfile activos) |
 | 6 | Email Bidireccional con Agente | ✅ completa (4/4 planes) |
 | 7 | Días Festivos (Colombia) | ✅ completa (2/2 planes) |
+| 8 | Configuración por Tenant (BYO): canales e identidad de cobro | 🔲 pendiente (sin planes) |
+
+## Evolución del roadmap
+
+- Phase 8 agregada 2026-07-29: mover WhatsApp/email/voz/enlace de pago de credenciales globales de plataforma a credenciales del tenant (BYO puro, sin fallback de plataforma). Solo backend. Gateways acordados: Stripe, Wompi, PayU CO, ePayco, Mercado Pago CO y enlace externo estático; dLocal Go y Conekta fuera de alcance. Ver ROADMAP.md Phase 8 para las decisiones e investigación de gateways.
 
 ## Contexto acumulado
 - `packages/ports/src/whatsapp.port.ts` — contrato WhatsAppPort
