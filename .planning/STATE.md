@@ -1,17 +1,34 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-08-04T22:31:51.818Z"
+progress:
+  total_phases: 8
+  completed_phases: 3
+  total_plans: 17
+  completed_plans: 10
+  percent: 38
+---
+
 # STATE
 
 ## Proyecto
+
 CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Estado actual
+
 - **Fase activa:** Ninguna en curso. Phase 6 completa + verificada (gsd-verifier PASSED 13/13); Phase 4 reclasificada de "🔲 pendiente" a "✅ completa" el 2026-07-23 tras verificar que el código ya estaba construido en `main` (el roadmap nunca se había actualizado — ver ROADMAP.md Phase 4 para el detalle).
 - Pendiente setup manual: registro MX en Cloudflare (reply.fogging.org → mx.sendgrid.net) + SendGrid Inbound Parse host, para prueba e2e real de Phase 6.
 - **Completadas:** Phases 1, 2, 3, 4, 5, 6
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO). Lazo email bidireccional cerrado.
-- **Last session:** 2026-07-23 — (1) cerrado bypass de compliance real: `ConversationAgentService` (agente LLM WA/email) no llamaba `ComplianceService` en absoluto, ahora invoca `isChannelEligible` antes de responder; (2) `requestContact` en `WorkflowsService` bloquea contacto automático a deudas `aiSegment=critical` y escala a humano (antes solo `legal_risk` por estado, criterio más angosto, las dejaba en loop indefinido); (3) verificado que Phase 4 (dashboard conversaciones/escalaciones) ya estaba construida en código, solo faltaba el KPI de sentimiento promedio (agregado: `last_sentiment_score` en `GET /v1/conversations`, `computeAverageSentiment` en dashboard) y tests (RTL nuevo en el repo + Playwright básico); (4) corregidos ROADMAP.md/STATE.md para reflejar el estado real.
+- **Last session:** 2026-08-04 — capturado el contexto de Phase 8 (`08-CONTEXT.md`, 26 decisiones). Investigación de gateways para Colombia y de modelos de cuenta multi-tenant; alcance ampliado a frontend a mitad de la discusión. Siguiente paso: `/gsd-ui-phase 8` y luego `/gsd-plan-phase 8`. Resume file: `.planning/phases/08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro/08-CONTEXT.md`
 
 ## Fases
+
 | # | Nombre | Estado |
 |---|---|---|
 | 1 | WhatsApp Real (Twilio WA Business API) | ✅ completa |
@@ -25,9 +42,10 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 
 ## Evolución del roadmap
 
-- Phase 8 agregada 2026-07-29: mover WhatsApp/email/voz/enlace de pago de credenciales globales de plataforma a credenciales del tenant (BYO puro, sin fallback de plataforma). Solo backend. Gateways acordados: Stripe, Wompi, PayU CO, ePayco, Mercado Pago CO y enlace externo estático; dLocal Go y Conekta fuera de alcance. Ver ROADMAP.md Phase 8 para las decisiones e investigación de gateways.
+- Phase 8 agregada 2026-07-29, contexto capturado 2026-08-04: mover WhatsApp/email/voz/enlace de pago de credenciales globales de plataforma a la identidad del tenant. Alcance backend + frontend (`Settings > Integraciones`). Modelo final tras discusión: **híbrido** en comunicaciones (subcuentas de Twilio y subusers de SendGrid aprovisionados por API vía el programa Tech Provider de Twilio, con BYO como opción), **Vapi sigue siendo de la plataforma** con el número Twilio del tenant importado por API, y **pagos estrictamente BYO** porque Stripe y Mercado Pago prohíben la cobranza de terceros. Gateways: Stripe, Wompi, PayU CO, ePayco, Mercado Pago CO y enlace externo con plantilla; dLocal Go y Conekta fuera de alcance. Ver `08-CONTEXT.md` para las 26 decisiones y ROADMAP.md Phase 8 para la investigación.
 
 ## Contexto acumulado
+
 - `packages/ports/src/whatsapp.port.ts` — contrato WhatsAppPort
 - `packages/ports/src/voice-agent.port.ts` — contrato VoiceAgentPort
 - `apps/service-notifications/src/adapters/whatsapp.adapter.ts` — stub ACTUAL (reemplazar en Phase 1)
@@ -35,21 +53,26 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 - `apps/service-notifications/src/contacts/contacts.service.ts` — orquestador que llama los adapters
 
 ## Variables de entorno necesarias (aún no configuradas)
+
 ### Phase 1 (WA)
+
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_WA_FROM` (número ej: whatsapp:+14155238886 para sandbox)
 
 ### Phase 2 (Voice)
+
 - `VAPI_API_KEY`
 - `VAPI_AGENT_ID`
 - `VAPI_WEBHOOK_SECRET` (para verificar firma)
 
 ### Phase 3 (LLM)
+
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: gpt-4o-mini)
 
 ## Decisiones de arquitectura
+
 - WhatsApp: Twilio WA (ya tienen Twilio para SMS, mismo SDK)
 - Voice: Vapi.ai (managed, no OpenAI Realtime — menos complejidad de orquestación)
 - LLM: GPT-4o-mini (balance costo/calidad para v1)
