@@ -1,18 +1,34 @@
 #!/usr/bin/env bash
-# Despliega todos los servicios en Fly.io (desde la raíz del monorepo).
-# Uso: bash infra/fly/deploy.sh
+# Despliega los servicios en Fly.io (desde la raíz del monorepo).
+# Uso: bash infra/fly/deploy.sh              -> todos los servicios
+#      bash infra/fly/deploy.sh gateway      -> solo los servicios indicados
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-CONFIGS=(
+ALL_CONFIGS=(
   "infra/fly/payments.fly.toml"
   "infra/fly/notifications.fly.toml"
   "infra/fly/workflows.fly.toml"
   "infra/fly/portfolios.fly.toml"
   "infra/fly/gateway.fly.toml"
 )
+
+# A service name is the prefix of its config file: `gateway` -> gateway.fly.toml
+if [[ $# -eq 0 ]]; then
+  CONFIGS=("${ALL_CONFIGS[@]}")
+else
+  CONFIGS=()
+  for service in "$@"; do
+    config="infra/fly/${service}.fly.toml"
+    if [[ ! -f "$config" ]]; then
+      echo "Servicio desconocido: $service (no existe $config)" >&2
+      exit 1
+    fi
+    CONFIGS+=("$config")
+  done
+fi
 
 echo "==> Fly auth"
 fly auth whoami
@@ -37,6 +53,8 @@ done
 
 echo ""
 echo "Listo."
-echo "  Gateway:    https://cobrai-api.fly.dev/health"
-echo "  Portfolios: https://cobrai-portfolios.fly.dev/api/health"
-echo "  Payments:   https://cobrai-payments.fly.dev/api/health"
+if [[ $# -eq 0 ]]; then
+  echo "  Gateway:    https://cobrai-api.fly.dev/health"
+  echo "  Portfolios: https://cobrai-portfolios.fly.dev/api/health"
+  echo "  Payments:   https://cobrai-payments.fly.dev/api/health"
+fi
