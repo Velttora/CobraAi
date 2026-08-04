@@ -1,7 +1,7 @@
 import type { ApiMeta, ApiSuccessResponse } from "@cobrai/types";
 import { randomUUID } from "node:crypto";
 import type { AgingBucket } from "@cobrai/db";
-import { startOfTodayUtc, startOfZonedDayUtc } from "@cobrai/utils";
+import { startOfZonedDayUtc } from "@cobrai/utils";
 
 export { startOfTodayUtc } from "@cobrai/utils";
 

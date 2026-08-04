@@ -38,7 +38,7 @@ describe("EmailAdapter", () => {
 
       fetchMock = vi.fn().mockResolvedValue({
         ok: true,
-        headers: { get: (_: string) => "msg-test" },
+        headers: { get: () => "msg-test" },
         text: async () => ""
       });
       globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
