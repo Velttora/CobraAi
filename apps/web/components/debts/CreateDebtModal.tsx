@@ -22,7 +22,7 @@ export function CreateDebtModal({
   const [submitting, setSubmitting] = useState(false);
   const [debtorName, setDebtorName] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("COP");
+  const [currency] = useState("COP");
   const [dueDate, setDueDate] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [paymentTermsDays, setPaymentTermsDays] = useState("");

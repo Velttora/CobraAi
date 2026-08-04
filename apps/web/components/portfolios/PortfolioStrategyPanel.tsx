@@ -297,11 +297,11 @@ export function PortfolioStrategyPanel({
 
 function StrategyQuickActions({
   automationStatus,
-  hasUnsaved,
-  isSaving,
-  onSelect,
-  onSave,
-  onCancel
+  // hasUnsaved / isSaving / onSave / onCancel are still accepted by the props
+  // type and passed by the caller, but the save/cancel controls they drove are
+  // no longer rendered here. Left unbound rather than removed so the caller's
+  // wiring is not silently dropped — see PR discussion.
+  onSelect
 }: {
   automationStatus?: string;
   hasUnsaved: boolean;
