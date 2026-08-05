@@ -8,6 +8,7 @@ import type {
 } from "@cobrai/ports";
 import { PrismaService } from "@cobrai/db";
 import { TenantIntegrationService } from "@cobrai/integrations";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { isSimulationEnabled } from "./simulation.guard";
 
 @Injectable()
@@ -90,7 +91,7 @@ export class TwilioWhatsAppAdapter implements WhatsAppPort {
     const monto = variables.monto ?? variables.amount ?? "";
     const link = variables.link_pago ?? variables.link ?? "";
     const body = variables.body ?? "";
-    const empresa = variables.empresa ?? "su gestor de cobranza";
+    const empresa = variables.empresa ?? EMPRESA_FALLBACK;
     const resumenGrupo = variables.deudas_resumen_wa;
 
     // Si viene body pre-renderizado (desde agent response), usarlo directamente

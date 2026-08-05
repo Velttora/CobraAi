@@ -1,4 +1,5 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { TwilioWhatsAppAdapter } from "./twilio-whatsapp.adapter";
 
 const mockCreate = vi.fn();
@@ -123,6 +124,31 @@ describe("TwilioWhatsAppAdapter", () => {
     const callArg = mockCreate.mock.calls[0]?.[0] as { body: string };
     expect(callArg?.body).toContain("María");
     expect(callArg?.body).toContain("500000");
+  });
+
+  it("sin variables.empresa → el mensaje usa EMPRESA_FALLBACK (D-24)", async () => {
+    // template_id genérico (no matchea recordatorio/plan_pago/confirmacion) →
+    // cae en la rama por defecto de renderBody, la única que interpola empresa.
+    await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "cobrai_generico",
+      variables: { nombre: "María", monto: "500000" },
+      tenant_id: "org_test"
+    });
+    const callArg = mockCreate.mock.calls[0]?.[0] as { body: string };
+    expect(callArg?.body).toContain(EMPRESA_FALLBACK);
+  });
+
+  it("con variables.empresa (nombre comercial del tenant) → lo usa, no el fallback", async () => {
+    await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "cobrai_generico",
+      variables: { nombre: "María", monto: "500000", empresa: "Acme Cobranzas" },
+      tenant_id: "org_test"
+    });
+    const callArg = mockCreate.mock.calls[0]?.[0] as { body: string };
+    expect(callArg?.body).toContain("Acme Cobranzas");
+    expect(callArg?.body).not.toContain(EMPRESA_FALLBACK);
   });
 
   it("body pre-renderizado en variables → se usa directamente", async () => {
