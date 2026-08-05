@@ -9,16 +9,18 @@ import { WhatsAppConnectService } from "./whatsapp-connect.service";
 import { SendgridProvisioningService } from "./sendgrid-provisioning.service";
 import { EmailConnectService } from "./email-connect.service";
 import { IntegrationsService } from "./integrations.service";
+import { IntegrationsController } from "./integrations.controller";
 
 /**
  * Per-tenant provisioning and credential-resolution services for the BYO
- * channel/payment integrations (Phase 8). 08-14 adds `IntegrationsService`
- * (this file) and `IntegrationsController` (registered as `controllers`
- * once Task 2 creates it) — the REST surface the four Settings >
- * Integraciones screens consume.
+ * channel/payment integrations (Phase 8). 08-14 adds `IntegrationsService` +
+ * `IntegrationsController` — the REST surface the four Settings >
+ * Integraciones screens consume, behind the api-gateway's
+ * `/api/v1/integrations` proxy route.
  */
 @Module({
   imports: [ConfigModule, PrismaModule],
+  controllers: [IntegrationsController],
   providers: [
     TwilioProvisioningService,
     VapiProvisioningService,
