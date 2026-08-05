@@ -146,6 +146,35 @@ describe("TenantIntegrationService — read paths", () => {
     });
   });
 
+  describe("resolveAny", () => {
+    it("returns a row whose status is pending_meta, unlike resolve which would gate it to null", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow({ status: "pending_meta" }));
+
+      const result = await service.resolveAny("tenantA", "twilio_whatsapp");
+
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe("pending_meta");
+    });
+
+    it("returns null for a soft-deleted row", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(
+        buildRow({ status: "pending_meta", deletedAt: new Date("2026-02-01T00:00:00.000Z") })
+      );
+
+      const result = await service.resolveAny("tenantA", "twilio_whatsapp");
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when there is no row at all", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(null);
+
+      const result = await service.resolveAny("tenantA", "twilio_whatsapp");
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe("resolveByWebhookToken", () => {
     it("returns a row whose status is failed, regardless of verification state", async () => {
       prisma.tenantIntegration.findFirst.mockResolvedValue(

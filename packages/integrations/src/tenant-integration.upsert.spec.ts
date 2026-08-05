@@ -70,6 +70,52 @@ describe("TenantIntegrationService — write paths", () => {
       expect(persisted.verifiedAt).toEqual(existing.verifiedAt);
     });
 
+    it("does not call verifyCredentials and writes the exact status/failureMessage when overrideStatus is set", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(null);
+      prisma.tenantIntegration.upsert.mockImplementation(({ create }: { create: Record<string, unknown> }) =>
+        Promise.resolve({ ...buildRow(), ...create })
+      );
+
+      await service.upsert({
+        tenantId: "tenantA",
+        provider: "twilio_whatsapp",
+        mode: "managed",
+        publicConfig: { subaccountSid: "ACsub" },
+        secrets: { accountSid: "ACsub", authToken: "tok" },
+        overrideStatus: { status: "pending_meta", failureMessage: null },
+        baseWebhookUrl: BASE_WEBHOOK_URL
+      });
+
+      expect(verifyCredentials).not.toHaveBeenCalled();
+      const persisted = prisma.tenantIntegration.upsert.mock.calls[0][0].create;
+      expect(persisted.status).toBe("pending_meta");
+      expect(persisted.verifiedAt).toBeNull();
+    });
+
+    it("overrideStatus with status=failed persists the given failureMessage and does not mark verifiedAt", async () => {
+      const existing = buildRow({ status: "pending_meta", verifiedAt: null });
+      prisma.tenantIntegration.findUnique.mockResolvedValue(existing);
+      prisma.tenantIntegration.upsert.mockImplementation(({ update }: { update: Record<string, unknown> }) =>
+        Promise.resolve({ ...existing, ...update })
+      );
+
+      await service.upsert({
+        tenantId: "tenantA",
+        provider: "twilio_whatsapp",
+        mode: "managed",
+        publicConfig: {},
+        secrets: {},
+        overrideStatus: { status: "failed", failureMessage: "WABA already associated" },
+        baseWebhookUrl: BASE_WEBHOOK_URL
+      });
+
+      expect(verifyCredentials).not.toHaveBeenCalled();
+      const persisted = prisma.tenantIntegration.upsert.mock.calls[0][0].update;
+      expect(persisted.status).toBe("failed");
+      expect(persisted.failureMessage).toBe("WABA already associated");
+      expect(persisted.verifiedAt).toBeNull();
+    });
+
     it("does not call verifyCredentials and marks the row verified when skipVerification is true", async () => {
       prisma.tenantIntegration.findUnique.mockResolvedValue(null);
       prisma.tenantIntegration.upsert.mockImplementation(({ create }: { create: Record<string, unknown> }) =>
