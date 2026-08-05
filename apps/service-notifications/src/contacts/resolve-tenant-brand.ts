@@ -1,8 +1,8 @@
-import { resolveBrandVariables, sanitizeBrandIdentity, type BrandIdentity } from "@cobrai/utils";
+import { resolveBrandVariables, sanitizeBrandIdentity, type BrandIdentity, type BrandVariables } from "@cobrai/utils";
 
 export interface ResolvedTenantBrand {
   identity: BrandIdentity;
-  variables: Record<string, string>;
+  variables: BrandVariables;
 }
 
 /**

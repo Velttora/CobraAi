@@ -15,15 +15,13 @@ import { buildInstallmentSchedule } from "@cobrai/utils";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import { PaymentPlanService } from "./payment-plan.service";
+import { resolveTenantBrand } from "../contacts/resolve-tenant-brand";
 
 export interface InboundMessagePayload {
   debtor_id: string;
   tenant_id: string;
   conversation_id: string;
-  /**
-   * For channel "whatsapp": the debtor's phone number (e.g. +573001234567).
-   * For channel "email": the debtor's email address (field reused for backward compatibility).
-   */
+  /** For "whatsapp": the debtor's phone number. For "email": the debtor's email (field reused for backward compatibility). */
   phone: string;
   body: string;
   message_sid?: string;
@@ -120,7 +118,7 @@ export class ConversationAgentService {
           },
           orderBy: { amountOutstanding: "desc" }
         },
-        tenant: { select: { name: true } }
+        tenant: { select: { name: true, settings: true } }
       }
     });
 
@@ -189,9 +187,11 @@ export class ConversationAgentService {
     unifiedContext.debtorHistory.pendingDebts = [];
 
     // 4. Construir messages para OpenAI
+    const brand = resolveTenantBrand(debtor.tenant);
     const systemPrompt = buildSystemPrompt({
       debtorName: debtor.name,
-      companyName: debtor.tenant?.name ?? "CobraAI",
+      companyName: brand.variables.empresa,
+      legalName: brand.identity.legalName ?? undefined, taxId: brand.identity.taxId ?? undefined,
       amount: String(debt.amountOutstanding),
       currency: debt.currency,
       dueDate: new Date(debt.dueDate).toLocaleDateString("es-CO"),

@@ -21,7 +21,7 @@ import { TenantIntegrationService, type IntegrationChannel } from "@cobrai/integ
 import {
   DEFAULT_EMAIL_LAYOUT,
   renderEmailLayout,
-  type BrandIdentity, type EmailLayoutConfig
+  type BrandIdentity, type BrandVariables, type EmailLayoutConfig
 } from "@cobrai/utils";
 import {
   decimalToNumber,
@@ -737,7 +737,7 @@ export class ContactsService {
   private buildVariables(
     debt: Debt,
     debtor: Debtor,
-    brandVariables: Record<string, string>
+    brandVariables: BrandVariables
   ): Record<string, string> {
     const paymentBase =
       this.config.get<string>("PAYMENT_LINK_BASE_URL") ??

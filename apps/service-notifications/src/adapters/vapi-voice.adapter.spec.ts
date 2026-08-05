@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ConfigService } from "@nestjs/config";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 
 // Mock axios before importing adapter
 vi.mock("axios", () => {
@@ -207,6 +208,53 @@ describe("VapiVoiceAdapter", () => {
 
       const callArgs = (mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[0]!;
       expect((callArgs[1] as { customer: { number: string } }).customer.number).toBe("+573001234567");
+    });
+
+    it("sin variables.empresa → variableValues.empresa usa EMPRESA_FALLBACK, no CobraAI (D-24)", async () => {
+      (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        data: { id: "call-003", status: "queued" },
+      });
+
+      await adapter.initiateCall(
+        makeInput({
+          strategy_context: {
+            ...makeInput().strategy_context,
+            variables: { nombre: "Juan Perez", monto: "150000", due_date: "2026-06-01" }
+          }
+        })
+      );
+
+      const callArgs = (mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      const variableValues = (callArgs[1] as { assistantOverrides: { variableValues: Record<string, string> } })
+        .assistantOverrides.variableValues;
+      expect(variableValues.empresa).toBe(EMPRESA_FALLBACK);
+    });
+
+    it("propaga empresa_razon_social y empresa_nit a variableValues para identificación formal", async () => {
+      (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        data: { id: "call-004", status: "queued" },
+      });
+
+      await adapter.initiateCall(
+        makeInput({
+          strategy_context: {
+            ...makeInput().strategy_context,
+            variables: {
+              ...makeInput().strategy_context.variables,
+              empresa: "Acme Cobranzas",
+              empresa_razon_social: "Acme S.A.S.",
+              empresa_nit: "900123456-7"
+            }
+          }
+        })
+      );
+
+      const callArgs = (mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      const variableValues = (callArgs[1] as { assistantOverrides: { variableValues: Record<string, string> } })
+        .assistantOverrides.variableValues;
+      expect(variableValues.empresa).toBe("Acme Cobranzas");
+      expect(variableValues.empresa_razon_social).toBe("Acme S.A.S.");
+      expect(variableValues.empresa_nit).toBe("900123456-7");
     });
   });
 
