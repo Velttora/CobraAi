@@ -242,12 +242,12 @@ Plans:
 
 **Requirements**: D-01 … D-26 (decisiones de `08-CONTEXT.md`; este proyecto no tiene `REQUIREMENTS.md`)
 **Depends on:** Phases 1, 2, 3, 6 (reemplaza la configuración global que esas fases introdujeron)
-**Plans:** 19 plans en 7 olas
+**Plans:** 2/19 plans executed
 
 Plans:
 
-- [ ] 08-01-PLAN.md — Cifrado AES-256-GCM + modelo `TenantIntegration` + migración [ola 1]
-- [ ] 08-02-PLAN.md — Verificación de contratos de proveedor (Twilio Senders, Vapi import, SendGrid subusers) [ola 1]
+- [x] 08-01-PLAN.md — Cifrado AES-256-GCM + modelo `TenantIntegration` + migración [ola 1]
+- [x] 08-02-PLAN.md — Verificación de contratos de proveedor (Twilio Senders, Vapi import, SendGrid subusers) [ola 1]
 - [ ] 08-03-PLAN.md — Paquete `@cobrai/integrations`: resolución de credenciales por request + verificadores [ola 2]
 - [ ] 08-04-PLAN.md — Separación `provider`/`method` en pagos + migración con backfill medido [ola 2]
 - [ ] 08-05-PLAN.md — `channel_not_configured` en compliance + escalamiento a humano sin canal [ola 3]
