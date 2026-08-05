@@ -1,11 +1,19 @@
 ---
 phase: 8
 slug: configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-08-04
 ---
+
+> **Corrección 2026-08-04 (gsd-plan-checker):** el glob de tests del frontend era
+> `*.spec.tsx`, que nunca se habría ejecutado — `apps/web/vitest.config.ts` solo incluye
+> `**/*.test.ts` y `**/*.test.tsx`. Corregido a `*.test.tsx`. Los planes 08-16..08-19 ya
+> usaban el nombre correcto.
+>
+> `nyquist_compliant` pasa a `true`: los 19 planes tienen comando `<automated>` en cada
+> tarea no-checkpoint, sin flags de watch y sin referencias MISSING.
 
 # Phase 8 — Validation Strategy
 
@@ -70,7 +78,7 @@ Task IDs are filled in by the planner once PLAN.md files exist; wave assignments
 - [ ] `apps/service-notifications/src/integrations/sendgrid-provisioning.service.spec.ts` — mocked subuser + API key + domain auth
 - [ ] `apps/service-notifications/src/integrations/vapi-provisioning.service.spec.ts` — mocked import call
 - [ ] `apps/service-payments/src/gateways/*.gateway.spec.ts` — one per new provider (Stripe, Wompi, PayU, ePayco, external_link; Mercado Pago extends existing)
-- [ ] `apps/web/components/settings/integrations/*.spec.tsx` — RTL for the four panels, following the Phase 4 precedent
+- [ ] `apps/web/components/settings/integrations/*.test.tsx` — RTL for the four panels, following the Phase 4 precedent
 - [ ] Boot-guard test for D-17 — no existing harness covers bootstrap assertions; test the guard function in isolation rather than booting Nest
 
 ---

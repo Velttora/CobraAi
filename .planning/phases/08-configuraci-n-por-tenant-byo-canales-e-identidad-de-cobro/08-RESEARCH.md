@@ -497,7 +497,14 @@ async function verifyProviderSignature(tenantId: string, provider: string, rawBo
 | A5 | Wompi/PayU Colombia/ePayco have no official first-party Node.js SDK worth adopting over raw `fetch()` | Standard Stack, Don't Hand-Roll | If an official SDK exists and was missed in this research pass, the planner might unnecessarily hand-roll HTTP calls that a maintained SDK would have handled (retries, typed responses) — low risk since raw fetch against documented REST endpoints is always a valid fallback, just possibly more code than necessary |
 | A6 | `stripe` (22.4.0) and `mercadopago` (3.2.1) are the correct, non-slopsquatted npm package names for their respective official SDKs | Standard Stack, Package Legitimacy | Per the package-name-provenance rule, these were discovered via training knowledge/WebSearch, not Context7, so registry existence alone doesn't confer VERIFIED status — slopcheck rated both [OK] (has real GitHub source, high downloads), which is corroborating but not equivalent to an official-docs confirmation; low risk given `stripe` and `mercadopago` are extremely well-known, high-download packages, but flagged per protocol |
 
-## Open Questions
+## Open Questions (RESOLVED — each has a dedicated task in the plan set)
+
+> Verified by gsd-plan-checker on 2026-08-04. None of these blocks planning; each is
+> closed by a task that runs before the code depending on it:
+>
+> - Q1 (Twilio SDK method chain) and Q2 (SendGrid `On-Behalf-Of` domain auth) → **08-02** tasks 1-2
+> - Q3 (SendGrid plan tier, Twilio ISV enrolment, Meta app IDs) → **08-02** task 3, a human checkpoint (account facts only a person can read)
+> - Q4 (`payment_links.gateway` row distribution) → **08-04** task 1, a measured `SELECT gateway, count(*)` written to `08-PAYMENT-GATEWAY-DISTRIBUTION.md` before the backfill is authored
 
 1. **Exact Twilio Node SDK method name for the Senders API**
    - What we know: The REST endpoint is confirmed as `POST /v2/Channels/Senders` (multiple Twilio doc pages agree), and the resource is called "Senders" or "ChannelsSenders" depending on the page.
