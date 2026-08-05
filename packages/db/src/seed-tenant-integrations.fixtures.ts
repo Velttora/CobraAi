@@ -29,8 +29,17 @@ export function withTestEncryptionKey(): () => void {
   return withEnv({ ENCRYPTION_KEY_V1: TEST_KEY_V1 });
 }
 
+/** Shape of the hand-rolled Prisma mock, spelled out to keep declaration output portable. */
+export interface SeedPrismaMock {
+  tenant: { findMany: ReturnType<typeof vi.fn> };
+  tenantIntegration: {
+    findUnique: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+  };
+}
+
 /** Hand-rolled Prisma mock covering only what `seed-tenant-integrations.ts` calls. */
-export function makePrismaMock() {
+export function makePrismaMock(): SeedPrismaMock {
   return {
     tenant: {
       findMany: vi.fn()

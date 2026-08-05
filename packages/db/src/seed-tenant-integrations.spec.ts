@@ -135,7 +135,7 @@ describe("seedTenantIntegrations", () => {
     await seedTenantIntegrations(prisma as never, buildTenant(), fullEnv);
 
     const sendgridCall = prisma.tenantIntegration.create.mock.calls.find(
-      (c: never[]) => (c[0] as { data: { provider: string } }).data.provider === "sendgrid"
+      (c) => (c[0] as { data: { provider: string } }).data.provider === "sendgrid"
     );
     expect((sendgridCall?.[0] as { data: { publicConfig: { fromEmail: string } } }).data.publicConfig.fromEmail).toBe(
       "cobros@empresa.com"
@@ -165,7 +165,7 @@ describe("seedTenantIntegrations", () => {
     expect(results.find((r) => r.provider === "sendgrid")?.result).toBe("skipped");
     expect(
       prisma.tenantIntegration.create.mock.calls.some(
-        (c: never[]) => (c[0] as { data: { provider: string } }).data.provider === "sendgrid"
+        (c) => (c[0] as { data: { provider: string } }).data.provider === "sendgrid"
       )
     ).toBe(false);
   });
@@ -219,7 +219,7 @@ describe("seedTenantIntegrations", () => {
     await seedTenantIntegrations(prisma as never, tenant, fullEnv);
 
     const waCall = prisma.tenantIntegration.create.mock.calls.find(
-      (c: never[]) => (c[0] as { data: { provider: string } }).data.provider === "twilio_whatsapp"
+      (c) => (c[0] as { data: { provider: string } }).data.provider === "twilio_whatsapp"
     );
     expect((waCall?.[0] as { data: { publicConfig: { fromNumber: string } } }).data.publicConfig.fromNumber).toBe(
       "whatsapp:+573000000000"
