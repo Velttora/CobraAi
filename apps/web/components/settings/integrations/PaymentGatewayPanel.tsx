@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
+import { validateExternalLinkTemplate } from "@cobrai/utils";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import { useIntegrations, useSaveIntegration, useVerifyIntegration } from "../..
 import { usePaymentFocusHighlight } from "../../../hooks/use-payment-focus-highlight";
 import type { IntegrationView } from "../../../lib/types";
 import { cn } from "../../../lib/utils";
+import { ExternalLinkTemplateEditor } from "./ExternalLinkTemplateEditor";
 import { PaymentCredentialFields } from "./PaymentCredentialFields";
 import { PaymentPanelHeader } from "./PaymentPanelHeader";
 import {
@@ -65,18 +67,20 @@ export function PaymentGatewayPanel(): React.ReactElement {
   const [pendingProvider, setPendingProvider] = useState<string | null>(null);
   const [publicDraft, setPublicDraft] = useState<Record<string, string>>({});
   const [secretDrafts, setSecretDrafts] = useState<Record<string, string | null>>({});
-  const [externalLinkValid] = useState(false);
+  const [externalLinkTemplate, setExternalLinkTemplate] = useState<string | null>(null);
 
   const selectedProvider = draftProvider ?? activeProvider ?? DEFAULT_PROVIDER;
   const currentView = paymentsItems.find((i) => i.provider === selectedProvider) ?? emptyView(selectedProvider);
   const isSaving = saveIntegration.isPending || verifyIntegration.isPending;
   const displayStatus = isSaving ? "verifying" : currentView.status;
+  const templateValue = externalLinkTemplate ?? currentView.publicConfig["template"] ?? "";
 
   const { ref: articleRef, highlighted } = usePaymentFocusHighlight(searchParams.get("focus"));
 
   useEffect(() => {
     setPublicDraft({});
     setSecretDrafts({});
+    setExternalLinkTemplate(null);
   }, [selectedProvider, currentView.verifiedAt, currentView.failureMessage]);
 
   function handleProviderChange(next: string): void {
@@ -97,7 +101,7 @@ export function PaymentGatewayPanel(): React.ReactElement {
 
   const isValid =
     selectedProvider === "external_link"
-      ? externalLinkValid
+      ? validateExternalLinkTemplate(templateValue).length === 0
       : publicFields.every((f) => fieldValue(f.name).trim() !== "") &&
         secretFields.every((f) => {
           const meta = currentView.secrets.find((s) => s.field === f.name) ?? null;
@@ -107,7 +111,8 @@ export function PaymentGatewayPanel(): React.ReactElement {
   const isDirty =
     selectedProvider !== activeProvider ||
     publicFields.some((f) => fieldValue(f.name) !== (currentView.publicConfig[f.name] ?? "")) ||
-    Object.values(secretDrafts).some((v) => v !== null && v !== undefined);
+    Object.values(secretDrafts).some((v) => v !== null && v !== undefined) ||
+    (selectedProvider === "external_link" && templateValue !== (currentView.publicConfig["template"] ?? ""));
 
   function reportResult(status: IntegrationView["status"]): void {
     if (status === "verified") {
@@ -123,6 +128,7 @@ export function PaymentGatewayPanel(): React.ReactElement {
 
     const publicConfig: Record<string, string> = {};
     for (const f of publicFields) publicConfig[f.name] = fieldValue(f.name);
+    if (selectedProvider === "external_link") publicConfig["template"] = templateValue;
 
     const secrets: Record<string, string> = {};
     for (const f of secretFields) {
@@ -209,8 +215,11 @@ export function PaymentGatewayPanel(): React.ReactElement {
                 secrets={currentView.secrets}
               />
               {selectedProvider === "external_link" && (
-                // TODO(08-18 Task 2): ExternalLinkTemplateEditor replaces this note.
-                <p className="text-sm text-slate-500">Configura la plantilla del enlace de pago.</p>
+                <ExternalLinkTemplateEditor
+                  disabled={isSaving}
+                  onChange={setExternalLinkTemplate}
+                  value={templateValue}
+                />
               )}
 
               <button
