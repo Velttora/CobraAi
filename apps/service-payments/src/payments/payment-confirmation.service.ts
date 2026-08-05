@@ -3,7 +3,7 @@ import {
   Logger,
   NotFoundException
 } from "@nestjs/common";
-import { PrismaService, type PaymentGateway } from "@cobrai/db";
+import { PrismaService, type PaymentGateway, type PaymentMethod, type PaymentProvider } from "@cobrai/db";
 import { KafkaService } from "../kafka/kafka.service";
 import { decimalToNumber } from "../common/utils/api.utils";
 
@@ -13,6 +13,8 @@ export type ConfirmPaymentInput = {
   amount: number;
   currency: string;
   gateway: PaymentGateway;
+  provider: PaymentProvider;
+  method?: PaymentMethod;
   gatewayRef: string;
   paymentLinkId?: string;
 };
@@ -60,6 +62,8 @@ export class PaymentConfirmationService {
           amount: input.amount,
           currency: input.currency,
           gateway: input.gateway,
+          provider: input.provider,
+          method: input.method,
           gatewayRef: input.gatewayRef,
           idempotencyKey: input.gatewayRef,
           status: "confirmed",

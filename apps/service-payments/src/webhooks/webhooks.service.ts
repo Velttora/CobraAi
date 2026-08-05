@@ -67,6 +67,11 @@ export class WebhooksService {
       amount: amountOverride ?? decimalToNumber(link.amount),
       currency: link.currency,
       gateway,
+      // This shared, hardcoded-per-provider webhook path is superseded by
+      // 08-12's per-tenant webhook routing (D-19); until then, `provider`
+      // is derived with the same legacy-compatible mapping payments.service.ts
+      // uses (conekta has no equivalent under BYO per D-15/08-04's backfill).
+      provider: gateway === "mercadopago" ? "mercadopago" : "transfer",
       gatewayRef,
       paymentLinkId: link.id
     });
