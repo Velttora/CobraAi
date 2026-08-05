@@ -98,7 +98,7 @@ describe("WhatsAppConnectService — connectManaged", () => {
     const voiceUpsertCall = mocks.tenantIntegrations.upsert.mock.calls.find(
       (call: unknown[]) => (call[0] as { provider: string }).provider === "twilio_voice"
     );
-    expect((voiceUpsertCall[0] as { publicConfig: Record<string, unknown> }).publicConfig).toMatchObject({
+    expect((voiceUpsertCall![0] as { publicConfig: Record<string, unknown> }).publicConfig).toMatchObject({
       vapiPhoneNumberId: "vapi-num-1",
       outboundNumber: "+573001234567"
     });
@@ -124,7 +124,7 @@ describe("WhatsAppConnectService — connectManaged", () => {
     const voiceUpsertCall = mocks.tenantIntegrations.upsert.mock.calls.find(
       (call: unknown[]) => (call[0] as { provider: string }).provider === "twilio_voice"
     );
-    expect((voiceUpsertCall[0] as { overrideStatus: unknown }).overrideStatus).toEqual({
+    expect((voiceUpsertCall![0] as { overrideStatus: unknown }).overrideStatus).toEqual({
       status: "failed",
       failureMessage: "Vapi rechazó el número"
     });
@@ -145,7 +145,7 @@ describe("WhatsAppConnectService — connectManaged", () => {
     const whatsappCalls = mocks.tenantIntegrations.upsert.mock.calls.filter(
       (call: unknown[]) => (call[0] as { provider: string }).provider === "twilio_whatsapp"
     );
-    const finalWhatsappCall = whatsappCalls[whatsappCalls.length - 1];
+    const finalWhatsappCall = whatsappCalls[whatsappCalls.length - 1]!;
     expect((finalWhatsappCall[0] as { overrideStatus: unknown }).overrideStatus).toEqual({
       status: "failed",
       failureMessage: "WABA already associated"

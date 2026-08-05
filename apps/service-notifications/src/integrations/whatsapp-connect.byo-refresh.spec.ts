@@ -39,7 +39,7 @@ describe("WhatsAppConnectService — connectByo / refreshSenderStatus", () => {
       await service.connectByo(byoInput());
 
       expect(mocks.twilioProvisioning.createSubaccount).not.toHaveBeenCalled();
-      const whatsappCall = mocks.tenantIntegrations.upsert.mock.calls[0];
+      const whatsappCall = mocks.tenantIntegrations.upsert.mock.calls[0]!;
       expect((whatsappCall[0] as { mode: string }).mode).toBe("byo");
       expect((whatsappCall[0] as { overrideStatus: unknown }).overrideStatus).toBeUndefined();
       expect((whatsappCall[0] as { skipVerification: unknown }).skipVerification).toBeUndefined();
@@ -61,7 +61,7 @@ describe("WhatsAppConnectService — connectByo / refreshSenderStatus", () => {
           twilioAuthToken: BYO_AUTH_TOKEN
         })
       );
-      const voiceCall = mocks.tenantIntegrations.upsert.mock.calls[1];
+      const voiceCall = mocks.tenantIntegrations.upsert.mock.calls[1]!;
       expect((voiceCall[0] as { mode: string }).mode).toBe("byo");
     });
 
