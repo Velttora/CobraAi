@@ -111,3 +111,7 @@ None.
 ---
 *Phase: 08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+All created files verified present on disk (`08-PAYMENT-GATEWAY-DISTRIBUTION.md`, `migration.sql`, this SUMMARY.md) and all 3 commits (`12f9b2b`, `0b48db2`, `81c0df6`) verified present in `git log`.
