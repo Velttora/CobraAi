@@ -190,6 +190,9 @@ importers:
 
   apps/service-payments:
     dependencies:
+      '@cobrai/compliance':
+        specifier: workspace:*
+        version: link:../../packages/compliance
       '@cobrai/db':
         specifier: workspace:*
         version: link:../../packages/db
