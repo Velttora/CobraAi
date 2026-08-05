@@ -122,7 +122,9 @@
     {
       "name": "Pago total — agradecimiento email",
       "trigger": "payment_confirmed",
-      "condition": {},
+      "condition": {
+        "status": "paid_full"
+      },
       "action": "send_notification",
       "channel": "email",
       "delay_hours": 0,
