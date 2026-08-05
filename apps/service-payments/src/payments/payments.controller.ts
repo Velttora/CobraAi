@@ -4,11 +4,8 @@ import {
   Get,
   Param,
   Post,
-  Query,
-  Req
+  Query
 } from "@nestjs/common";
-import type { RawBodyRequest } from "@nestjs/common";
-import type { Request } from "express";
 import { successResponse } from "../common/utils/api.utils";
 import {
   ReqContext,
@@ -19,7 +16,6 @@ import {
   PaymentLinksService,
   PaymentsService
 } from "./payments.service";
-import { WebhooksService } from "../webhooks/webhooks.service";
 
 @Controller("v1/payment-links")
 export class PaymentLinksController {
@@ -43,8 +39,7 @@ export class PaymentLinksController {
 export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,
-    private readonly paymentLinks: PaymentLinksService,
-    private readonly webhooks: WebhooksService
+    private readonly paymentLinks: PaymentLinksService
   ) {}
 
   @Get()
@@ -82,22 +77,4 @@ export class PaymentsController {
     );
   }
 
-  @Post("webhook/conekta")
-  async conektaWebhook(@Req() req: RawBodyRequest<Request>, @Body() body: unknown) {
-    const raw = req.rawBody?.toString("utf8") ?? JSON.stringify(body);
-    await this.webhooks.handleConekta(raw, req.headers["digest"] as string | undefined, body);
-    return successResponse({ received: true });
-  }
-
-  @Post("webhook/mp")
-  async mpWebhook(
-    @Req() req: Request,
-    @Body() body: Record<string, unknown>
-  ) {
-    await this.webhooks.handleMercadoPago(
-      body,
-      req.headers["x-signature"] as string | undefined
-    );
-    return successResponse({ received: true });
-  }
 }
