@@ -47,6 +47,13 @@ export {
 } from "./quarters";
 export { normalizePhoneE164 } from "./validation";
 export {
+  currentKeyVersion,
+  decryptSecretBundle,
+  encryptSecretBundle,
+  lastFour,
+  type EncryptedSecret
+} from "./crypto/envelope-encryption";
+export {
   buildInstallmentSchedule,
   canBreakPromiseForDebtStatus,
   resolvePromiseStatusForPayment,
