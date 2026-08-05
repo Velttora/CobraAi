@@ -130,3 +130,7 @@ None beyond what plan 08-07 already documented: `SENDGRID_PARENT_API_KEY` is alr
 ---
 *Phase: 08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+All 5 code files (4 created, 1 modified) and this SUMMARY verified present on disk, and all 3 commits (`e603a13`, `64fda8f`, `03e499c`) verified present in `git log`.
