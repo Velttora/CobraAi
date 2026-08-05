@@ -49,6 +49,30 @@ describe("IntegrationsService — save/verify/disconnect dispatch", () => {
     );
   });
 
+  it("save for twilio_voice byo also dispatches to WhatsAppConnectService.connectByo (D-05: shared Twilio subaccount/number) and returns the twilio_voice view specifically", async () => {
+    mocks.whatsappConnect.connectByo.mockResolvedValueOnce(baseView({ provider: "twilio_whatsapp", channel: "whatsapp" }));
+    mocks.tenantIntegrations.listViews.mockResolvedValueOnce([
+      baseView({ provider: "twilio_whatsapp", channel: "whatsapp" }),
+      baseView({ provider: "twilio_voice", channel: "voice", status: "verified" })
+    ]);
+
+    const result = await service.save(
+      "tenant-1",
+      "twilio_voice",
+      {
+        mode: "byo",
+        publicConfig: { accountSid: "AC123", phoneNumberE164: "+573001234567" },
+        secrets: { authToken: "secret-token" }
+      },
+      "admin"
+    );
+
+    expect(mocks.whatsappConnect.connectByo).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: "tenant-1", accountSid: "AC123" })
+    );
+    expect(result.provider).toBe("twilio_voice");
+  });
+
   it("save for twilio_whatsapp with mode managed is rejected — managed connection happens via Embedded Signup, not PUT", async () => {
     await expect(
       service.save("tenant-1", "twilio_whatsapp", { mode: "managed" }, "admin")
