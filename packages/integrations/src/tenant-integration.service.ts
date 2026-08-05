@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { encryptSecretBundle } from "@cobrai/utils";
+import { encryptSecretBundle } from "@cobrai/utils/crypto";
 import type { IntegrationMode, IntegrationProvider, IntegrationStatus, PrismaService, TenantIntegration } from "@cobrai/db";
 import { CHANNEL_PROVIDERS, PROVIDER_CHANNEL, WEBHOOK_CAPABLE_PROVIDERS } from "./types";
 import type { DecryptedIntegration, IntegrationChannel, IntegrationView, SecretMeta } from "./types";

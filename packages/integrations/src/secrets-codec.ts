@@ -1,4 +1,4 @@
-import { decryptSecretBundle, lastFour } from "@cobrai/utils";
+import { decryptSecretBundle, lastFour } from "@cobrai/utils/crypto";
 import type { IntegrationProvider } from "@cobrai/db";
 
 /** Persisted shape of `TenantIntegration.secretsMeta` — a map of field name to redacted metadata. */

@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { encryptSecretBundle } from "@cobrai/utils";
+import { encryptSecretBundle } from "@cobrai/utils/crypto";
 import type { IntegrationProvider, IntegrationStatus } from "@cobrai/db";
 
 /** Deterministic 32-byte key so ciphertext is reproducible across specs. */

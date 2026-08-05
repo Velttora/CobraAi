@@ -16,6 +16,10 @@
     "./template-variables": {
       "types": "./dist/template-variables.d.ts",
       "default": "./dist/template-variables.js"
+    },
+    "./crypto": {
+      "types": "./crypto.d.ts",
+      "default": "./crypto.js"
     }
   },
   "peerDependencies": {

@@ -55,13 +55,11 @@ export {
   type DebtStatus
 } from "./quarters";
 export { normalizePhoneE164 } from "./validation";
-export {
-  currentKeyVersion,
-  decryptSecretBundle,
-  encryptSecretBundle,
-  lastFour,
-  type EncryptedSecret
-} from "./crypto/envelope-encryption";
+// Envelope encryption is deliberately NOT re-exported here. It depends on
+// `node:crypto`, and this barrel is imported by the Next.js app, which would
+// pull server-only secret-handling code into the browser bundle. Import it
+// from the `@cobrai/utils/crypto` subpath instead — same convention as
+// `@cobrai/utils/email-layout`.
 export {
   buildInstallmentSchedule,
   canBreakPromiseForDebtStatus,

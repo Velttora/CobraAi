@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import type { IntegrationProvider, Tenant } from "@prisma/client";
-import { encryptSecretBundle, lastFour } from "@cobrai/utils";
+import { encryptSecretBundle, lastFour } from "@cobrai/utils/crypto";
 import { loadSeedEnv } from "./load-seed-env";
 
 /**
