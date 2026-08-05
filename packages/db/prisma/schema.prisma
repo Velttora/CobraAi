@@ -222,6 +222,8 @@ enum WorkflowTrigger {
   debt_updated
   score_updated
   promise_broken
+  /// Promesa o cuota marcada como cumplida (pago que cubre el compromiso).
+  promise_kept
   payment_confirmed
   schedule
   manual

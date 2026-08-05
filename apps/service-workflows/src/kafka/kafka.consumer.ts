@@ -8,7 +8,8 @@ const CONSUMED_TOPICS = [
   "cobrai.debt.segmented",
   "cobrai.contact.effective",
   "cobrai.contact.no_response",
-  "cobrai.payment.confirmed"
+  "cobrai.payment.confirmed",
+  "cobrai.promise.kept"
 ] as const;
 
 @Injectable()
@@ -85,6 +86,9 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
         break;
       case "cobrai.payment.confirmed":
         await this.workflows.handlePaymentConfirmed(tenantId, payload);
+        break;
+      case "cobrai.promise.kept":
+        await this.workflows.handlePromiseKept(tenantId, payload);
         break;
       default:
         break;

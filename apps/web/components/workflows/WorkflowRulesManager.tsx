@@ -46,6 +46,7 @@ const TRIGGERS = [
   { value: "debt_updated", label: "Deuda actualizada" },
   { value: "score_updated", label: "Score actualizado" },
   { value: "promise_broken", label: "Promesa incumplida" },
+  { value: "promise_kept", label: "Promesa cumplida" },
   { value: "payment_confirmed", label: "Pago confirmado" },
   { value: "schedule", label: "Programado (por mora)" },
   { value: "manual", label: "Manual" }

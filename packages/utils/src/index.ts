@@ -54,6 +54,7 @@ export {
   type InstallmentPlanItem,
   type ResolvedPromiseStatus
 } from "./promises";
+export { resolveDebtStatusAfterPayment } from "./debt-status-after-payment";
 export {
   agingRecoveryScore,
   amountNormalizedRecoveryScore,

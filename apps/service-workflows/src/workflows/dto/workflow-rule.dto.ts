@@ -26,6 +26,7 @@ export class CreateWorkflowRuleDto {
     "debt_updated",
     "score_updated",
     "promise_broken",
+    "promise_kept",
     "payment_confirmed",
     "schedule",
     "manual"

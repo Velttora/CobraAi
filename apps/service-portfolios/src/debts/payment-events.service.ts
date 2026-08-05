@@ -1,13 +1,20 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "@cobrai/db";
-import { resolvePromiseStatusForPayment } from "@cobrai/utils";
+import {
+  resolveDebtStatusAfterPayment,
+  resolvePromiseStatusForPayment
+} from "@cobrai/utils";
 import { decimalToNumber } from "../common/utils/api.utils";
+import { KafkaService } from "../kafka/kafka.service";
 
 @Injectable()
 export class PaymentEventsService {
   private readonly logger = new Logger(PaymentEventsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly kafka: KafkaService
+  ) {}
 
   async handlePaymentConfirmed(
     tenantId: string,
@@ -32,17 +39,46 @@ export class PaymentEventsService {
         : Math.max(0, outstandingBefore - amount);
 
     const paidFull = outstandingAfter <= 0;
-    const status = paidFull ? "paid_full" : "paid_partial";
 
     await this.prisma.debt.update({
       where: { id: debt.id },
-      data: {
-        amountOutstanding: outstandingAfter,
-        status
-      }
+      data: { amountOutstanding: outstandingAfter }
     });
 
     await this.resolvePendingPromises(tenantId, debt.id, amount, paidFull);
+
+    const hasActivePaymentPlan = Boolean(
+      await this.prisma.paymentPlan.findFirst({
+        where: {
+          tenantId,
+          debtId: debt.id,
+          status: "active",
+          deletedAt: null
+        },
+        select: { id: true }
+      })
+    );
+    const pendingStandalone = await this.prisma.promiseToPay.count({
+      where: {
+        tenantId,
+        debtId: debt.id,
+        status: "pending",
+        planId: null,
+        deletedAt: null
+      }
+    });
+
+    const status = resolveDebtStatusAfterPayment({
+      currentStatus: debt.status,
+      amountOutstanding: outstandingAfter,
+      hasActivePaymentPlan,
+      hasPendingStandalonePromise: pendingStandalone > 0
+    });
+
+    await this.prisma.debt.update({
+      where: { id: debt.id },
+      data: { status }
+    });
 
     this.logger.log(
       `Deuda ${debtId} actualizada: outstanding=${outstandingAfter} status=${status}`
@@ -80,6 +116,14 @@ export class PaymentEventsService {
         where: { id: promise.id },
         data: { status: newStatus }
       });
+
+      if (newStatus === "kept") {
+        await this.kafka.publish("cobrai.promise.kept", tenantId, {
+          promise_id: promise.id,
+          debt_id: debtId,
+          amount: decimalToNumber(promise.amount)
+        });
+      }
     }
 
     await this.completeFinishedPlans(tenantId, debtId);

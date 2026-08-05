@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { Debt, Debtor } from "@cobrai/db";
 import { decimalToNumber } from "../common/utils/api.utils";
+import { isScheduleContactStatus } from "./collectable-statuses";
 
 type ConditionValue =
   | string
@@ -16,8 +17,13 @@ export class RuleEngineService {
     debtor: Debtor | null,
     condition: Record<string, unknown>
   ): { applied: boolean; reason?: string } {
+    // evaluateRules es el path legacy: bloquea todo upcoming (sin excepción
+    // days_to_due). El schedule productivo usa ruleAppliesToDebt.
     if (debt.status === "future" || debt.status === "upcoming") {
       return { applied: false, reason: "debt_not_yet_collectable" };
+    }
+    if (!isScheduleContactStatus(debt.status)) {
+      return { applied: false, reason: "debt_not_collectable" };
     }
     const applied = this.matchesCondition(debt, debtor, condition);
     return { applied, reason: applied ? undefined : "condition_not_met" };
@@ -26,18 +32,22 @@ export class RuleEngineService {
   /**
    * ¿La regla puede actuar sobre esta deuda según su estado y condición?
    *
-   * - `future`: nunca (aún no es gestionable).
-   * - `upcoming` (por vencer): solo reglas pre-vencimiento, es decir las que
-   *   filtran por `days_to_due`. Así evitamos contactar antes de tiempo con
-   *   reglas pensadas para mora.
-   * - resto: aplica la condición normal.
+   * - Solo estados de schedule: `upcoming` | `active` | `contacted`.
+   * - `future` y el resto (disputed, paid_*, written_off, plan, …): nunca.
+   * - `upcoming`: solo reglas pre-vencimiento (`days_to_due`).
+   * - `active` / `contacted`: aplica la condición normal.
+   *
+   * Los triggers por evento (p. ej. thank-you en `payment_confirmed`) usan
+   * `matchesCondition` a propósito: la deuda ya puede estar `paid_full`.
    */
   ruleAppliesToDebt(
     debt: Debt,
     debtor: Debtor | null,
     condition: Record<string, unknown>
   ): boolean {
-    if (debt.status === "future") return false;
+    if (!isScheduleContactStatus(debt.status)) {
+      return false;
+    }
     if (debt.status === "upcoming" && !this.conditionTargetsPreDue(condition)) {
       return false;
     }

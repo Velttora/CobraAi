@@ -38,7 +38,11 @@ const TRANSITIONS: Partial<
   },
   disputed: { CONTACT_EFFECTIVE: "contacted" },
   legal_risk: { ESCALATE_LEGAL: "legal" },
-  plan: { PAYMENT_CONFIRMED: "paid_partial" }
+  plan: {
+    // forceTo en handlePaymentConfirmed decide plan vs paid_full según saldo;
+    // el grafo solo documenta el abono parcial típico.
+    PAYMENT_CONFIRMED: "paid_partial"
+  }
 };
 
 export function canTransition(
