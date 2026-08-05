@@ -7,6 +7,7 @@ import { TwilioProvisioningService } from "./twilio-provisioning.service";
 import { VapiProvisioningService } from "./vapi-provisioning.service";
 import { WhatsAppConnectService } from "./whatsapp-connect.service";
 import { SendgridProvisioningService } from "./sendgrid-provisioning.service";
+import { EmailConnectService } from "./email-connect.service";
 
 /**
  * Per-tenant provisioning and credential-resolution services for the BYO
@@ -20,6 +21,7 @@ import { SendgridProvisioningService } from "./sendgrid-provisioning.service";
     VapiProvisioningService,
     WhatsAppConnectService,
     SendgridProvisioningService,
+    EmailConnectService,
     {
       provide: TenantIntegrationService,
       useFactory: (prisma: PrismaService) => new TenantIntegrationService(prisma),
@@ -31,6 +33,7 @@ import { SendgridProvisioningService } from "./sendgrid-provisioning.service";
     VapiProvisioningService,
     WhatsAppConnectService,
     SendgridProvisioningService,
+    EmailConnectService,
     TenantIntegrationService
   ]
 })
