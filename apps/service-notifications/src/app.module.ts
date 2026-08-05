@@ -9,6 +9,7 @@ import { TenantContextMiddleware } from "@cobrai/utils";
 import { ContactsModule } from "./contacts/contacts.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { HealthModule } from "./health/health.module";
+import { IntegrationsModule } from "./integrations/integrations.module";
 import { KafkaModule } from "./kafka/kafka.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TemplatesModule } from "./templates/templates.module";
@@ -23,6 +24,7 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
     TemplatesModule,
     ConversationsModule,
     WebhooksModule,
+    IntegrationsModule,
     HealthModule
   ]
 })

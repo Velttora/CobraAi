@@ -1,26 +1,31 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { ConfigService } from "@nestjs/config";
 
-const mockAccountsCreate = vi.fn();
-const mockChannelsSendersCreate = vi.fn();
-const mockChannelsSenderFetch = vi.fn();
+const { mockAccountsCreate, mockChannelsSendersCreate, mockChannelsSenderFetch, mockClientFactory } = vi.hoisted(
+  () => {
+    const mockAccountsCreate = vi.fn();
+    const mockChannelsSendersCreate = vi.fn();
+    const mockChannelsSenderFetch = vi.fn();
 
-/**
- * `channelsSenders` on the real SDK is both callable (`channelsSenders(sid)` → context
- * with `.fetch()`) and carries a `.create()` method — mirrored here with Object.assign
- * so both call shapes used by the service are exercised.
- */
-function makeChannelsSenders() {
-  const callable = Object.assign((_sid: string) => ({ fetch: mockChannelsSenderFetch }), {
-    create: mockChannelsSendersCreate
-  });
-  return callable;
-}
+    /**
+     * `channelsSenders` on the real SDK is both callable (`channelsSenders(sid)` → context
+     * with `.fetch()`) and carries a `.create()` method — mirrored here with Object.assign
+     * so both call shapes used by the service are exercised.
+     */
+    function makeChannelsSenders() {
+      return Object.assign((_sid: string) => ({ fetch: mockChannelsSenderFetch }), {
+        create: mockChannelsSendersCreate
+      });
+    }
 
-const mockClientFactory = vi.fn(() => ({
-  api: { v2010: { accounts: { create: mockAccountsCreate } } },
-  messaging: { v2: { channelsSenders: makeChannelsSenders() } }
-}));
+    const mockClientFactory = vi.fn((_accountSid?: string, _authToken?: string) => ({
+      api: { v2010: { accounts: { create: mockAccountsCreate } } },
+      messaging: { v2: { channelsSenders: makeChannelsSenders() } }
+    }));
+
+    return { mockAccountsCreate, mockChannelsSendersCreate, mockChannelsSenderFetch, mockClientFactory };
+  }
+);
 
 vi.mock("twilio", () => ({
   default: mockClientFactory
@@ -56,6 +61,10 @@ describe("TwilioProvisioningService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service = new TwilioProvisioningService(makeConfig());
+    // The constructor itself legitimately calls the factory once with the platform
+    // credentials to build the cached platform client — clear that call so later
+    // assertions only see calls made by the method under test.
+    mockClientFactory.mockClear();
     // Spy on the logger instance's methods to assert no credential ever reaches them.
     logSpy = vi.fn();
     errorSpy = vi.fn();

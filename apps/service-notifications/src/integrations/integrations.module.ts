@@ -1,0 +1,25 @@
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { PrismaService } from "@cobrai/db";
+import { TenantIntegrationService } from "@cobrai/integrations";
+import { PrismaModule } from "../prisma/prisma.module";
+import { TwilioProvisioningService } from "./twilio-provisioning.service";
+
+/**
+ * Per-tenant provisioning and credential-resolution services for the BYO
+ * channel/payment integrations (Phase 8). Plans 08-10 (payment gateway BYO)
+ * and 08-14 (webhook token guard) add further providers to this module.
+ */
+@Module({
+  imports: [ConfigModule, PrismaModule],
+  providers: [
+    TwilioProvisioningService,
+    {
+      provide: TenantIntegrationService,
+      useFactory: (prisma: PrismaService) => new TenantIntegrationService(prisma),
+      inject: [PrismaService]
+    }
+  ],
+  exports: [TwilioProvisioningService, TenantIntegrationService]
+})
+export class IntegrationsModule {}
