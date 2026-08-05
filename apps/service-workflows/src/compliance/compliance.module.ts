@@ -6,6 +6,7 @@ import {
   ConsentService,
   OptOutService
 } from "@cobrai/compliance";
+import { TenantIntegrationService } from "@cobrai/integrations";
 
 @Module({
   providers: [
@@ -25,16 +26,28 @@ import {
       inject: [PrismaService]
     },
     {
+      provide: TenantIntegrationService,
+      useFactory: (prisma: PrismaService) => new TenantIntegrationService(prisma),
+      inject: [PrismaService]
+    },
+    {
       provide: ComplianceService,
       useFactory: (
         prisma: PrismaService,
         consent: ConsentService,
         optOut: OptOutService,
-        audit: AuditService
-      ) => new ComplianceService(prisma, consent, optOut, audit),
-      inject: [PrismaService, ConsentService, OptOutService, AuditService]
+        audit: AuditService,
+        integrations: TenantIntegrationService
+      ) => new ComplianceService(prisma, consent, optOut, audit, integrations),
+      inject: [
+        PrismaService,
+        ConsentService,
+        OptOutService,
+        AuditService,
+        TenantIntegrationService
+      ]
     }
   ],
-  exports: [ComplianceService, AuditService]
+  exports: [ComplianceService, AuditService, TenantIntegrationService]
 })
 export class ComplianceModule {}

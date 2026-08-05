@@ -5,6 +5,7 @@ import {
   ConsentService,
   OptOutService
 } from "@cobrai/compliance";
+import { TenantIntegrationService } from "@cobrai/integrations";
 import {
   hasDocker,
   seedMinimalTenant,
@@ -24,7 +25,8 @@ describeE2e("compliance e2e", () => {
     const consent = new ConsentService(db.prisma);
     const optOut = new OptOutService(db.prisma);
     const audit = new AuditService(db.prisma);
-    compliance = new ComplianceService(db.prisma, consent, optOut, audit);
+    const integrations = new TenantIntegrationService(db.prisma);
+    compliance = new ComplianceService(db.prisma, consent, optOut, audit, integrations);
   }, 120_000);
 
   afterAll(async () => {
