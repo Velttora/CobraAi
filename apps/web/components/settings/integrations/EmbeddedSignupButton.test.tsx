@@ -1,0 +1,147 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { EmbeddedSignupButton } from "./EmbeddedSignupButton";
+
+let capturedScriptProps: { onLoad?: () => void; onError?: () => void } = {};
+vi.mock("next/script", () => ({
+  default: (props: { onLoad?: () => void; onError?: () => void }) => {
+    capturedScriptProps = props;
+    return null;
+  }
+}));
+
+const embeddedSignupMock = { mutateAsync: vi.fn(), isPending: false };
+const verifyMock = { mutateAsync: vi.fn(), isPending: false };
+vi.mock("../../../hooks/use-integrations", () => ({
+  useEmbeddedSignup: () => embeddedSignupMock,
+  useVerifyIntegration: () => verifyMock
+}));
+
+vi.mock("../../../hooks/use-tenant", () => ({
+  useTenant: () => ({ data: { data: { name: "Mi Empresa" } } })
+}));
+
+const toastError = vi.fn();
+vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastError(...a) } }));
+
+function stubFacebookEnv(): void {
+  vi.stubEnv("NEXT_PUBLIC_FACEBOOK_APP_ID", "app-123");
+  vi.stubEnv("NEXT_PUBLIC_FACEBOOK_CONFIG_ID", "config-456");
+}
+
+beforeEach(() => {
+  capturedScriptProps = {};
+  embeddedSignupMock.mutateAsync = vi.fn();
+  verifyMock.mutateAsync = vi.fn();
+  toastError.mockClear();
+  vi.unstubAllEnvs();
+  delete (window as unknown as { FB?: unknown }).FB;
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe("EmbeddedSignupButton — sdk_unavailable", () => {
+  it("sin las variables de entorno, muestra el aviso y nunca un botón roto", () => {
+    render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
+
+    expect(
+      screen.getByText(/No pudimos cargar el conector de Meta/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Conectar con WhatsApp" })).not.toBeInTheDocument();
+  });
+
+  it("el enlace de fallback cambia la tarjeta a BYO", () => {
+    const onSwitchToByo = vi.fn();
+    render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={onSwitchToByo} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Conectar con mis propias credenciales" }));
+    expect(onSwitchToByo).toHaveBeenCalledTimes(1);
+  });
+
+  it("si el script de Meta falla al cargar (onError), muestra el mismo aviso", () => {
+    stubFacebookEnv();
+    render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
+
+    act(() => capturedScriptProps.onError?.());
+    expect(screen.getByText(/No pudimos cargar el conector de Meta/)).toBeInTheDocument();
+  });
+});
+
+describe("EmbeddedSignupButton — sdk_loading / ready", () => {
+  it("mientras carga, el botón está deshabilitado con Cargando… y un spinner", () => {
+    stubFacebookEnv();
+    const { container } = render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
+
+    const button = screen.getByRole("button", { name: "Cargando…" });
+    expect(button).toBeDisabled();
+    expect(container.querySelector("svg.lucide-loader-circle")).toBeInTheDocument();
+  });
+
+  it("en ready, muestra Conectar con WhatsApp con chrome neutral y el glifo verde", () => {
+    stubFacebookEnv();
+    render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
+
+    window.FB = { init: vi.fn(), login: vi.fn() };
+    act(() => capturedScriptProps.onLoad?.());
+
+    const button = screen.getByRole("button", { name: "Conectar con WhatsApp" });
+    expect(button).not.toBeDisabled();
+    expect(button.className).not.toContain("bg-[#D85A30]");
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain("text-[#25D366]");
+  });
+});
+
+describe("EmbeddedSignupButton — popup", () => {
+  function readyButtonSetup(): { login: ReturnType<typeof vi.fn> } {
+    stubFacebookEnv();
+    const login = vi.fn();
+    render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
+    window.FB = { init: vi.fn(), login };
+    act(() => capturedScriptProps.onLoad?.());
+    return { login };
+  }
+
+  it("clic abre el popup: botón deshabilitado con el enlace de reintento", () => {
+    const { login } = readyButtonSetup();
+
+    fireEvent.click(screen.getByRole("button", { name: "Conectar con WhatsApp" }));
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Continúa en la ventana de Meta…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "¿No se abrió? Reintentar" })).toBeInTheDocument();
+  });
+
+  it("cancelar el popup vuelve a ready sin toast ni estilos de error", () => {
+    readyButtonSetup();
+    fireEvent.click(screen.getByRole("button", { name: "Conectar con WhatsApp" }));
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin: "https://www.facebook.com",
+          data: { type: "WA_EMBEDDED_SIGNUP", event: "CANCEL" }
+        })
+      );
+    });
+
+    expect(screen.getByText("Cancelaste la conexión. Puedes intentarlo de nuevo cuando quieras.")).toBeInTheDocument();
+    expect(toastError).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("ignora un postMessage que no viene de un origen de facebook.com", () => {
+    readyButtonSetup();
+    fireEvent.click(screen.getByRole("button", { name: "Conectar con WhatsApp" }));
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        origin: "https://evil.example.com",
+        data: { type: "WA_EMBEDDED_SIGNUP", event: "CANCEL" }
+      })
+    );
+
+    // Still popup_open — the forged message from a non-Meta origin was ignored.
+    expect(screen.getByText("Continúa en la ventana de Meta…")).toBeInTheDocument();
+  });
+});
