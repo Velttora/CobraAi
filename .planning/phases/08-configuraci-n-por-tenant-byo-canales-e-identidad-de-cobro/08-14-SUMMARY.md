@@ -189,3 +189,7 @@ None — this plan adds no new environment variables or external service configu
 ---
 *Phase: 08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+All 14 code files (12 created, 2 modified) verified present via `git ls-files`, and all 5 commits (`56ea077`, `ef09791`, `ea3701e`, `2b248c8`, this SUMMARY's own `90e1079`) verified present in `git log`.
