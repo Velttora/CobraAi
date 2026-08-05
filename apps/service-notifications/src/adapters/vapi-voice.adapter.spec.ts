@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ConfigService } from "@nestjs/config";
 
 // Mock axios before importing adapter
@@ -32,6 +32,14 @@ function makeConfig(overrides: Record<string, string> = {}): ConfigService {
   } as unknown as ConfigService;
 }
 
+function makeIntegrations(overrides: { resolveByChannel?: ReturnType<typeof vi.fn> } = {}) {
+  return {
+    resolveByChannel:
+      overrides.resolveByChannel ??
+      vi.fn().mockResolvedValue({ publicConfig: { vapiPhoneNumberId: "phone-tenant-1" } })
+  };
+}
+
 function makeInput(overrides: Partial<Parameters<VapiVoiceAdapter["initiateCall"]>[0]> = {}) {
   return {
     debt_id: "debt-abc-123",
@@ -55,22 +63,59 @@ function makeInput(overrides: Partial<Parameters<VapiVoiceAdapter["initiateCall"
 }
 
 describe("VapiVoiceAdapter", () => {
+  let integrations: ReturnType<typeof makeIntegrations>;
   let adapter: VapiVoiceAdapter;
+  let originalEnv: string | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    adapter = new VapiVoiceAdapter(makeConfig());
+    integrations = makeIntegrations();
+    adapter = new VapiVoiceAdapter(makeConfig(), integrations as never);
+    originalEnv = process.env.SIMULATE_OUTBOUND_SENDS;
   });
 
-  it("sin credenciales Vapi → modo sandbox sin llamar a la API", async () => {
-    const sandbox = new VapiVoiceAdapter({
-      get: () => undefined,
-      getOrThrow: vi.fn()
-    } as unknown as ConfigService);
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.SIMULATE_OUTBOUND_SENDS;
+    else process.env.SIMULATE_OUTBOUND_SENDS = originalEnv;
+  });
+
+  it("sin credenciales Vapi (plataforma) → modo sandbox sin llamar a la API", async () => {
+    const sandbox = new VapiVoiceAdapter(
+      { get: () => undefined, getOrThrow: vi.fn() } as unknown as ConfigService,
+      integrations as never
+    );
     const result = await sandbox.initiateCall(makeInput());
     expect(mockedAxios.post).not.toHaveBeenCalled();
     expect(result.status).toBe("queued");
     expect(result.call_id).toMatch(/^sandbox-/);
+  });
+
+  it("sin integración de voz verificada y simulación apagada → status failed, no llama a la API", async () => {
+    integrations.resolveByChannel.mockResolvedValueOnce(null);
+    delete process.env.SIMULATE_OUTBOUND_SENDS;
+
+    const result = await adapter.initiateCall(makeInput());
+
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(result).toEqual({ call_id: "", status: "failed" });
+  });
+
+  it("sin integración de voz verificada y simulación encendida → llama con VAPI_PHONE_NUMBER_ID global, marcado simulated", async () => {
+    integrations.resolveByChannel.mockResolvedValueOnce(null);
+    process.env.SIMULATE_OUTBOUND_SENDS = "true";
+    adapter = new VapiVoiceAdapter(makeConfig({ VAPI_PHONE_NUMBER_ID: "phone-global" }), integrations as never);
+    (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: { id: "call-sim-1", status: "queued" },
+    });
+
+    const result = await adapter.initiateCall(makeInput());
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ phoneNumberId: "phone-global" }),
+      expect.anything()
+    );
+    expect(result).toEqual({ call_id: "call-sim-1", status: "queued", simulated: true });
   });
 
   describe("initiateCall", () => {
@@ -85,6 +130,7 @@ describe("VapiVoiceAdapter", () => {
         "https://api.vapi.ai/call",
         expect.objectContaining({
           assistantId: "agent-uuid-1234",
+          phoneNumberId: "phone-tenant-1",
           customer: expect.objectContaining({ number: "+573001234567" }),
           metadata: expect.objectContaining({
             debt_id: "debt-abc-123",
@@ -99,6 +145,31 @@ describe("VapiVoiceAdapter", () => {
       );
 
       expect(result).toEqual({ call_id: "call-vapi-xyz", status: "queued" });
+    });
+
+    it("dos tenants distintos → cada llamada usa el vapiPhoneNumberId de su propia integración", async () => {
+      integrations.resolveByChannel.mockResolvedValueOnce({
+        publicConfig: { vapiPhoneNumberId: "phone-tenant-A" }
+      });
+      (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        data: { id: "call-A", status: "queued" },
+      });
+      await adapter.initiateCall(makeInput({ strategy_context: { ...makeInput().strategy_context, tenant_id: "tenant-A" } }));
+
+      integrations.resolveByChannel.mockResolvedValueOnce({
+        publicConfig: { vapiPhoneNumberId: "phone-tenant-B" }
+      });
+      (mockedAxios.post as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        data: { id: "call-B", status: "queued" },
+      });
+      await adapter.initiateCall(makeInput({ strategy_context: { ...makeInput().strategy_context, tenant_id: "tenant-B" } }));
+
+      expect((mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toMatchObject({
+        phoneNumberId: "phone-tenant-A",
+      });
+      expect((mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[1]![1]).toMatchObject({
+        phoneNumberId: "phone-tenant-B",
+      });
     });
 
     it("retorna status: failed sin lanzar excepcion cuando axios falla", async () => {

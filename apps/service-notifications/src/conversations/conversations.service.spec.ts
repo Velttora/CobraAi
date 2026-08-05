@@ -240,7 +240,7 @@ describe("ConversationsService", () => {
     expect(result).toEqual({ sent: true, channel: ContactChannel.whatsapp });
   });
 
-  it("reply en conv de email responde por email con reply_to", async () => {
+  it("reply en conv de email responde por email sin reply_to explícito (el adaptador lo deriva del tenant, D-22)", async () => {
     mockConversationFindFirst.mockResolvedValueOnce({
       ...baseConv,
       channel: ContactChannel.email
@@ -249,11 +249,10 @@ describe("ConversationsService", () => {
     const result = await service.reply("org1", "conv1", "Gracias por su mensaje.");
 
     expect(mockEmail.sendTemplate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "juan@test.com",
-        reply_to: "reply@reply.fogging.org"
-      })
+      expect.objectContaining({ to: "juan@test.com" })
     );
+    const callArg = mockEmail.sendTemplate.mock.calls[0]![0] as Record<string, unknown>;
+    expect("reply_to" in callArg).toBe(false);
     expect(mockWhatsapp.sendTemplate).not.toHaveBeenCalled();
     expect(result.channel).toBe(ContactChannel.email);
   });

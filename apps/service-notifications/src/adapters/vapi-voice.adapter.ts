@@ -8,6 +8,8 @@ import type {
   InitiateCallResult,
   CallStatus,
 } from "@cobrai/ports";
+import { TenantIntegrationService } from "@cobrai/integrations";
+import { isSimulationEnabled } from "./simulation.guard";
 
 interface VapiCallResponse {
   id: string;
@@ -117,14 +119,18 @@ function montoEspanol(raw: string | number): string {
 export class VapiVoiceAdapter implements VoiceAgentPort {
   private readonly logger = new Logger(VapiVoiceAdapter.name);
   private readonly baseUrl = "https://api.vapi.ai";
+  // Vapi stays platform-owned (D-04): unlike WhatsApp/email/SMS this is not
+  // BYO, so apiKey/agentId are cached here exactly as before — do not "fix"
+  // this into per-tenant resolution, only `phoneNumberId` (below) is per tenant.
   private readonly apiKey: string | null;
   private readonly agentId: string | null;
-  private readonly phoneNumberId: string | undefined;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly integrations: TenantIntegrationService
+  ) {
     this.apiKey = config.get<string>("VAPI_API_KEY") ?? null;
     this.agentId = config.get<string>("VAPI_AGENT_ID") ?? null;
-    this.phoneNumberId = config.get<string>("VAPI_PHONE_NUMBER_ID");
 
     if (!this.apiKey || !this.agentId) {
       this.logger.warn(
@@ -142,6 +148,31 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
     }
 
     const ctx = input.strategy_context;
+
+    // Only `phoneNumberId` is tenant-specific (D-05) — the number Vapi already
+    // imported from the tenant's own Twilio account (plan 08-07). No verified
+    // `twilio_voice` integration means we don't know which number to call from.
+    const integration = await this.integrations.resolveByChannel(ctx.tenant_id, "voice");
+    const tenantPhoneNumberId = integration?.publicConfig?.vapiPhoneNumberId;
+    let phoneNumberId = tenantPhoneNumberId;
+
+    if (!phoneNumberId) {
+      if (!isSimulationEnabled()) {
+        this.logger.error(
+          `Vapi sin integración de voz verificada para tenant ${ctx.tenant_id}: llamada rechazada`
+        );
+        return { call_id: "", status: "failed" };
+      }
+      // D-17: simulation explicitly enabled — fall back to the platform's
+      // global VAPI_PHONE_NUMBER_ID so local/dev testing keeps working without
+      // per-tenant provisioning; the result is still marked simulated below.
+      phoneNumberId = this.config.get<string>("VAPI_PHONE_NUMBER_ID");
+      this.logger.warn(
+        `Vapi sandbox: usando VAPI_PHONE_NUMBER_ID global para tenant ${ctx.tenant_id} (sin integración de voz verificada)`
+      );
+    }
+    const simulated = !tenantPhoneNumberId;
+
     const phone = input.debtor_phone.startsWith("+")
       ? input.debtor_phone
       : `+${input.debtor_phone}`;
@@ -151,7 +182,7 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
         `${this.baseUrl}/call`,
         {
           assistantId: this.agentId,
-          phoneNumberId: this.phoneNumberId,
+          phoneNumberId,
           customer: {
             number: phone,
             name: ctx.variables["nombre"] ?? ctx.variables["debtor_name"],
@@ -196,7 +227,7 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
       this.logger.log(
         `Llamada Vapi iniciada call_id=${response.data.id} → ${phone}`,
       );
-      return { call_id: response.data.id, status: "queued" };
+      return { call_id: response.data.id, status: "queued", ...(simulated ? { simulated: true } : {}) };
     } catch (err: unknown) {
       this.logger.error(`Vapi call fallida → ${phone}: ${String(err)}`);
       return { call_id: "", status: "failed" };

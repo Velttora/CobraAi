@@ -19,4 +19,6 @@ export interface InitiateCallInput {
 export interface InitiateCallResult {
   call_id: string;
   status: "queued" | "failed";
+  /** True when no verified tenant credential existed and this call was simulated (D-17). */
+  simulated?: boolean;
 }

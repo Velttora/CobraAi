@@ -15,7 +15,6 @@ import { buildInstallmentSchedule } from "@cobrai/utils";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import { PaymentPlanService } from "./payment-plan.service";
-import { EMAIL_REPLY_TO } from "../common/email.constants";
 
 export interface InboundMessagePayload {
   debtor_id: string;
@@ -264,8 +263,7 @@ export class ConversationAgentService {
           to: phone, // for email channel, "phone" carries the debtor's email address
           template_id: "agent_response",
           variables: { body: agentResponse.response },
-          tenant_id,
-          reply_to: EMAIL_REPLY_TO
+          tenant_id
         });
       } else {
         await this.whatsapp.sendTemplate({

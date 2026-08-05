@@ -12,7 +12,6 @@ import {
 import { parseMessagePayload } from "../common/utils/api.utils";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
-import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { ComplianceService } from "@cobrai/compliance";
 
 @Injectable()
@@ -466,8 +465,7 @@ export class ConversationsService {
           to: email,
           template_id: "manual_reply",
           variables: { body, subject: "Respuesta de su gestor — CobraAI" },
-          tenant_id: tenantId,
-          reply_to: EMAIL_REPLY_TO
+          tenant_id: tenantId
         });
         used = { channel, status: r.status };
         break;

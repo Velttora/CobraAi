@@ -16,7 +16,6 @@ import { EmailAdapter } from "../adapters/email.adapter";
 import { SmsAdapter } from "../adapters/sms.adapter";
 import { VapiVoiceAdapter } from "../adapters/vapi-voice.adapter";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
-import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
 import type { IntegrationChannel } from "@cobrai/integrations";
 import { TenantIntegrationService } from "@cobrai/integrations";
@@ -26,7 +25,6 @@ import {
   type EmailLayoutConfig
 } from "@cobrai/utils";
 import {
-  buildMessageContent,
   decimalToNumber,
   fechaEspanol,
   formatDate,
@@ -39,6 +37,7 @@ import { KafkaService } from "../kafka/kafka.service";
 import { WaterfallService } from "../orchestrator/waterfall.service";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import type { CreateContactDto } from "./dto/contact.dto";
+import { recordConversationMessage } from "./record-conversation-message";
 
 export type ContactRequestPayload = {
   debt_id: string;
@@ -270,7 +269,8 @@ export class ContactsService {
 
       const sendFailed = sendResult.status === "failed";
 
-      await this.recordConversationMessage(
+      await recordConversationMessage(
+        this.prisma,
         tenantId,
         debtor.id,
         debt.id,
@@ -279,7 +279,8 @@ export class ContactsService {
         variables,
         sendResult.messageId,
         sendResult.body,
-        sendResult.status
+        sendResult.status,
+        sendResult.simulated
       );
 
       const completed = await this.prisma.contact.update({
@@ -287,6 +288,9 @@ export class ContactsService {
         data: {
           status: sendFailed ? "failed" : "completed",
           endedAt: new Date(),
+          // D-17: a simulated send must be distinguishable from a real one so it
+          // never inflates delivery metrics nor consumes the Ley 1266 quota.
+          simulated: sendResult.simulated,
           // Un envío fallido nunca llegó al deudor — no tiene sentido esperar respuesta
           // por él; se marca sin_contacto de inmediato para que el reintento no espere
           // la ventana completa por algo que ya sabemos que no se entregó.
@@ -502,7 +506,7 @@ export class ContactsService {
     debtor: Debtor,
     template: NotificationTemplate | null,
     variables: Record<string, string>
-  ): Promise<{ messageId: string; status: "sent" | "failed"; body: string }> {
+  ): Promise<{ messageId: string; status: "sent" | "failed"; body: string; simulated: boolean }> {
     const body = template
       ? renderTemplate(template.content, variables)
       : `Recordatorio de pago: ${variables.amount}`;
@@ -526,11 +530,15 @@ export class ContactsService {
           to,
           template_id: template?.id ?? "default",
           variables: { ...variables, body: html, subject },
-          tenant_id: tenantId,
-          reply_to: EMAIL_REPLY_TO
+          tenant_id: tenantId
         });
         // Guardamos el mensaje legible (no el HTML) en la conversación.
-        return { messageId: result.message_id, status: result.status, body: messageBody };
+        return {
+          messageId: result.message_id,
+          status: result.status,
+          body: messageBody,
+          simulated: result.simulated ?? false
+        };
       }
       case "sms": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -540,7 +548,7 @@ export class ContactsService {
           body,
           tenant_id: tenantId
         });
-        return { messageId: result.message_id, status: result.status, body };
+        return { messageId: result.message_id, status: result.status, body, simulated: result.simulated ?? false };
       }
       case "whatsapp": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -551,7 +559,7 @@ export class ContactsService {
           variables,
           tenant_id: tenantId
         });
-        return { messageId: result.message_id, status: result.status, body };
+        return { messageId: result.message_id, status: result.status, body, simulated: result.simulated ?? false };
       }
       case "voice": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -585,7 +593,8 @@ export class ContactsService {
           status: result.status === "failed" ? "failed" : "sent",
           // Persist the actual opening line Vapi delivers, not the voice script
           // template (which Vapi ignores — it uses its own assistant prompt).
-          body: callHistory.first_message_override ?? "Llamada encolada"
+          body: callHistory.first_message_override ?? "Llamada encolada",
+          simulated: result.simulated ?? false
         };
       }
       default:
@@ -643,61 +652,6 @@ export class ContactsService {
     }
     const empresa = variables.empresa ?? "CobraAI";
     return `Recordatorio de pago — ${empresa}`;
-  }
-
-  private async recordConversationMessage(
-    tenantId: string,
-    debtorId: string,
-    debtId: string,
-    channel: ContactChannel,
-    template: NotificationTemplate | null,
-    variables: Record<string, string>,
-    providerMessageId: string,
-    body: string,
-    sendStatus: "sent" | "failed"
-  ): Promise<void> {
-    let conversation = await this.prisma.conversation.findFirst({
-      where: { tenantId, debtorId, channel, deletedAt: null }
-    });
-
-    if (!conversation) {
-      conversation = await this.prisma.conversation.create({
-        data: {
-          tenantId,
-          debtorId,
-          debtId,
-          channel,
-          status: "open",
-          lastMessageAt: new Date()
-        }
-      });
-    } else {
-      await this.prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: new Date(), debtId }
-      });
-    }
-
-    await this.prisma.message.create({
-      data: {
-        tenantId,
-        conversationId: conversation.id,
-        direction: "out",
-        channel,
-        content: buildMessageContent(
-          // For voice, the template is not what the debtor hears (Vapi drives the
-          // call from its own assistant), so rendering it would persist raw script
-          // scaffolding and unresolved variables. Store the clean call body instead.
-          channel !== "voice" && template
-            ? renderTemplate(template.content, variables)
-            : body,
-          providerMessageId
-        ),
-        status: sendStatus,
-        templateId: template?.id,
-        sentAt: new Date()
-      }
-    });
   }
 
   private async loadVoiceCallHistory(
