@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService, type DebtStatus } from "@cobrai/db";
 import {
-  resolveDebtStatusAfterPayment,
-  resolvePromiseStatusForPayment
+  applyPaymentToPromise,
+  resolveDebtStatusAfterPayment
 } from "@cobrai/utils";
 import { decimalToNumber } from "../common/utils/api.utils";
 import { KafkaService } from "../kafka/kafka.service";
@@ -233,14 +233,16 @@ export class PaymentEventsService {
 
     const targets = paidFull ? open : open.slice(0, 1);
     for (const promise of targets) {
-      const newStatus = resolvePromiseStatusForPayment({
-        promiseAmount: decimalToNumber(promise.amount),
-        amountPaid,
-        debtPaidFull: paidFull
-      });
+      const { status: newStatus, amountPaid: accumulated } =
+        applyPaymentToPromise({
+          promiseAmount: decimalToNumber(promise.amount),
+          alreadyPaid: decimalToNumber(promise.amountPaid),
+          amountPaid,
+          debtPaidFull: paidFull
+        });
       await this.prisma.promiseToPay.update({
         where: { id: promise.id },
-        data: { status: newStatus }
+        data: { status: newStatus, amountPaid: accumulated }
       });
 
       if (newStatus === "kept") {

@@ -41,7 +41,8 @@ describe("derivePlanState", () => {
   const installment = (status: string, date: string) => ({
     status,
     promisedDate: d(date),
-    amount: 100
+    amount: 100,
+    amountPaid: status === "kept" ? 100 : 0
   });
 
   it("marca en mora un plan activo con una cuota vencida sin pagar", () => {
@@ -73,10 +74,10 @@ describe("summarizePlanProgress", () => {
   it("cuenta lo pagado y apunta a la cuota vencida más antigua", () => {
     const progress = summarizePlanProgress(
       [
-        { status: "kept", promisedDate: d("2026-01-01"), amount: 500 },
-        { status: "pending", promisedDate: d("2026-02-01"), amount: 500 },
-        { status: "pending", promisedDate: d("2026-03-01"), amount: 500 },
-        { status: "pending", promisedDate: d("2026-04-01"), amount: 500 }
+        { status: "kept", promisedDate: d("2026-01-01"), amount: 500, amountPaid: 500 },
+        { status: "pending", promisedDate: d("2026-02-01"), amount: 500, amountPaid: 0 },
+        { status: "pending", promisedDate: d("2026-03-01"), amount: 500, amountPaid: 0 },
+        { status: "pending", promisedDate: d("2026-04-01"), amount: 500, amountPaid: 0 }
       ],
       NOW
     );
@@ -90,14 +91,29 @@ describe("summarizePlanProgress", () => {
   it("no reporta mora cuando ninguna cuota pendiente ha vencido", () => {
     const progress = summarizePlanProgress(
       [
-        { status: "kept", promisedDate: d("2026-02-01"), amount: 300 },
-        { status: "pending", promisedDate: d("2026-04-01"), amount: 300 }
+        { status: "kept", promisedDate: d("2026-02-01"), amount: 300, amountPaid: 300 },
+        { status: "pending", promisedDate: d("2026-04-01"), amount: 300, amountPaid: 0 }
       ],
       NOW
     );
 
     expect(progress.oldestOverdueDate).toBeNull();
     expect(progress.nextDueDate).toEqual(d("2026-04-01"));
+  });
+
+  it("cuenta los abonos de una cuota a medias", () => {
+    // Sumar solo cuotas cerradas mostraba este abono como cero, y el deudor
+    // aparecía sin haber pagado nada de la cuota en curso.
+    const progress = summarizePlanProgress(
+      [
+        { status: "kept", promisedDate: d("2026-02-01"), amount: 300, amountPaid: 300 },
+        { status: "partial", promisedDate: d("2026-04-01"), amount: 300, amountPaid: 120 }
+      ],
+      NOW
+    );
+
+    expect(progress.installmentsPaid).toBe(1);
+    expect(progress.amountPaid).toBe(420);
   });
 });
 

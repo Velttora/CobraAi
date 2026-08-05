@@ -224,6 +224,7 @@ export class NegotiationService {
                 select: {
                   status: true,
                   amount: true,
+                  amountPaid: true,
                   promisedDate: true,
                   installmentNumber: true
                 }
@@ -293,6 +294,7 @@ export class NegotiationService {
       installments: {
         status: string;
         amount: unknown;
+        amountPaid: unknown;
         promisedDate: Date | null;
       }[];
     },
@@ -301,7 +303,8 @@ export class NegotiationService {
     const installments = plan.installments.map((i) => ({
       status: i.status,
       promisedDate: i.promisedDate,
-      amount: Number(i.amount)
+      amount: Number(i.amount),
+      amountPaid: Number(i.amountPaid ?? 0)
     }));
     const state = derivePlanState(plan.status, installments, now);
     const progress = summarizePlanProgress(installments, now);
@@ -337,6 +340,7 @@ export class NegotiationService {
       id: string;
       debtId: string;
       amount: unknown;
+      amountPaid: unknown;
       promisedDate: Date;
       status: string;
       notes: string | null;
@@ -357,7 +361,7 @@ export class NegotiationService {
       ...this.debtFields(promise.debt),
       offer_settlement_amount: Number(promise.amount),
       offer_installments: 1,
-      amount_paid: promise.status === "kept" ? Number(promise.amount) : 0,
+      amount_paid: Number(promise.amountPaid ?? 0),
       installments_paid: promise.status === "kept" ? 1 : 0,
       due_date: promise.promisedDate.toISOString(),
       days_overdue: daysOverdue(promise.promisedDate, now),

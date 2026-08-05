@@ -34,9 +34,24 @@ function makePlan(overrides: Record<string, unknown> = {}) {
     updatedAt: d("2026-02-05"),
     debt: makeDebt(),
     installments: [
-      { status: "kept", amount: 300_000, promisedDate: d("2026-02-01") },
-      { status: "pending", amount: 300_000, promisedDate: d("2026-03-01") },
-      { status: "pending", amount: 300_000, promisedDate: d("2026-04-01") }
+      {
+        status: "kept",
+        amount: 300_000,
+        amountPaid: 300_000,
+        promisedDate: d("2026-02-01")
+      },
+      {
+        status: "pending",
+        amount: 300_000,
+        amountPaid: 0,
+        promisedDate: d("2026-03-01")
+      },
+      {
+        status: "pending",
+        amount: 300_000,
+        amountPaid: 0,
+        promisedDate: d("2026-04-01")
+      }
     ],
     ...overrides
   };
@@ -47,6 +62,7 @@ function makePromise(overrides: Record<string, unknown> = {}) {
     id: "prom1",
     debtId: "debt2",
     amount: 450_000,
+    amountPaid: 0,
     promisedDate: d("2026-03-20"),
     status: "pending",
     notes: null,
@@ -251,7 +267,12 @@ describe("NegotiationService.summary", () => {
       makePrisma({
         plans: [makePlan()],
         promises: [
-          makePromise({ id: "p-kept", status: "kept", amount: 200_000 }),
+          makePromise({
+            id: "p-kept",
+            status: "kept",
+            amount: 200_000,
+            amountPaid: 200_000
+          }),
           makePromise({ id: "p-broken", status: "broken", amount: 100_000 }),
           makePromise({ id: "p-viva", amount: 450_000 })
         ]

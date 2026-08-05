@@ -162,7 +162,7 @@ describe("PaymentEventsService — abono parcial", () => {
     );
   });
 
-  it("marca la promesa como parcial y no publica promise.kept", async () => {
+  it("marca la promesa como parcial, registra el abono y no publica promise.kept", async () => {
     const prisma = partialPrisma();
     await makeService(prisma).handlePaymentConfirmed("org1", {
       debt_id: "debt1",
@@ -171,9 +171,44 @@ describe("PaymentEventsService — abono parcial", () => {
     });
 
     expect(prisma.promiseToPay.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: "partial" } })
+      expect.objectContaining({
+        data: { status: "partial", amountPaid: 100_000 }
+      })
     );
     expect(published(kafka, "cobrai.promise.kept")).toBeUndefined();
+  });
+
+  it("el segundo abono que completa lo prometido la cierra como cumplida", async () => {
+    // Antes cada pago se comparaba contra el monto total de la promesa, así que
+    // dos abonos de la mitad nunca la cumplían y al vencer se fichaba como
+    // incumplido a quien había pagado todo.
+    const prisma = makePrisma({
+      debt: baseDebt({ status: "promised", amountOutstanding: 900_000 }),
+      promises: [
+        {
+          id: "prom1",
+          amount: 500_000,
+          amountPaid: 250_000,
+          promisedDate: new Date("2026-04-01")
+        }
+      ]
+    });
+    prisma.promiseToPay.count.mockResolvedValue(0);
+
+    await makeService(prisma).handlePaymentConfirmed("org1", {
+      debt_id: "debt1",
+      amount: 250_000,
+      amount_outstanding: 650_000
+    });
+
+    expect(prisma.promiseToPay.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: "kept", amountPaid: 500_000 }
+      })
+    );
+    expect(published(kafka, "cobrai.promise.kept")?.[2]).toMatchObject({
+      promise_id: "prom1"
+    });
   });
 
   it("considera abiertas las promesas parciales al buscar cuál cerrar", async () => {

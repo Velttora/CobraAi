@@ -7,22 +7,39 @@
 export type ResolvedPromiseStatus = "kept" | "partial";
 
 /**
- * Estado de una promesa cuando entra un pago a su deuda.
+ * Aplica un pago a una promesa: con qué estado queda y cuánto lleva abonado.
  *
- * - Deuda saldada por completo → la promesa se considera cumplida ("kept").
- * - Pago que cubre el monto prometido → "kept".
- * - Pago menor al prometido → "partial" (cumplió en parte, no se rompe).
+ * La cuenta corre contra el acumulado, no contra el pago suelto. Comparar solo
+ * el último abono hacía que quien pagaba $250.000 dos veces sobre una promesa
+ * de $500.000 nunca la cumpliera: cada pago se medía contra el total y perdía.
+ * La promesa quedaba `partial` y, al vencer, se fichaba como incumplida a
+ * alguien que había pagado todo lo que prometió.
+ *
+ * - Deuda saldada por completo → cumplida, sin importar el reparto.
+ * - Acumulado que cubre lo prometido → cumplida.
+ * - Cualquier otra cosa → parcial: abonó, sigue debiendo, no se rompe todavía.
  */
-export function resolvePromiseStatusForPayment(input: {
+export function applyPaymentToPromise(input: {
   promiseAmount: number;
+  /** Abonos previos contra esta misma promesa. */
+  alreadyPaid: number;
+  /** El pago que acaba de entrar. */
   amountPaid: number;
   debtPaidFull: boolean;
-}): ResolvedPromiseStatus {
-  if (input.debtPaidFull) return "kept";
-  if (input.promiseAmount > 0 && input.amountPaid >= input.promiseAmount) {
-    return "kept";
+}): { status: ResolvedPromiseStatus; amountPaid: number } {
+  const total = Math.max(0, input.alreadyPaid) + Math.max(0, input.amountPaid);
+  const covered = input.promiseAmount > 0 && total >= input.promiseAmount;
+
+  if (input.debtPaidFull || covered) {
+    return {
+      status: "kept",
+      // No acreditar de más: una promesa cumplida queda cubierta por su monto,
+      // aunque el pago que la cerró fuera mayor o cerrara la deuda entera.
+      amountPaid: input.promiseAmount > 0 ? input.promiseAmount : total
+    };
   }
-  return "partial";
+
+  return { status: "partial", amountPaid: total };
 }
 
 /**

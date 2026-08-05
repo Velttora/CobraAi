@@ -64,6 +64,8 @@ export interface InstallmentLike {
   status: string;
   promisedDate: Date | null;
   amount: number;
+  /** Abonado acumulado contra la cuota, que puede ser menor a `amount`. */
+  amountPaid: number;
 }
 
 /**
@@ -110,7 +112,9 @@ export function summarizePlanProgress(
 
   return {
     installmentsPaid: paid.length,
-    amountPaid: paid.reduce((sum, i) => sum + i.amount, 0),
+    // Suma los abonos, no las cuotas cerradas: un plan con dos cuotas pagadas y
+    // una tercera abonada a medias mostraba ese abono como cero.
+    amountPaid: installments.reduce((sum, i) => sum + i.amountPaid, 0),
     nextDueDate: unpaid[0]?.promisedDate ?? null,
     oldestOverdueDate: overdue[0]?.promisedDate ?? null
   };

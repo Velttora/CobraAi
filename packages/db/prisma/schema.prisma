@@ -478,6 +478,9 @@ model PromiseToPay {
   planId            String?       @map("plan_id") @db.Uuid
   installmentNumber Int?          @map("installment_number")
   amount            Decimal       @db.Decimal(15, 2)
+  /// Abonado acumulado contra este compromiso. Sin él, cada pago se comparaba
+  /// solo contra sí mismo y dos abonos de la mitad nunca cumplían la promesa.
+  amountPaid        Decimal       @default(0) @map("amount_paid") @db.Decimal(15, 2)
   promisedDate      DateTime      @map("promised_date") @db.Date
   status            PromiseStatus @default(pending)
   notes             String?
