@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AlertFeed } from "./AlertFeed";
+import { CommitmentKpis } from "./CommitmentKpis";
 import { DebtTable } from "./DebtTable";
 import { KPICard } from "./KPICard";
 import { PortfolioProjectionView } from "./PortfolioProjectionView";
@@ -222,20 +223,16 @@ export function DashboardView() {
             <h2 className="mb-3 text-sm font-semibold text-slate-500 dark:text-slate-400">
               Operaciones hoy
             </h2>
-            <div className="grid gap-4 sm:grid-cols-3">
+            {/* Solo métricas del día. "Promesas activas" vivía aquí siendo un
+                acumulado, y además contaba cada cuota de un plan como una
+                promesa: el bloque "Promesas y acuerdos" lo mide bien. */}
+            <div className="grid gap-4 sm:grid-cols-2">
               <KPICard
                 hint="Toca para ver el detalle"
                 label="Contactos hoy"
                 loading={workflowStatsQuery.isLoading}
                 onClick={() => setDrawerKind("contacts")}
                 value={String(opsStats?.contacts_today ?? 0)}
-              />
-              <KPICard
-                hint="Toca para ver el detalle"
-                label="Promesas activas"
-                loading={workflowStatsQuery.isLoading}
-                onClick={() => setDrawerKind("promises")}
-                value={String(opsStats?.active_promises ?? 0)}
               />
               <KPICard
                 alert={(opsStats?.escalations_today ?? 0) > 0}
@@ -247,6 +244,8 @@ export function DashboardView() {
               />
             </div>
           </div>
+
+          <CommitmentKpis />
 
           <div className="space-y-6">
             <RecoveryChart debts={allDebts} loading={metricsQuery.isLoading} />
