@@ -126,6 +126,37 @@ describe("TenantIntegrationService — read paths", () => {
 
       expect(prisma.tenantIntegration.findUnique).toHaveBeenCalledTimes(2);
     });
+
+    it("stops retaining a decrypted credential once its TTL has passed", async () => {
+      vi.useFakeTimers();
+      const shortTtlService = new TenantIntegrationService(prisma as never, 1_000);
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow());
+
+      await shortTtlService.resolve("tenantA", "sendgrid");
+      vi.advanceTimersByTime(1_001);
+      // Re-resolving a DIFFERENT provider must not keep the expired secret
+      // alive: an expired entry still holds plaintext, so it has to be dropped
+      // rather than left until someone happens to ask for it again.
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow({ provider: "stripe" }));
+      await shortTtlService.resolve("tenantA", "stripe");
+
+      const cache = (shortTtlService as never as { cache: { size: number } }).cache;
+      expect(cache.size).toBe(1);
+    });
+
+    it("does not grow the cache without bound as more tenants are resolved", async () => {
+      vi.useFakeTimers();
+      const shortTtlService = new TenantIntegrationService(prisma as never, 1_000);
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow());
+
+      for (let i = 0; i < 200; i++) {
+        await shortTtlService.resolve(`tenant-${i}`, "sendgrid");
+        vi.advanceTimersByTime(1_001);
+      }
+
+      const cache = (shortTtlService as never as { cache: { size: number } }).cache;
+      expect(cache.size).toBeLessThan(200);
+    });
   });
 
   describe("hasVerifiedChannel", () => {

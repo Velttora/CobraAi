@@ -4,13 +4,10 @@ import type { IntegrationMode, IntegrationProvider, IntegrationStatus, PrismaSer
 import { CHANNEL_PROVIDERS, PROVIDER_CHANNEL, WEBHOOK_CAPABLE_PROVIDERS } from "./types";
 import type { DecryptedIntegration, IntegrationChannel, IntegrationView, SecretMeta } from "./types";
 import { verifyCredentials } from "./verifiers";
+import { CredentialCache } from "./credential-cache";
 import { buildSecretsMeta, safeDecryptSecrets } from "./secrets-codec";
 import type { StoredSecretsMeta } from "./secrets-codec";
 
-interface CacheEntry {
-  value: DecryptedIntegration | null;
-  expiresAt: number;
-}
 
 export interface UpsertIntegrationInput {
   tenantId: string;
@@ -50,12 +47,14 @@ export interface UpsertIntegrationInput {
  * provider, following the `packages/compliance` precedent.
  */
 export class TenantIntegrationService {
-  private readonly cache = new Map<string, CacheEntry>();
+  private readonly cache: CredentialCache;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly ttlMs = 30_000
-  ) {}
+    ttlMs = 30_000
+  ) {
+    this.cache = new CredentialCache(ttlMs);
+  }
 
   /**
    * Resolves the decrypted credential set for `(tenantId, provider)`, or
@@ -64,18 +63,15 @@ export class TenantIntegrationService {
    * cached too, so an unconfigured channel does not hit Prisma on every send.
    */
   async resolve(tenantId: string, provider: IntegrationProvider): Promise<DecryptedIntegration | null> {
-    const cacheKey = `${tenantId}:${provider}`;
-    const cached = this.cache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.value;
-    }
+    const cached = this.cache.get(tenantId, provider);
+    if (cached !== undefined) return cached;
 
     const row = await this.prisma.tenantIntegration.findUnique({
       where: { tenantId_provider: { tenantId, provider } }
     });
 
     const value = this.decryptRowIfVerified(row as TenantIntegration | null);
-    this.cache.set(cacheKey, { value, expiresAt: Date.now() + this.ttlMs });
+    this.cache.set(tenantId, provider, value);
     return value;
   }
 
@@ -270,7 +266,7 @@ export class TenantIntegrationService {
 
   /** Evicts the cache entry for `(tenantId, provider)`, forcing the next `resolve` to hit Prisma. */
   invalidate(tenantId: string, provider: IntegrationProvider): void {
-    this.cache.delete(`${tenantId}:${provider}`);
+    this.cache.delete(tenantId, provider);
   }
 
   private decryptRowIfVerified(row: TenantIntegration | null): DecryptedIntegration | null {
