@@ -1,3 +1,5 @@
+import type { BrandIdentity } from "@cobrai/utils";
+
 export interface ApiMeta {
   request_id: string;
   timestamp: string;
@@ -36,6 +38,8 @@ export interface Tenant {
   slug: string;
   plan: string;
   contactRetryPolicy: ContactRetryPolicy;
+  /** Company identity shown to a debtor across every channel (08-15). */
+  brandIdentity?: BrandIdentity;
 }
 
 export interface Portfolio {
