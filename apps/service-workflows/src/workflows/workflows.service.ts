@@ -18,7 +18,6 @@ import {
   getAgingBucket,
   planOperationalScores,
   PROMISE_SAFE_DEBT_STATUSES,
-  resolveDebtStatusAfterPayment,
   startOfTodayUtc
 } from "@cobrai/utils";
 import { isAutomationGraceActive } from "@cobrai/workflow-packages";
@@ -205,47 +204,22 @@ export class WorkflowsService {
     });
   }
 
-  async handlePaymentConfirmed(
+  /**
+   * Reacciona a un pago ya aplicado por service-portfolios.
+   *
+   * No escribe el estado de la deuda: ese cálculo vive completo en
+   * PaymentEventsService, que es quien tiene el saldo, las promesas y los planes
+   * resueltos en el mismo paso. Duplicarlo aquí hacía que el estado final
+   * dependiera de qué consumidor de `cobrai.payment.confirmed` ganara la
+   * carrera.
+   */
+  async handlePaymentApplied(
     tenantId: string,
     payload: Record<string, unknown>
   ): Promise<void> {
     const debtId = String(payload.debt_id ?? "");
     if (!debtId) return;
 
-    const debt = await this.getDebt(tenantId, debtId);
-    const outstanding = Number(
-      payload.amount_outstanding ?? debt.amountOutstanding ?? 0
-    );
-
-    const hasActivePaymentPlan = Boolean(
-      await this.prisma.paymentPlan.findFirst({
-        where: {
-          tenantId,
-          debtId,
-          status: "active",
-          deletedAt: null
-        },
-        select: { id: true }
-      })
-    );
-    const pendingStandalone = await this.prisma.promiseToPay.count({
-      where: {
-        tenantId,
-        debtId,
-        status: "pending",
-        planId: null,
-        deletedAt: null
-      }
-    });
-
-    const nextStatus = resolveDebtStatusAfterPayment({
-      currentStatus: debt.status,
-      amountOutstanding: outstanding,
-      hasActivePaymentPlan,
-      hasPendingStandalonePromise: pendingStandalone > 0
-    });
-
-    await this.applyTransition(tenantId, debtId, "PAYMENT_CONFIRMED", nextStatus);
     await this.evaluateTriggerRules(tenantId, debtId, "payment_confirmed");
   }
 
@@ -790,7 +764,10 @@ export class WorkflowsService {
     const brokenPromises = await this.prisma.promiseToPay.findMany({
       where: {
         tenantId,
-        status: "pending",
+        // `partial` también vence. Filtrar solo `pending` volvía inmortal a
+        // toda promesa con un abono encima: nunca se rompía, la deuda no
+        // regresaba a gestión y el compromiso quedaba abierto para siempre.
+        status: { in: ["pending", "partial"] },
         promisedDate: { lt: startOfTodayUtc() },
         deletedAt: null,
         // No marcar como rota una promesa cuya deuda ya está saldada/castigada:

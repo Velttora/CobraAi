@@ -8,7 +8,10 @@ const CONSUMED_TOPICS = [
   "cobrai.debt.segmented",
   "cobrai.contact.effective",
   "cobrai.contact.no_response",
-  "cobrai.payment.confirmed",
+  // `payment.applied`, no `payment.confirmed`: lo publica service-portfolios
+  // después de escribir saldo y estado, así que las condiciones de las reglas
+  // se evalúan sobre la deuda ya actualizada.
+  "cobrai.payment.applied",
   "cobrai.promise.kept"
 ] as const;
 
@@ -84,8 +87,8 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
       case "cobrai.contact.no_response":
         await this.workflows.handleContactNoResponse(tenantId, payload);
         break;
-      case "cobrai.payment.confirmed":
-        await this.workflows.handlePaymentConfirmed(tenantId, payload);
+      case "cobrai.payment.applied":
+        await this.workflows.handlePaymentApplied(tenantId, payload);
         break;
       case "cobrai.promise.kept":
         await this.workflows.handlePromiseKept(tenantId, payload);

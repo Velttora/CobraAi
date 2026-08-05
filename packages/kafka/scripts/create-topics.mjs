@@ -17,6 +17,10 @@ const TOPICS = [
   "cobrai.whatsapp.message_received",
   "cobrai.email.message_received",
   "cobrai.payment.confirmed",
+  // Publicado por service-portfolios cuando el pago ya se aplicó a la deuda
+  // (saldo y estado escritos). Es el que dispara las reglas de workflows.
+  "cobrai.payment.applied",
+  "cobrai.promise.kept",
   "cobrai.debt.created",
   "cobrai.debt.segmented",
   "cobrai.debt.updated",
