@@ -17,7 +17,8 @@ export function buildRow(overrides: Record<string, unknown> = {}) {
     apiKey: "sk_live_abcd1234"
   };
   const { ciphertext, keyVersion } = encryptSecretBundle(secrets, 1);
-  const { secretsPlain: _drop, ...rest } = overrides;
+  const rest = { ...overrides };
+  delete rest["secretsPlain"];
   return {
     id: "row-1",
     tenantId: "tenantA",
