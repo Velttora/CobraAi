@@ -8,3 +8,4 @@ export type {
 } from "./types";
 export { TenantIntegrationService } from "./tenant-integration.service";
 export type { UpsertIntegrationInput } from "./tenant-integration.service";
+export { verifyCredentials } from "./verifiers";
