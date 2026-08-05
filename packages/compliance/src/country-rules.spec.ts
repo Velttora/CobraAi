@@ -5,7 +5,7 @@ import { getZonedParts } from "./timezone";
 const CO_HOURS = {
   startHour: 8,
   endHour: 18,
-  days: [0, 1, 2, 3, 4, 5, 6]
+  days: [1, 2, 3, 4, 5]
 };
 
 describe("isWithinHours (zona horaria local)", () => {
@@ -31,6 +31,16 @@ describe("isWithinHours (zona horaria local)", () => {
     const mxHours = { startHour: 7, endHour: 22, days: [1, 2, 3, 4, 5, 6] };
     expect(isWithinHours(at, mxHours, "America/Mexico_City")).toBe(false);
   });
+
+  it("Colombia: domingo local bloqueado", () => {
+    const at = new Date("2026-05-24T15:00:00.000Z"); // dom 10:00 Bogotá
+    expect(isWithinHours(at, CO_HOURS, "America/Bogota")).toBe(false);
+  });
+
+  it("Colombia: sábado local bloqueado", () => {
+    const at = new Date("2026-05-23T15:00:00.000Z"); // sáb 10:00 Bogotá
+    expect(isWithinHours(at, CO_HOURS, "America/Bogota")).toBe(false);
+  });
 });
 
 describe("nextValidSendTime", () => {
@@ -39,5 +49,14 @@ describe("nextValidSendTime", () => {
     const next = nextValidSendTime(from, CO_HOURS, "America/Bogota");
     expect(getZonedParts(next, "America/Bogota").hour).toBe(8);
     expect(getZonedParts(next, "America/Bogota").day).toBe(26);
+  });
+
+  it("salta el fin de semana colombiano al lunes siguiente", () => {
+    const from = new Date("2026-05-23T15:00:00.000Z"); // sábado 10:00 Bogotá
+    const next = nextValidSendTime(from, CO_HOURS, "America/Bogota");
+    const parts = getZonedParts(next, "America/Bogota");
+    expect(parts.dayOfWeek).toBe(1); // lunes
+    expect(parts.hour).toBe(8);
+    expect(parts.day).toBe(25);
   });
 });

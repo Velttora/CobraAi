@@ -128,6 +128,60 @@ describe("ComplianceService", () => {
     expect(result.reason).toBe("frequency_limit");
   });
 
+  it("bloquea Colombia domingo", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.findFirst.mockResolvedValue(null);
+
+    const result = await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "email",
+      at: new Date("2026-05-24T15:00:00.000Z") // domingo 10:00 Bogotá
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("outside_hours");
+  });
+
+  it("bloquea Colombia sábado", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.findFirst.mockResolvedValue(null);
+
+    const result = await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "email",
+      at: new Date("2026-05-23T15:00:00.000Z") // sábado 10:00 Bogotá
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("outside_hours");
+  });
+
+  it("bloquea Colombia frecuencia diaria por canal", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.count.mockResolvedValue(1);
+
+    const result = await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "whatsapp",
+      at: new Date("2026-05-26T15:00:00.000Z") // martes 10:00 Bogotá
+    });
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("frequency_limit");
+  });
+
   it("bloquea en cooldown de reintento tras un ciclo sin respuesta", async () => {
     prisma.debtor.findFirst.mockResolvedValue(
       debtor({ address: { country: "CO" } })
