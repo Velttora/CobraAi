@@ -94,6 +94,7 @@ original el 2026-07-23; ver desviaciones abajo.
 - [x] Tests: componentes React (RTL) — agregada infraestructura `@testing-library/react` + jsdom (no existía en el repo); tests de `MessageBubble`, `ConversationThread`, `ReplyInput`. E2E Playwright básico (`e2e/conversations.spec.ts`)
 
 **Desviaciones del scope original (decisiones de diseño, no gaps):**
+
 - `/calls` como ruta separada **no se construyó**; su función (lista de llamadas + transcript colapsable) quedó integrada al inbox unificado de `/conversations` (tab "Voz" + `VoiceCallBubble` dentro de `MessageBubble.tsx`) — un solo inbox en vez de dos, cobertura funcional equivalente.
 - `TranscriptViewer.tsx` como componente separado no se construyó; su lógica vive inline en `VoiceCallBubble` (mismo archivo `MessageBubble.tsx`).
 - SMS quedó fuera de los filtros de canal de `/conversations` porque el canal está deshabilitado globalmente por flag (sin proveedor CO) — no hay datos que listar.
@@ -187,6 +188,7 @@ Phase 6 requiere Phase 5 completa (el agente de email usa la memoria unificada).
 **Salida:** En un día festivo colombiano ningún envío pasa el gate de compliance; `next_allowed_at` apunta al próximo día hábil no festivo.
 
 **Scope:**
+
 - Modelo Prisma `Holiday { id, date @unique, name }` + migración (tabla mínima, Colombia).
 - Seed idempotente (upsert) con festivos CO 2026 y 2027; script anual re-corrible siguiendo el patrón `packages/db/src/seed-*.ts`.
 - Chequeo `isHoliday(localDate)` en `packages/compliance` (ComplianceService), aplicado tanto en `checkContact` como en `isChannelEligible`; nueva razón `"holiday"` en `ContactCheckResult`, con `next_allowed_at` al próximo día hábil no festivo.
@@ -200,6 +202,69 @@ Plans:
 
 - [x] 07-01-PLAN.md — Modelo Prisma `Holiday` + migración `add_holidays` + seed idempotente CO 2026/2027 + script `db:seed:holidays` (Wave 1)
 - [x] 07-02-PLAN.md — Razón `holiday` + `isHoliday`/`nextNonHolidaySendTime` + gate en `checkContact` e `isChannelEligible` + tests (Wave 2)
+
+### Phase 8: Configuración por Tenant (BYO): canales e identidad de cobro
+
+**Goal:** Toda comunicación y todo cobro salen a título de la empresa cliente (tenant), con sus propias credenciales y su propio enlace de pago — la plataforma solo orquesta.
+**Entrada:** Twilio, SendGrid, Vapi y los gateways de pago usan credenciales globales de plataforma (`.env`); lo único por tenant hoy es `settings.whatsappFromNumber`. Los adaptadores de cobro existentes son `conekta` (México), `mercadopago` (con `MP_ACCESS_TOKEN` global) y `transfer`, y `GatewayService` lee las llaves desde `ConfigService`.
+**Salida:** Cada tenant registra sus credenciales (Twilio, SendGrid, Vapi) y su método de cobro; los mensajes salen desde su número/dominio/voz y el deudor recibe un enlace de pago de la cuenta del tenant. Un tenant sin credenciales para un canal no envía por ese canal, y sin gateway solo puede cobrar por transferencia manual.
+
+**Alcance: backend y frontend.** Incluye la sección `Settings > Integraciones` del dashboard.
+
+**Decisiones tomadas (2026-07-29 / 2026-08-04, con el usuario — detalle completo en `08-CONTEXT.md`):**
+
+- **Comunicaciones: modelo híbrido — managed por defecto, BYO opcional.** Por defecto la plataforma aprovisiona vía API la infraestructura del tenant (subcuenta de Twilio, subuser de SendGrid) para que configure lo mínimo; un tenant que ya tiene proveedor propio puede traer sus credenciales. El adaptador resuelve credenciales igual en ambos modos.
+- **WhatsApp + voz: Twilio vía el programa Tech Provider (ISV).** El tenant hace Embedded Signup, lo que crea **su propio WABA bajo su Meta Business**; la plataforma crea su subcuenta de Twilio y conecta el WABA con la Senders API. Twilio permite un solo WABA por cuenta → una subcuenta por tenant.
+- **Email: subusers de SendGrid** creados por API. El tenant solo publica los CNAME de autenticación en su DNS — irreducible si el correo ha de salir firmado a su nombre.
+- **Voz: Vapi sigue siendo de la plataforma** (credencial global). Lo que cambia por tenant es el número saliente: se importa su número de Twilio a la cuenta Vapi vía API y se persiste el `vapiPhoneNumberId`.
+- **Pagos: BYO obligatorio, sin modelo managed.** Stripe lista "debt collection agencies" en negocios prohibidos y Colombia no está soportada para cuentas conectadas de Connect; Mercado Pago prohíbe terceros que procesen pagos de compañías de cobranza. Nunca centralizar dinero bajo la cuenta de la plataforma.
+- **Gateways a implementar:** Stripe, Wompi (Bancolombia), PayU Colombia, ePayco, Mercado Pago Colombia, y **enlace externo** como plantilla con `{monto}`/`{ref}`.
+- **Riesgo aceptado:** bajo el modelo ISV el titular ante Twilio es la plataforma, y Twilio puede suspender la cuenta entera por tráfico no conforme de un solo cliente. Su AUP prohíbe *third-party* debt collection; el tenant cobrando deuda propia es primera parte. El modo BYO queda como válvula de escape.
+- **Fuera de alcance:** SMS (deshabilitado por flag, con Bird), dLocal Go, `conekta` (México, se deprecia), y el wizard de onboarding obligatorio.
+
+**Investigación (2026-07-29 / 2026-08-04):**
+
+- Gateways que exigen entidad colombiana (NIT + RUT + cuenta local): **Wompi** (desembolsa solo a cuenta Bancolombia a nombre del NIT), **ePayco**, **PayU CO**, **Mercado Pago CO**. **Stripe** solo admite entidad de EE. UU. y no procesa PSE ni wallets locales.
+- Opciones LLC-friendly con PSE (**dLocal Go**, EBANX, Nuvei, Rapyd) quedaron fuera: con BYO puro en pagos, el tenant colombiano usa su propio gateway con su NIT.
+
+**Scope:**
+
+- Modelo `TenantIntegration` (`unique(tenantId, provider)`, `mode: managed | byo`) con secretos **cifrados AES-256-GCM** y `keyVersion` rotable — no en `Tenant.settings`, que se expone vía `tenant-profile.dto.ts`. No existe ninguna utilidad de cifrado en el repo todavía.
+- Aprovisionamiento vía API: creación de subcuenta de Twilio y subuser de SendGrid, registro del sender de WhatsApp con la Senders API, e importación del número a Vapi. Verificación síncrona contra el proveedor al guardar (`verified | failed` + `verifiedAt`).
+- Resolución de credenciales **por request** en cada adapter (`TwilioWhatsAppAdapter`, `EmailAdapter`, `VapiVoiceAdapter`), que hoy las cachean en el constructor, sin romper la firma de `contacts.service.ts`.
+- `GatewayService` deja de leer `ConfigService`; `PaymentLink` separa `provider` de `method` (el enum actual mezcla ambos) con migración de datos; adaptadores Stripe/Wompi/PayU/ePayco/MP + enlace externo con plantilla.
+- **Ruteo de webhooks por URL con token opaco** (`/webhooks/{proveedor}/{token}`) para Twilio WA, SendGrid Inbound Parse y cada gateway, **fail closed** si falta el secreto de firma. El webhook de Vapi sigue compartido, porque la cuenta es de la plataforma.
+- Razón nueva `channel_not_configured` en `ComplianceService`: el canal se marca no elegible, el workflow salta al siguiente configurado y escala a humano si no queda ninguno. El **modo simulado** (hoy los cinco adaptadores devuelven `sent` sin enviar nada) queda tras flag explícito y bloqueado en `NODE_ENV=production`.
+- Migración de datos idempotente que siembra las credenciales globales actuales como `TenantIntegration` de los tenants existentes, para que el corte no tumbe a nadie.
+- Identidad de marca del tenant inyectada en `variables.empresa` de las plantillas, en los prompts del agente LLM y en `strategy_context.variables` de Vapi. El reply del email pasa a usar siempre el dominio del tenant.
+- **Frontend:** `Settings > Integraciones` con cuatro pantallas — conexión de canales (incluido el flujo de navegador de Embedded Signup con el SDK de Meta), configuración de cobro con campos write-only, identidad de marca con vista previa del mensaje, y estado/salud de integraciones con las deudas no contactadas por falta de configuración.
+- Tests unitarios + integración de webhooks + tests de la UI de settings.
+
+**Requirements**: D-01 … D-26 (decisiones de `08-CONTEXT.md`; este proyecto no tiene `REQUIREMENTS.md`)
+**Depends on:** Phases 1, 2, 3, 6 (reemplaza la configuración global que esas fases introdujeron)
+**Plans:** 19 plans en 7 olas
+
+Plans:
+
+- [ ] 08-01-PLAN.md — Cifrado AES-256-GCM + modelo `TenantIntegration` + migración [ola 1]
+- [ ] 08-02-PLAN.md — Verificación de contratos de proveedor (Twilio Senders, Vapi import, SendGrid subusers) [ola 1]
+- [ ] 08-03-PLAN.md — Paquete `@cobrai/integrations`: resolución de credenciales por request + verificadores [ola 2]
+- [ ] 08-04-PLAN.md — Separación `provider`/`method` en pagos + migración con backfill medido [ola 2]
+- [ ] 08-05-PLAN.md — `channel_not_configured` en compliance + escalamiento a humano sin canal [ola 3]
+- [ ] 08-06-PLAN.md — Migración de datos idempotente que siembra las credenciales globales (D-18) [ola 3]
+- [ ] 08-07-PLAN.md — Aprovisionamiento Twilio ISV (subcuenta + Senders API) e importación del número a Vapi [ola 3]
+- [ ] 08-08-PLAN.md — Adaptadores de pasarela: Stripe, Mercado Pago, Wompi, PayU, ePayco [ola 3]
+- [ ] 08-09-PLAN.md — Despacho por configuración del tenant + enlace externo con plantilla + transferencia [ola 4]
+- [ ] 08-10-PLAN.md — Refactor de adaptadores a credenciales por request + flag de simulación + dominio de respuesta [ola 4]
+- [ ] 08-11-PLAN.md — Aprovisionamiento SendGrid: subuser, llave propia, autenticación de dominio y CNAME [ola 4]
+- [ ] 08-12-PLAN.md — Webhooks de pago con token opaco y verificación fail-closed [ola 5]
+- [ ] 08-13-PLAN.md — Webhooks de canal con token opaco + dominio de respuesta por tenant [ola 5]
+- [ ] 08-14-PLAN.md — API de integraciones (write-only, admin) + salud + deudas sin contactar [ola 5]
+- [ ] 08-15-PLAN.md — Identidad de marca e inyección en WhatsApp, correo, voz y el agente LLM [ola 6]
+- [ ] 08-16-PLAN.md — Primitivas de UI, hook de datos y esqueleto de `Settings > Integraciones` [ola 6]
+- [ ] 08-17-PLAN.md — Pantalla 1: conexión de canales (BYO primero, Embedded Signup con fallback) [ola 7]
+- [ ] 08-18-PLAN.md — Pantalla 2: configuración de cobro y editor de plantilla de enlace [ola 7]
+- [ ] 08-19-PLAN.md — Pantallas 3 y 4: identidad de marca con vista previa, y estado/salud [ola 7]
 
 ---
 
