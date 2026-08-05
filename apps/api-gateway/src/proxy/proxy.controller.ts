@@ -18,7 +18,9 @@ const SERVICE_ROUTES: ServiceRoute[] = [
   { prefix: "/api/v1/templates", envKey: "SERVICE_NOTIFICATIONS_URL" },
   { prefix: "/api/v1/payments", envKey: "SERVICE_PAYMENTS_URL" },
   { prefix: "/api/v1/payment-links", envKey: "SERVICE_PAYMENTS_URL" },
-  { prefix: "/api/v1/audit-logs", envKey: "SERVICE_PORTFOLIOS_URL" }
+  { prefix: "/api/v1/audit-logs", envKey: "SERVICE_PORTFOLIOS_URL" },
+  // Settings > Integraciones (Phase 8, plan 08-14).
+  { prefix: "/api/v1/integrations", envKey: "SERVICE_NOTIFICATIONS_URL" }
 ];
 
 @Controller()
@@ -45,7 +47,11 @@ export class ProxyController {
     "api/v1/payment-links",
     "api/v1/payment-links/*",
     "api/v1/audit-logs",
-    "api/v1/audit-logs/*"
+    "api/v1/audit-logs/*",
+    // SERVICE_ROUTES above and this @All path list are two separate lists that
+    // must stay in sync — a route added to only one silently 404s.
+    "api/v1/integrations",
+    "api/v1/integrations/*"
   ])
   async proxy(
     @Req() req: AuthenticatedRequest,
