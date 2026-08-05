@@ -1,12 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { decryptSecretBundle, encryptSecretBundle, lastFour } from "@cobrai/utils";
-import type { IntegrationMode, IntegrationProvider, PrismaService, TenantIntegration } from "@cobrai/db";
+import { encryptSecretBundle } from "@cobrai/utils";
+import type { IntegrationMode, IntegrationProvider, IntegrationStatus, PrismaService, TenantIntegration } from "@cobrai/db";
 import { CHANNEL_PROVIDERS, PROVIDER_CHANNEL, WEBHOOK_CAPABLE_PROVIDERS } from "./types";
 import type { DecryptedIntegration, IntegrationChannel, IntegrationView, SecretMeta } from "./types";
 import { verifyCredentials } from "./verifiers";
-
-/** Persisted shape of `TenantIntegration.secretsMeta` — a map of field name to redacted metadata. */
-type StoredSecretsMeta = Record<string, { lastFour: string | null; savedAt: string | null }>;
+import { buildSecretsMeta, safeDecryptSecrets } from "./secrets-codec";
+import type { StoredSecretsMeta } from "./secrets-codec";
 
 interface CacheEntry {
   value: DecryptedIntegration | null;
@@ -25,6 +24,17 @@ export interface UpsertIntegrationInput {
    * still gates on `status === "verified"` for these providers.
    */
   skipVerification?: boolean;
+  /**
+   * Bypasses both `verifyCredentials` and the `skipVerification` shortcut,
+   * writing an exact status/failureMessage/verifiedAt directly. Used by
+   * orchestrators (e.g. `WhatsAppConnectService`, plan 08-07) that compute
+   * status from a provider-specific state machine — a Twilio Channels
+   * Sender's `CREATING`/`OFFLINE`/`VERIFYING`/`ONLINE` progression, or a
+   * downstream provisioning step's own success/failure (e.g. the Vapi
+   * number import backing `twilio_voice`) — rather than the generic
+   * account-level health check `verifyCredentials` runs.
+   */
+  overrideStatus?: { status: IntegrationStatus; failureMessage?: string | null; verifiedAt?: Date | null };
   /** Base URL used by `toView` to build the per-integration webhook URL. */
   baseWebhookUrl: string;
 }
@@ -107,6 +117,23 @@ export class TenantIntegrationService {
   }
 
   /**
+   * Resolves the decrypted credential set for `(tenantId, provider)`
+   * regardless of `status` — unlike `resolve`, which gates on `verified`.
+   * Needed by orchestrators that must re-read a row sitting in an
+   * intermediate state (e.g. `pending_meta`) to poll a provider for its
+   * current status (plan 08-07's `WhatsAppConnectService.refreshSenderStatus`).
+   * Not cached, like `resolveByWebhookToken`: this path is low-volume
+   * (status-refresh polling), not the per-send hot path `resolve` serves.
+   */
+  async resolveAny(tenantId: string, provider: IntegrationProvider): Promise<DecryptedIntegration | null> {
+    const row = await this.prisma.tenantIntegration.findUnique({
+      where: { tenantId_provider: { tenantId, provider } }
+    });
+    if (!row || (row as TenantIntegration).deletedAt) return null;
+    return this.decryptRow(row as TenantIntegration);
+  }
+
+  /**
    * Saves (creates or rotates) a tenant's credentials for `provider`. Runs a
    * live verification (D-11) unless `skipVerification` is set, encrypts the
    * merged secret bundle, and never persists a plaintext value outside
@@ -119,7 +146,7 @@ export class TenantIntegrationService {
 
     const existingSecrets =
       existing?.secretsCipher && !existing.deletedAt
-        ? (this.safeDecryptSecrets(existing.secretsCipher as Buffer, existing.keyVersion, existing.tenantId, input.provider) ??
+        ? (safeDecryptSecrets(existing.secretsCipher as Buffer, existing.keyVersion, existing.tenantId, input.provider) ??
           {})
         : {};
     // Rotation is per-field: an unsent field keeps its previously stored value.
@@ -130,7 +157,12 @@ export class TenantIntegrationService {
     let verifiedAt: Date | null;
     let publicConfig = input.publicConfig;
 
-    if (input.skipVerification) {
+    if (input.overrideStatus) {
+      status = input.overrideStatus.status;
+      failureMessage = input.overrideStatus.failureMessage ?? null;
+      verifiedAt =
+        input.overrideStatus.verifiedAt ?? (status === "verified" ? new Date() : (existing?.verifiedAt ?? null));
+    } else if (input.skipVerification) {
       status = "verified";
       failureMessage = null;
       verifiedAt = new Date();
@@ -148,7 +180,7 @@ export class TenantIntegrationService {
     }
 
     const { ciphertext, keyVersion } = encryptSecretBundle(mergedSecrets);
-    const secretsMeta = this.buildSecretsMeta(mergedSecrets);
+    const secretsMeta = buildSecretsMeta(mergedSecrets);
 
     const webhookToken =
       existing?.webhookToken ??
@@ -248,7 +280,7 @@ export class TenantIntegrationService {
 
   private decryptRow(row: TenantIntegration): DecryptedIntegration | null {
     if (!row.secretsCipher) return null;
-    const secrets = this.safeDecryptSecrets(row.secretsCipher as Buffer, row.keyVersion, row.tenantId, row.provider);
+    const secrets = safeDecryptSecrets(row.secretsCipher as Buffer, row.keyVersion, row.tenantId, row.provider);
     if (!secrets) return null;
     return {
       id: row.id,
@@ -261,38 +293,5 @@ export class TenantIntegrationService {
       webhookToken: row.webhookToken,
       verifiedAt: row.verifiedAt
     };
-  }
-
-  /**
-   * Decrypts a ciphertext buffer, catching and logging any failure without
-   * ever including the ciphertext in the log line (T-08-03e) — a corrupted
-   * row must degrade to "not configured", never crash a send.
-   */
-  private safeDecryptSecrets(
-    ciphertext: Buffer,
-    keyVersion: number,
-    tenantId: string,
-    provider: IntegrationProvider
-  ): Record<string, string> | null {
-    try {
-      return decryptSecretBundle(ciphertext, keyVersion);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[TenantIntegrationService] failed to decrypt secretsCipher for tenant=${tenantId} provider=${provider}: ${
-          (err as Error).message
-        }`
-      );
-      return null;
-    }
-  }
-
-  private buildSecretsMeta(secrets: Record<string, string>): StoredSecretsMeta {
-    const savedAt = new Date().toISOString();
-    const meta: StoredSecretsMeta = {};
-    for (const [field, value] of Object.entries(secrets)) {
-      meta[field] = { lastFour: lastFour(value), savedAt };
-    }
-    return meta;
   }
 }
