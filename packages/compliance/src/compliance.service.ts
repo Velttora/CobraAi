@@ -1,27 +1,28 @@
-import { PrismaService } from "@cobrai/db";
-import {
-  isWithinHours,
-  nextValidSendTime,
-  resolveCountryRules,
-  resolveRetryPolicy
-} from "./country-rules";
-import { addLocalDays, getZonedParts, zonedTimeToUtc } from "./timezone";
+import { PrismaService, type ContactChannel } from "@cobrai/db";
+import type { IntegrationChannel } from "@cobrai/integrations";
+import { TenantIntegrationService } from "@cobrai/integrations";
+import { isWithinHours, nextValidSendTime, resolveCountryRules } from "./country-rules";
+import { isHoliday, nextNonHolidaySendTime } from "./holiday-rules";
+import { computeRetryState } from "./retry-state";
 import { ConsentService } from "./consent.service";
 import { OptOutService } from "./opt-out.service";
 import { AuditService } from "./audit.service";
 import {
   countryFromAddress,
   type ContactCheckInput,
-  type ContactCheckResult,
-  type CountryHours
+  type ContactCheckResult
 } from "./types";
+
+/** ContactChannel members with no matching TenantIntegration to gate on (D-16). */
+const UNGATED_CHANNELS: ReadonlySet<ContactChannel> = new Set(["internal", "portal"]);
 
 export class ComplianceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly consent: ConsentService,
     private readonly optOut: OptOutService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly integrations: TenantIntegrationService
   ) {}
 
   async checkContact(input: ContactCheckInput): Promise<ContactCheckResult> {
@@ -57,18 +58,24 @@ export class ComplianceService {
       ))
     ) {
       result = { allowed: false, reason: "no_consent" };
+    } else if (!(await this.isChannelConfigured(input.tenantId, input.channel))) {
+      // Deliberate placement: opt-out and consent are more specific reasons and must
+      // win over this one, but an unconfigured channel is a hard block that no amount
+      // of waiting resolves, so no next_allowed_at is set (D-16).
+      result = { allowed: false, reason: "channel_not_configured" };
     } else if (!isWithinHours(at, rules.hours, rules.timezone)) {
       result = {
         allowed: false,
         reason: "outside_hours",
         next_allowed_at: nextValidSendTime(at, rules.hours, rules.timezone)
       };
-    } else if (country === "CO" && (await this.isHoliday(at))) {
+    } else if (country === "CO" && (await isHoliday(this.prisma, at))) {
       // Colombian national holiday: no proactive contact today, regardless of hours.
       result = {
         allowed: false,
         reason: "holiday",
-        next_allowed_at: await this.nextNonHolidaySendTime(
+        next_allowed_at: await nextNonHolidaySendTime(
+          this.prisma,
           at,
           rules.hours,
           rules.timezone
@@ -85,7 +92,8 @@ export class ComplianceService {
       if (dayBlocked) {
         result = { allowed: false, reason: "frequency_limit" };
       } else {
-        const retryState = await this.getRetryState(
+        const retryState = await computeRetryState(
+          this.prisma,
           input.tenantId,
           input.debtorId,
           at
@@ -181,14 +189,21 @@ export class ComplianceService {
     ) {
       return { allowed: false, reason: "no_consent" };
     }
+    if (!(await this.isChannelConfigured(input.tenantId, input.channel))) {
+      // Same ordering rule as checkContact: opt-out/consent win, an unconfigured
+      // channel is a hard block, and (deliberately, unlike checkContact) this lane
+      // still does not evaluate hours or frequency at all (D-16).
+      return { allowed: false, reason: "channel_not_configured" };
+    }
 
     // A Colombian holiday blocks every send, including debtor-requested transactional
     // messages — not just proactive outreach.
-    if (country === "CO" && (await this.isHoliday(at))) {
+    if (country === "CO" && (await isHoliday(this.prisma, at))) {
       return {
         allowed: false,
         reason: "holiday",
-        next_allowed_at: await this.nextNonHolidaySendTime(
+        next_allowed_at: await nextNonHolidaySendTime(
+          this.prisma,
           at,
           rules.hours,
           rules.timezone
@@ -200,42 +215,18 @@ export class ComplianceService {
   }
 
   /**
-   * Returns true when `at` falls on a Colombian national holiday. The lookup key is the
-   * America/Bogota civil date at UTC-midnight, matching how the seed stores each holiday.
+   * Returns true when the tenant has a verified TenantIntegration for `channel` (D-16).
+   * `internal`/`portal` have no matching integration and are never gated. `sms` is routed
+   * over WhatsApp today (see `resolveMessageChannel`), so it is gated on the whatsapp
+   * integration, not a dedicated sms provider.
    */
-  private async isHoliday(at: Date): Promise<boolean> {
-    const parts = getZonedParts(at, "America/Bogota");
-    const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-    const row = await this.prisma.holiday.findFirst({ where: { date } });
-    return Boolean(row);
-  }
-
-  /**
-   * Next send instant that is both inside the contact window AND not a holiday. Starts
-   * from the next valid window opening and skips forward over consecutive holidays
-   * (bounded to avoid an unbounded loop on anomalous data).
-   */
-  private async nextNonHolidaySendTime(
-    at: Date,
-    hours: CountryHours,
-    timeZone: string
-  ): Promise<Date> {
-    let candidate = nextValidSendTime(at, hours, timeZone);
-    for (let i = 0; i < 30; i++) {
-      if (!(await this.isHoliday(candidate))) return candidate;
-      let local = getZonedParts(candidate, timeZone);
-      do {
-        local = addLocalDays(local, 1, timeZone);
-      } while (!hours.days.includes(local.dayOfWeek));
-      candidate = zonedTimeToUtc(
-        local.year,
-        local.month,
-        local.day,
-        hours.startHour,
-        timeZone
-      );
-    }
-    return candidate;
+  private async isChannelConfigured(
+    tenantId: string,
+    channel: ContactChannel
+  ): Promise<boolean> {
+    if (UNGATED_CHANNELS.has(channel)) return true;
+    const mapped: IntegrationChannel = channel === "sms" ? "whatsapp" : (channel as IntegrationChannel);
+    return this.integrations.hasVerifiedChannel(tenantId, mapped);
   }
 
   /** Tope anti-spam del mismo día (ortogonal al ciclo de reintentos, ver getRetryState). */
@@ -268,76 +259,16 @@ export class ComplianceService {
   }
 
   /**
-   * Estado del ciclo de reintento del deudor: en vez de contar envíos en una ventana
-   * rodante, mira el intento de contacto más reciente y decide si toca esperar respuesta,
-   * esperar el cooldown de reintento, o si el ciclo ya agotó sus intentos (estado terminal,
-   * a resolver por el sweep de reintentos/escalamiento — ver ContactRetrySweepService).
+   * Estado del ciclo de reintento del deudor. Implementación en `./retry-state.ts`
+   * (extraída para respetar el límite de 300 líneas por archivo); este método
+   * público se conserva porque otros servicios lo invocan directamente
+   * (`compliance.getRetryState(...)`).
    */
   async getRetryState(
     tenantId: string,
     debtorId: string,
     at: Date
   ): Promise<ContactCheckResult> {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { settings: true }
-    });
-    const policy = resolveRetryPolicy(tenant?.settings);
-
-    const latest = await this.prisma.contact.findFirst({
-      where: {
-        tenantId,
-        debtorId,
-        deletedAt: null,
-        // "failed" incluido: un envío fallido igual cuenta como intento en curso.
-        // Si se omite, N deudas del mismo deudor cuyo 1er envío falla disparan N
-        // contactos (la dedup del coordinator no lo ve) → sobre-contacto.
-        status: { in: ["scheduled", "in_progress", "completed", "failed"] }
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        responseStatus: true,
-        startedAt: true,
-        createdAt: true,
-        nextRetryAt: true,
-        attemptNumber: true
-      }
-    });
-
-    if (!latest) return { allowed: true };
-
-    if (latest.responseStatus === "pending") {
-      const sentAt = latest.startedAt ?? latest.createdAt;
-      const windowEnd = new Date(
-        sentAt.getTime() + policy.windowHours * 60 * 60 * 1000
-      );
-      if (at < windowEnd) {
-        return {
-          allowed: false,
-          reason: "awaiting_response",
-          next_allowed_at: windowEnd
-        };
-      }
-      // La ventana venció pero el sweep aún no lo marcó no_response — no bloquear
-      // indefinidamente por un detalle de temporización del cron.
-      return { allowed: true };
-    }
-
-    if (latest.responseStatus === "no_response") {
-      if (latest.attemptNumber >= policy.maxAttempts) {
-        return { allowed: false, reason: "max_attempts_reached" };
-      }
-      if (latest.nextRetryAt && at < latest.nextRetryAt) {
-        return {
-          allowed: false,
-          reason: "retry_cooldown",
-          next_allowed_at: latest.nextRetryAt
-        };
-      }
-    }
-
-    // responseStatus === "effective" → el ciclo se cerró con una conversación real;
-    // un nuevo contacto empieza un ciclo fresco sin restricción.
-    return { allowed: true };
+    return computeRetryState(this.prisma, tenantId, debtorId, at);
   }
 }

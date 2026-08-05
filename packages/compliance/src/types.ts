@@ -11,6 +11,7 @@ export type ContactCheckReason =
   | "retry_cooldown"
   | "max_attempts_reached"
   | "whatsapp_not_opted_in"
+  | "channel_not_configured"
   | "debtor_not_found";
 
 export interface ContactCheckResult {

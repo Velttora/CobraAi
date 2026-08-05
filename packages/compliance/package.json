@@ -17,7 +17,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@cobrai/db": "workspace:*"
+    "@cobrai/db": "workspace:*",
+    "@cobrai/integrations": "workspace:*"
   },
   "devDependencies": {
     "vitest": "^4.1.6"

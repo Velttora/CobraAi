@@ -357,6 +357,9 @@ importers:
       '@cobrai/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cobrai/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@cobrai/kafka':
         specifier: workspace:*
         version: link:../../packages/kafka
@@ -518,6 +521,9 @@ importers:
       '@cobrai/db':
         specifier: workspace:*
         version: link:../db
+      '@cobrai/integrations':
+        specifier: workspace:*
+        version: link:../integrations
     devDependencies:
       vitest:
         specifier: ^4.1.6

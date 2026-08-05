@@ -18,6 +18,8 @@ import { VapiVoiceAdapter } from "../adapters/vapi-voice.adapter";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
+import type { IntegrationChannel } from "@cobrai/integrations";
+import { TenantIntegrationService } from "@cobrai/integrations";
 import {
   DEFAULT_EMAIL_LAYOUT,
   renderEmailLayout,
@@ -65,7 +67,8 @@ export class ContactsService {
     private readonly kafka: KafkaService,
     private readonly waterfall: WaterfallService,
     private readonly config: ConfigService,
-    private readonly debtorMemory: DebtorMemoryService
+    private readonly debtorMemory: DebtorMemoryService,
+    private readonly integrations: TenantIntegrationService
   ) {}
 
   async list(tenantId: string, debtId?: string, channel?: ContactChannel, portfolioId?: string) {
@@ -112,7 +115,7 @@ export class ContactsService {
     }
 
     const debt = await this.getDebtContext(tenantId, payload.debt_id);
-    const channels = this.availableChannels(debt.debtor);
+    const channels = await this.availableChannels(tenantId, debt.debtor);
     // Reintento: si la política es "same_channel" reintenta el mismo canal; si no
     // (default "switch_channel" o primer intento), avanza al siguiente canal disponible.
     const channel =
@@ -120,10 +123,25 @@ export class ContactsService {
         ? payload.previous_channel
         : this.waterfall.nextChannel(payload.previous_channel ?? null, channels);
     if (!channel) {
+      // Distinguish "debtor unreachable" (no phone/email at all) from "debtor
+      // reachable but the tenant has no verified integration for any of those
+      // channels" (D-16) — the latter escalates to a human instead of silently
+      // dropping the debt.
+      const reachable = this.reachableChannels(debt.debtor);
+      const reason =
+        reachable.length > 0 ? "no_channel_configured" : "no_available_channel";
       await this.kafka.publish("cobrai.contact.failed.no_response", tenantId, {
         debt_id: payload.debt_id,
-        reason: "no_available_channel"
+        reason
       });
+      if (reason === "no_channel_configured") {
+        await this.kafka.publish("cobrai.debt.escalated", tenantId, {
+          debt_id: payload.debt_id,
+          rule_id: "channel_not_configured",
+          rule_name: "Sin canal configurado",
+          target: "human"
+        });
+      }
       return;
     }
 
@@ -197,6 +215,10 @@ export class ContactsService {
         });
       }
 
+      // channel_not_configured (D-16) falls through to here: it is a terminal block,
+      // never rescheduled like outside_hours and never memory-registered like
+      // awaiting_response/retry_cooldown — timing cannot resolve a missing
+      // TenantIntegration, only the tenant configuring one can.
       this.logger.warn(
         `Contacto bloqueado debt=${debt.id} channel=${input.channel} reason=${compliance.reason}`
       );
@@ -943,7 +965,8 @@ export class ContactsService {
     });
   }
 
-  private availableChannels(debtor: Debtor): ContactChannel[] {
+  /** Channels the debtor can technically be reached on, ignoring tenant configuration. */
+  private reachableChannels(debtor: Debtor): ContactChannel[] {
     const channels: ContactChannel[] = [];
     if (debtor.whatsappOptIn && phonesFromDebtor(debtor.phones).length > 0) {
       channels.push("whatsapp");
@@ -958,6 +981,31 @@ export class ContactsService {
       channels.push("email");
     }
     return channels;
+  }
+
+  /**
+   * Reachable channels the tenant also has a verified TenantIntegration for (D-16).
+   * Consults the same source of truth as ComplianceService.isChannelConfigured so the
+   * waterfall never attempts (and gets blocked on) a channel it could have skipped.
+   */
+  private async availableChannels(
+    tenantId: string,
+    debtor: Debtor
+  ): Promise<ContactChannel[]> {
+    const reachable = this.reachableChannels(debtor);
+    const configured = await Promise.all(
+      reachable.map((channel) => this.isChannelConfigured(tenantId, channel))
+    );
+    return reachable.filter((_channel, index) => configured[index]);
+  }
+
+  /** sms is routed over WhatsApp today, mirroring ComplianceService's mapping. */
+  private async isChannelConfigured(
+    tenantId: string,
+    channel: ContactChannel
+  ): Promise<boolean> {
+    const mapped: IntegrationChannel = channel === "sms" ? "whatsapp" : (channel as IntegrationChannel);
+    return this.integrations.hasVerifiedChannel(tenantId, mapped);
   }
 
   private async getDebtContext(tenantId: string, debtId: string) {

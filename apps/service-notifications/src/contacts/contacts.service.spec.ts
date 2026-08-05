@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ContactsService } from "./contacts.service";
+import { WaterfallService } from "../orchestrator/waterfall.service";
 
 // ---------------------------------------------------------------------------
 // Prisma mock factory
@@ -147,6 +148,13 @@ function makeDebtorMemory() {
   };
 }
 
+/** Defaults to every channel verified — matches the pre-D-16 world existing tests were written for. */
+function makeIntegrations() {
+  return {
+    hasVerifiedChannel: vi.fn().mockResolvedValue(true)
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
@@ -178,7 +186,8 @@ describe("ContactsService — voice enrichment via DebtorMemoryService", () => {
       makeKafka() as never,
       makeWaterfall() as never,
       makeConfig() as never,
-      debtorMemory as never
+      debtorMemory as never,
+      makeIntegrations() as never
     );
   });
 
@@ -290,7 +299,8 @@ describe("ContactsService — email layout + subject", () => {
       makeKafka() as never,
       makeWaterfall() as never,
       makeConfig() as never,
-      makeDebtorMemory() as never
+      makeDebtorMemory() as never,
+      makeIntegrations() as never
     );
   }
 
@@ -421,7 +431,8 @@ describe("ContactsService.markResponse", () => {
       makeKafka() as never,
       makeWaterfall() as never,
       makeConfig() as never,
-      makeDebtorMemory() as never
+      makeDebtorMemory() as never,
+      makeIntegrations() as never
     );
   });
 
@@ -472,5 +483,132 @@ describe("ContactsService.markResponse", () => {
     await service.markResponse("org1", "debtor1", "effective", "whatsapp");
 
     expect(prisma.contact.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("ContactsService — waterfall skips unconfigured channels (D-16)", () => {
+  let service: ContactsService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let kafka: ReturnType<typeof makeKafka>;
+  let integrations: ReturnType<typeof makeIntegrations>;
+
+  function build(compliance: unknown = makeCompliance()) {
+    service = new ContactsService(
+      prisma as never,
+      compliance as never,
+      makeAudit() as never,
+      makeEmail() as never,
+      makeSms() as never,
+      makeWhatsapp() as never,
+      makeVoice() as never,
+      kafka as never,
+      new WaterfallService() as never,
+      makeConfig() as never,
+      makeDebtorMemory() as never,
+      integrations as never
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+    kafka = makeKafka();
+    integrations = makeIntegrations();
+    build();
+  });
+
+  it("omite whatsapp sin integración verificada y selecciona email", async () => {
+    integrations.hasVerifiedChannel.mockImplementation(
+      async (_tenantId: string, channel: string) => channel === "email"
+    );
+    const executeSpy = vi
+      .spyOn(service, "executeContact")
+      .mockResolvedValue({ blocked: false } as never);
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    expect(executeSpy).toHaveBeenCalledWith(
+      "org1",
+      expect.objectContaining({ channel: "email" })
+    );
+  });
+
+  it("tenant sin ningún canal verificado escala a humano y no ejecuta el contacto", async () => {
+    integrations.hasVerifiedChannel.mockResolvedValue(false);
+    const executeSpy = vi.spyOn(service, "executeContact");
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    expect(executeSpy).not.toHaveBeenCalled();
+    expect(kafka.publish).toHaveBeenCalledWith(
+      "cobrai.debt.escalated",
+      "org1",
+      expect.objectContaining({
+        debt_id: "debt1",
+        rule_id: "channel_not_configured",
+        rule_name: "Sin canal configurado",
+        target: "human"
+      })
+    );
+  });
+
+  it("el mismo caso también publica cobrai.contact.failed.no_response con no_channel_configured", async () => {
+    integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    expect(kafka.publish).toHaveBeenCalledWith(
+      "cobrai.contact.failed.no_response",
+      "org1",
+      { debt_id: "debt1", reason: "no_channel_configured" }
+    );
+  });
+
+  it("deudor sin teléfono ni correo sigue el camino no_available_channel (anti-regresión)", async () => {
+    prisma.debt.findFirst.mockResolvedValue({
+      id: "debt1",
+      tenantId: "org1",
+      amountOutstanding: 500000,
+      dueDate: new Date("2026-09-30"),
+      strategyId: null,
+      aiSegment: "medium",
+      externalRef: "EXT-001",
+      debtor: {
+        id: "debtor1",
+        tenantId: "org1",
+        name: "Juan Pérez",
+        email: null,
+        phones: [],
+        whatsappOptIn: false,
+        emotionalProfile: null
+      }
+    });
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    // reachableChannels() is empty, so isChannelConfigured is never even queried.
+    expect(integrations.hasVerifiedChannel).not.toHaveBeenCalled();
+    expect(kafka.publish).toHaveBeenCalledTimes(1);
+    expect(kafka.publish).toHaveBeenCalledWith(
+      "cobrai.contact.failed.no_response",
+      "org1",
+      { debt_id: "debt1", reason: "no_available_channel" }
+    );
+  });
+
+  it("executeContact con canal explícito no configurado no crea fila Contact ni la reprograma", async () => {
+    build({
+      checkBeforeSend: vi
+        .fn()
+        .mockResolvedValue({ allowed: false, reason: "channel_not_configured" })
+    });
+
+    const result = await service.executeContact("org1", {
+      debt_id: "debt1",
+      channel: "whatsapp"
+    });
+
+    expect(result).toEqual({ blocked: true, reason: "channel_not_configured" });
+    expect(prisma.contact.create).not.toHaveBeenCalled();
   });
 });
