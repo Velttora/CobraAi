@@ -167,3 +167,7 @@ None. This plan adds no new external service configuration — `ENCRYPTION_KEY_V
 ---
 *Phase: 08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+All 9 created source files verified present on disk (`package.json`, `tsconfig.json`, `vitest.config.ts`, `index.ts`, `types.ts`, `tenant-integration.service.ts`, `tenant-integration.service.spec.ts`, `verifiers/index.ts`, `verifiers/verifiers.spec.ts`) and all 6 task/docs commits (`03ee2cc`, `6d7812c`, `d1e51ff`, `8ccd352`, `f0d7620`, `3b66428`) verified present in `git log`.
