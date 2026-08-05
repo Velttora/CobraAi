@@ -2,25 +2,31 @@
 
 import type { ChannelFormProps } from "./channel-config";
 import { secretMetaFor } from "./channel-config";
+import { EmbeddedSignupButton } from "./EmbeddedSignupButton";
 import { TwilioByoFields } from "./TwilioByoFields";
+
+export interface WhatsAppFieldsProps extends ChannelFormProps {
+  onSwitchToByo: () => void;
+}
 
 /**
  * WhatsApp card connection area. `byo` renders the Twilio subaccount
- * fieldset; `managed` renders the Embedded Signup explanation. The actual
- * `EmbeddedSignupButton` (D-25) is wired in by plan 08-17 Task 3 — sequenced
- * last on purpose, since no Meta app exists yet (08-02-SUMMARY.md "Account
- * Prerequisites"), so the BYO path above must be fully usable without it.
+ * fieldset; `managed` renders `EmbeddedSignupButton` (D-25) alongside the
+ * three-step Embedded Signup explanation. The BYO path above is fully
+ * usable on its own — no Meta app exists yet (08-02-SUMMARY.md "Account
+ * Prerequisites") — which is exactly what `EmbeddedSignupButton`'s
+ * `sdk_unavailable` fallback (and its "switch to BYO" link) depends on.
  */
 export function WhatsAppFields({
   mode,
   publicConfig,
   setPublicField,
-  secretDraft,
   setSecretField,
   secretsMeta,
   disabled,
-  integration
-}: ChannelFormProps): React.ReactElement {
+  integration,
+  onSwitchToByo
+}: WhatsAppFieldsProps): React.ReactElement {
   if (mode === "byo") {
     return (
       <TwilioByoFields
@@ -41,13 +47,20 @@ export function WhatsAppFields({
   const verified = integration?.status === "verified";
   const displayNumber = (publicConfig.fromNumber ?? "").replace(/^whatsapp:/, "");
 
-  return (
-    <div className="mt-4 max-w-md space-y-3">
-      {verified ? (
+  if (verified) {
+    return (
+      <div className="mt-4 max-w-md space-y-3">
         <p className="text-sm text-slate-700 dark:text-slate-300">
           Número: {displayNumber || "—"} · Nombre visible: {publicConfig.businessName || "—"}
         </p>
-      ) : (
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 max-w-md space-y-3">
+      <EmbeddedSignupButton integration={integration} onSwitchToByo={onSwitchToByo} />
+      {integration?.status !== "pending_meta" && (
         <>
           <ol className="list-decimal space-y-1 pl-4 text-sm text-slate-600 dark:text-slate-400">
             <li>Inicias sesión con tu cuenta de Facebook Business.</li>

@@ -16,12 +16,22 @@ const saveMock = { mutateAsync: vi.fn(), isPending: false };
 const verifyMock = { mutateAsync: vi.fn(), isPending: false };
 const disconnectMock = { mutateAsync: vi.fn(), isPending: false };
 const recheckDnsMock = { mutateAsync: vi.fn(), isPending: false };
+const embeddedSignupMock = { mutateAsync: vi.fn(), isPending: false };
 vi.mock("../../../../hooks/use-integrations", () => ({
   useIntegrations: () => useIntegrationsMock(),
   useSaveIntegration: () => saveMock,
   useVerifyIntegration: () => verifyMock,
   useDisconnectIntegration: () => disconnectMock,
-  useRecheckDns: () => recheckDnsMock
+  useRecheckDns: () => recheckDnsMock,
+  useEmbeddedSignup: () => embeddedSignupMock
+}));
+
+// A managed, unverified WhatsApp card reaches EmbeddedSignupButton, which
+// calls useTenant() — mocked defensively so a future test with an
+// undefined/managed WhatsApp integration doesn't need a real
+// QueryClientProvider.
+vi.mock("../../../../hooks/use-tenant", () => ({
+  useTenant: () => ({ data: { data: { name: "Mi Empresa" } } })
 }));
 
 function view(overrides: Partial<IntegrationView>): IntegrationView {

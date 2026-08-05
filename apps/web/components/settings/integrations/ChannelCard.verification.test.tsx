@@ -14,10 +14,19 @@ vi.mock("@clerk/nextjs", () => ({ useAuth: () => useAuthMock() }));
 const saveMock = { mutateAsync: vi.fn(), isPending: false };
 const verifyMock = { mutateAsync: vi.fn(), isPending: false };
 const disconnectMock = { mutateAsync: vi.fn(), isPending: false };
+const embeddedSignupMock = { mutateAsync: vi.fn(), isPending: false };
 vi.mock("../../../hooks/use-integrations", () => ({
   useSaveIntegration: () => saveMock,
   useVerifyIntegration: () => verifyMock,
-  useDisconnectIntegration: () => disconnectMock
+  useDisconnectIntegration: () => disconnectMock,
+  useEmbeddedSignup: () => embeddedSignupMock
+}));
+
+// A managed, unverified WhatsApp render reaches EmbeddedSignupButton, which
+// calls useTenant() — mocked defensively so no test here needs a real
+// QueryClientProvider.
+vi.mock("../../../hooks/use-tenant", () => ({
+  useTenant: () => ({ data: { data: { name: "Mi Empresa" } } })
 }));
 
 const toastSuccess = vi.fn();

@@ -24,7 +24,6 @@ export function PhoneFields({
   mode,
   publicConfig,
   setPublicField,
-  secretDraft,
   setSecretField,
   secretsMeta,
   disabled,

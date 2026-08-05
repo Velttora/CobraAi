@@ -16,7 +16,6 @@ export function EmailFields({
   mode,
   publicConfig,
   setPublicField,
-  secretDraft,
   setSecretField,
   secretsMeta,
   disabled,

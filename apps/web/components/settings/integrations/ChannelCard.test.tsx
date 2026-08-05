@@ -14,10 +14,20 @@ vi.mock("next/navigation", () => ({
 const saveMock = { mutateAsync: vi.fn(), isPending: false };
 const verifyMock = { mutateAsync: vi.fn(), isPending: false };
 const disconnectMock = { mutateAsync: vi.fn(), isPending: false };
+const embeddedSignupMock = { mutateAsync: vi.fn(), isPending: false };
 vi.mock("../../../hooks/use-integrations", () => ({
   useSaveIntegration: () => saveMock,
   useVerifyIntegration: () => verifyMock,
-  useDisconnectIntegration: () => disconnectMock
+  useDisconnectIntegration: () => disconnectMock,
+  useEmbeddedSignup: () => embeddedSignupMock
+}));
+
+// WhatsApp's managed branch renders EmbeddedSignupButton, which calls
+// useTenant() for its businessName fallback — mocked here so any test
+// rendering the default (managed) WhatsApp card doesn't need a real
+// QueryClientProvider.
+vi.mock("../../../hooks/use-tenant", () => ({
+  useTenant: () => ({ data: { data: { name: "Mi Empresa" } } })
 }));
 
 const toastSuccess = vi.fn();
