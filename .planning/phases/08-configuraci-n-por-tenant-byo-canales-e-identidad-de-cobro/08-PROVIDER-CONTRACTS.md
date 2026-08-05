@@ -176,3 +176,37 @@ This also resolves RESEARCH.md Pitfall 5's ambiguity: for the domain-authenticat
 
 ---
 
+## Account Prerequisites
+
+**Checked:** 2026-08-05, by the account owner (facts recorded verbatim; not discoverable from code or public docs).
+
+### 1. SendGrid plan tier
+
+**Answer:** Pro or above. Subusers are available on the current plan.
+
+**Consequence:** The *managed* SendGrid path is **UNBLOCKED** — no billing change is required before plan 08-09 can build subuser + domain-authentication provisioning against the live parent account (`fogging.org`).
+
+### 2. Twilio Tech Provider (ISV) program status
+
+**Answer:** NOT STARTED. Not enrolled, not applied.
+
+**Consequence:** This is a blocker for the **managed** WhatsApp path only, not for the phase as a whole.
+- Plan 08-08's managed-mode subaccount + Senders API provisioning service can still be built and unit-tested against mocked Twilio SDK responses (per the `## Twilio` section above).
+- It **cannot** be exercised end-to-end against the real Twilio API until ISV enrolment is approved (a days-to-weeks external process, per RESEARCH.md's Environment Availability table).
+- The **BYO WhatsApp path** (tenant brings their own already-provisioned Twilio account + WABA, D-01/D-10 `mode: byo`) is the path that must be fully functional and shippable now, without any subaccount ever being created — plan 08-08 must sequence BYO WhatsApp as the deliverable path, with managed-mode provisioning built but gated as "not yet testable live."
+
+### 3. Meta app for Embedded Signup
+
+**Answer:** DOES NOT EXIST. No Meta app is registered; no `FACEBOOK_APP_ID` or `FACEBOOK_CONFIG_ID` values exist anywhere (confirmed absent from the repo already per RESEARCH.md's Runtime State Inventory).
+
+**Consequence:** This is a blocker for the **Embedded Signup UI flow** only (D-25, plan 08-18's frontend channel-connection screen), not for the phase as a whole.
+- The Embedded Signup button must be gated behind the presence of **both** `FACEBOOK_APP_ID` and `FACEBOOK_CONFIG_ID` env vars.
+- When either is absent (the current state), the button must degrade to the documented `sdk_unavailable` fallback rather than attempting to load the Meta SDK against missing/empty identifiers.
+- The channel-connection screen as a whole must remain fully usable via the **BYO path** (tenant pastes their own Twilio Account SID/Auth Token and WABA-adjacent Twilio number directly) without requiring Embedded Signup at all.
+
+### Summary
+
+Neither answer 2 nor answer 3 blocks this phase from shipping. Both are blockers for the *managed*-mode automation of a single channel (WhatsApp) and its browser-based signup flow specifically. The BYO path (D-01's hybrid model, `mode: byo`) plus explicit env-var gating around the Embedded Signup button keeps every affected screen (Settings > Integraciones "Conexión de canales", plan 08-18) shippable today. Plans 08-08 and 08-18 should treat "managed WhatsApp via ISV" and "Embedded Signup button" as features that ship code-complete but stay functionally inert (mocked-tested only / gated-off) until the two external prerequisites above are independently resolved by the account owner — this is an operational/business follow-up, not a re-plan of this phase.
+
+---
+
