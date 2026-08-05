@@ -1,20 +1,36 @@
-import { Body, Controller, ForbiddenException, Headers, HttpCode, Post, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Headers, HttpCode, Param, Post, UseInterceptors } from "@nestjs/common";
 import { NoFilesInterceptor } from "@nestjs/platform-express";
+import { ConfigService } from "@nestjs/config";
+import { AuditService } from "@cobrai/compliance";
+import { TenantIntegrationService } from "@cobrai/integrations";
 import { successResponse } from "../common/utils/api.utils";
 import { WebhooksService } from "./webhooks.service";
 import { TwilioWaWebhookHandler } from "./twilio-wa-webhook.handler";
-import { validateTwilioSignature } from "./twilio-signature.validator";
 import { VapiWebhookHandler, type VapiWebhookPayload } from "./vapi-webhook.handler";
 import { SendgridInboundHandler } from "./sendgrid-inbound.handler";
+import { assertTwilioSignature, resolveWebhookIntegration } from "./integration-webhook-token.guard";
 
 @Controller("v1/webhooks")
 export class WebhooksController {
+  /**
+   * Base used to reconstruct the exact URL Twilio signs its requests
+   * against — must match `PUBLIC_WEBHOOK_BASE_URL` plus provider/token,
+   * the same shape `TenantIntegrationService.toView` builds and plan
+   * 08-07's `WhatsAppConnectService` registered through the Senders API.
+   */
+  private readonly baseWebhookUrl: string;
+
   constructor(
     private readonly webhooksService: WebhooksService,
     private readonly twilioWaHandler: TwilioWaWebhookHandler,
     private readonly vapiHandler: VapiWebhookHandler,
-    private readonly sendgridInboundHandler: SendgridInboundHandler
-  ) {}
+    private readonly sendgridInboundHandler: SendgridInboundHandler,
+    private readonly integrations: TenantIntegrationService,
+    private readonly audit: AuditService,
+    config: ConfigService
+  ) {
+    this.baseWebhookUrl = config.get<string>("PUBLIC_WEBHOOK_BASE_URL") ?? "";
+  }
 
   @Post("sendgrid")
   async sendgrid(@Body() body: unknown) {
@@ -36,23 +52,27 @@ export class WebhooksController {
   }
 
   /**
-   * Webhook de Twilio para mensajes entrantes de WhatsApp.
-   * Twilio firma cada request con X-Twilio-Signature.
+   * Webhook de Twilio para mensajes entrantes de WhatsApp, enrutado por el
+   * token opaco de la integración (D-19) — el token resuelve al tenant
+   * ANTES de validar la firma, y la firma se verifica en todo ambiente
+   * (D-20, fail-closed). El segmento de path usa el valor literal del enum
+   * `IntegrationProvider` ("twilio_whatsapp"), porque es exactamente la URL
+   * que `TenantIntegrationService.toView` construye y que el plan 08-07
+   * registró contra la Senders API de Twilio — cualquier otra forma de path
+   * haría que Twilio le pegara a una URL que nadie escucha.
    */
-  @Post("twilio-whatsapp")
+  @Post("twilio_whatsapp/:token")
   @HttpCode(200)
   async twilioWhatsApp(
+    @Param("token") token: string,
     @Body() body: Record<string, string>,
-    @Headers("x-twilio-signature") signature: string
+    @Headers("x-twilio-signature") signature: string | undefined
   ) {
-    if (process.env["NODE_ENV"] === "production") {
-      const authToken = process.env["TWILIO_AUTH_TOKEN"] ?? "";
-      const webhookUrl = process.env["TWILIO_WA_WEBHOOK_URL"] ?? "";
-      const valid = validateTwilioSignature(authToken, webhookUrl, body, signature);
-      if (!valid) throw new ForbiddenException("Firma Twilio inválida");
-    }
+    const integration = await resolveWebhookIntegration(this.integrations, "twilio_whatsapp", token);
+    const webhookUrl = `${this.baseWebhookUrl}/twilio_whatsapp/${token}`;
+    await assertTwilioSignature({ integration, webhookUrl, params: body, signature, audit: this.audit });
 
-    await this.twilioWaHandler.handleInbound(body as never);
+    await this.twilioWaHandler.handleInbound(integration.tenantId, body as never);
     // Twilio espera respuesta vacía 200 (o TwiML vacío)
     return "";
   }
@@ -70,18 +90,27 @@ export class WebhooksController {
   }
 
   /**
-   * Webhook de SendGrid Inbound Parse para emails entrantes del deudor.
+   * Webhook de SendGrid Inbound Parse para emails entrantes del deudor,
+   * enrutado por el token opaco de la integración (D-19). SendGrid Inbound
+   * Parse no firma sus requests — el token es la única autenticación de
+   * este endpoint, por eso no hay un `assertTwilioSignature`-equivalente
+   * aquí. El path usa el valor literal del provider ("sendgrid"), igual
+   * que `twilio_whatsapp` arriba, para coincidir con la URL que
+   * `TenantIntegrationService.toView` expone al tenant (plan 08-11).
    * SendGrid envía multipart/form-data — NoFilesInterceptor activa multer para poblar @Body.
    * Body tipado como Record<string,string> para evitar que forbidNonWhitelisted rechace
    * los campos extra de SendGrid (charsets, attachment-info, etc.).
    */
-  @Post("sendgrid-inbound")
+  @Post("sendgrid/:token")
   @HttpCode(200)
   @UseInterceptors(NoFilesInterceptor())
   async sendgridInbound(
+    @Param("token") token: string,
     @Body() body: Record<string, string>
   ): Promise<string> {
-    await this.sendgridInboundHandler.handleInbound(body as never);
+    const integration = await resolveWebhookIntegration(this.integrations, "sendgrid", token);
+    const replyDomain = integration.publicConfig["replyDomain"] ?? "";
+    await this.sendgridInboundHandler.handleInbound(integration.tenantId, replyDomain, body as never);
     // SendGrid espera respuesta 200 vacía
     return "";
   }
