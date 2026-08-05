@@ -1,18 +1,25 @@
 "use client";
 
-import { Mail, Package } from "lucide-react";
+import { Mail, Package, Plug } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { usePortfolio, usePortfolios, useUpdatePortfolioStrategy } from "../../../hooks/use-portfolios";
 import { useWorkflowPackages } from "../../../hooks/use-workflows";
+import { useIntegrations } from "../../../hooks/use-integrations";
 import { WorkflowPackageCard } from "../../../components/workflows/WorkflowPackageCard";
 import { WorkflowRulesManager } from "../../../components/workflows/WorkflowRulesManager";
 import { OrganizationSettingsPanel } from "../../../components/settings/OrganizationSettingsPanel";
 import { ContactRetryPolicyPanel } from "../../../components/settings/ContactRetryPolicyPanel";
+import { cn } from "../../../lib/utils";
 
 export default function SettingsPage(): React.ReactElement {
   const [portfolioId, setPortfolioId] = useState("");
+
+  const integrationsQuery = useIntegrations();
+  const integrationItems = integrationsQuery.data?.data.items ?? [];
+  const hasVerifiedIntegration = integrationItems.some((i) => i.status === "verified");
+  const showIntegrationsDegraded = !integrationsQuery.isLoading && !hasVerifiedIntegration;
 
   const portfoliosQuery = usePortfolios();
   const portfolios = portfoliosQuery.data?.data.items ?? [];
@@ -48,6 +55,34 @@ export default function SettingsPage(): React.ReactElement {
       </header>
 
       <OrganizationSettingsPanel />
+
+      <Link
+        className={cn(
+          "flex items-start gap-3 rounded-xl border bg-white p-5 transition hover:border-[#D85A30] dark:bg-slate-900",
+          showIntegrationsDegraded
+            ? "border-[#A32D2D]/40"
+            : "border-slate-200 dark:border-slate-800"
+        )}
+        href="/settings/integrations"
+      >
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#D85A30]/10 text-[#D85A30]">
+          <Plug className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+            Integraciones
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Conecta WhatsApp, teléfono y correo a nombre de tu empresa, y define cómo cobras. Sin
+            esto, no podemos contactar a tus deudores.
+          </p>
+          {showIntegrationsDegraded && (
+            <p className="mt-2 text-xs text-[#A32D2D]">
+              Ningún canal configurado — no se está contactando a nadie.
+            </p>
+          )}
+        </div>
+      </Link>
 
       <ContactRetryPolicyPanel />
 

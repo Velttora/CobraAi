@@ -159,3 +159,64 @@ export function toNumber(value: string | number | null | undefined): number {
   if (value === null || value === undefined) return 0;
   return Number(value);
 }
+
+// ── Settings > Integraciones (Phase 8) ──────────────────────────────────────
+// Mirrors packages/integrations' IntegrationView (08-03) and the API built in
+// 08-14. `apps/web` does not depend on the backend package — the existing
+// convention in this file is locally declared response types.
+
+export type IntegrationStatus =
+  | "not_configured"
+  | "verifying"
+  | "verified"
+  | "failed"
+  | "pending_dns"
+  | "pending_meta";
+
+export type IntegrationChannel = "whatsapp" | "voice" | "email" | "payments";
+
+export interface IntegrationSecretMeta {
+  field: string;
+  lastFour: string | null;
+  savedAt: string | null;
+}
+
+export interface IntegrationView {
+  provider: string;
+  channel: IntegrationChannel;
+  mode: "managed" | "byo";
+  status: IntegrationStatus;
+  verifiedAt: string | null;
+  failureMessage: string | null;
+  publicConfig: Record<string, string>;
+  /** NEVER a plaintext value — `lastFour` is the maximum disclosure (D-26). */
+  secrets: IntegrationSecretMeta[];
+  webhookUrl: string | null;
+  dnsRecords?: { type: "CNAME"; host: string; value: string; verified: boolean }[];
+}
+
+export interface UncontactedDebt {
+  debtId: string;
+  debtorId: string;
+  debtorName: string;
+  externalRef: string | null;
+  amountOutstanding: number;
+  currency: string;
+  blockedChannel: string;
+  blockedSince: string;
+}
+
+/**
+ * Request body for `PUT /api/v1/integrations/:provider`. Deliberately a
+ * distinct type from `IntegrationView` (D-26): `secrets` is a plain
+ * `Record<string, string>` of NEW values the caller is sending, present only
+ * on this request type. A secret field left untouched is simply absent from
+ * this object, so the backend preserves whatever it already has stored — the
+ * response type (`IntegrationView`) structurally cannot carry a value back,
+ * so a secret can never enter the React Query cache by construction.
+ */
+export interface SaveIntegrationInput {
+  mode: "managed" | "byo";
+  publicConfig?: Record<string, string>;
+  secrets?: Record<string, string>;
+}
