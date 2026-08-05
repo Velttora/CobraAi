@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@cobrai/db": "workspace:*",
+    "@cobrai/integrations": "workspace:*",
     "@cobrai/test-utils": "workspace:*",
     "@cobrai/kafka": "workspace:*",
     "@cobrai/types": "workspace:*",
