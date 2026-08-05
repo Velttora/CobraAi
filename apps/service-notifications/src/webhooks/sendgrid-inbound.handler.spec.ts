@@ -28,6 +28,8 @@ const mockKafka = { publish: mockPublish };
 const mockMarkResponse = vi.fn().mockResolvedValue(undefined);
 const mockContacts = { markResponse: mockMarkResponse };
 
+const REPLY_DOMAIN = "reply.acme.com";
+
 describe("SendgridInboundHandler", () => {
   let handler: SendgridInboundHandler;
 
@@ -40,17 +42,20 @@ describe("SendgridInboundHandler", () => {
     );
   });
 
-  it("email normal → deudor encontrado → guarda mensaje y publica Kafka", async () => {
+  it("email normal → deudor encontrado en el tenant del token → guarda mensaje y publica Kafka", async () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "Juan Pérez <juan@test.com>",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       subject: "Re: Su saldo",
       text: "Puedo pagar el viernes.\n\nEl lun 9 jun, CobraAI escribió:\n> Le recordamos..."
     });
 
+    expect(mockDebtorFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: "org1" }) })
+    );
     expect(mockMessageCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ direction: "in", channel: "email" })
@@ -63,15 +68,29 @@ describe("SendgridInboundHandler", () => {
     );
   });
 
-  it("opt-out ('no contactar') → revoca consent email, NO publica Kafka, NO guarda mensaje", async () => {
+  it("email dirigido al replyDomain de otro tenant → rechazado sin tocar BD", async () => {
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
+      from: "juan@test.com",
+      to: "abc@reply.otro-tenant.com",
+      text: "Hola"
+    });
+
+    expect(mockDebtorFindFirst).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it("opt-out ('no contactar') → revoca consent email acotado al tenant, NO publica Kafka, NO guarda mensaje", async () => {
     mockDebtorFindMany.mockResolvedValueOnce([{ id: "debtor1" }]);
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "juan@test.com",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text: "no contactar"
     });
 
+    expect(mockDebtorFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: "org1" }) })
+    );
     expect(mockConsentUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ channel: "email" })
@@ -85,9 +104,9 @@ describe("SendgridInboundHandler", () => {
     mockDebtorFindFirst.mockResolvedValueOnce(null);
 
     await expect(
-      handler.handleInbound({
+      handler.handleInbound("org1", REPLY_DOMAIN, {
         from: "desconocido@test.com",
-        to: "abc@reply.fogging.org",
+        to: `abc@${REPLY_DOMAIN}`,
         text: "Hola"
       })
     ).resolves.toBeUndefined();
@@ -95,10 +114,21 @@ describe("SendgridInboundHandler", () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
-  it("payload con destino fuera de reply.fogging.org → rechazado sin tocar BD", async () => {
-    await handler.handleInbound({
+  it("payload con destino fuera del replyDomain del tenant → rechazado sin tocar BD", async () => {
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "juan@test.com",
-      to: "cobro@fogging.org", // no contiene reply.fogging.org
+      to: "cobro@fogging.org", // no contiene el replyDomain del tenant
+      text: "Hola"
+    });
+
+    expect(mockDebtorFindFirst).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it("sin replyDomain configurado (tenant sin dominio verificado) → todo rechazado", async () => {
+    await handler.handleInbound("org1", "", {
+      from: "juan@test.com",
+      to: "abc@reply.acme.com",
       text: "Hola"
     });
 
@@ -107,9 +137,9 @@ describe("SendgridInboundHandler", () => {
   });
 
   it("loop prevention: headers con Auto-Submitted → ignorado sin tocar BD", async () => {
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "juan@test.com",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text: "Auto-respuesta",
       headers: "Auto-Submitted: auto"
     });
@@ -122,9 +152,9 @@ describe("SendgridInboundHandler", () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "juan@test.com",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text: "Pago el viernes.\n\nEl lun 9 jun, CobraAI escribió:\n> Recordatorio..."
     });
 
@@ -136,9 +166,9 @@ describe("SendgridInboundHandler", () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "Gustavo Moreno <juan@test.com>",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text:
         "Puedo en 25 dias\r\n\r\nOn Tue, Jun 9, 2026, 11:49 AM gustavo moreno <noreply@fogging.org> wrote:\r\n> Le recordamos su saldo pendiente..."
     });
@@ -151,9 +181,9 @@ describe("SendgridInboundHandler", () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "Gustavo <juan@test.com>",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text:
         "Pago la próxima semana\r\n\r\n________________________________\r\nDe: CobraAI <noreply@fogging.org>\r\nEnviado: martes, 9 de junio de 2026 11:49 a. m.\r\nPara: Gustavo\r\nAsunto: Sobre su deuda"
     });
@@ -165,9 +195,9 @@ describe("SendgridInboundHandler", () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "Gustavo <juan@test.com>",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text:
         "De acuerdo, gracias\n\nOn Jun 9, 2026, at 11:49 AM, CobraAI <noreply@fogging.org> wrote:\n> Le recordamos..."
     });
@@ -179,9 +209,9 @@ describe("SendgridInboundHandler", () => {
     mockDebtorFindFirst.mockResolvedValueOnce({ id: "debtor1", tenantId: "org1" });
     mockConversationFindFirst.mockResolvedValueOnce({ id: "conv1" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "Gustavo <juan@test.com>",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text:
         "Confirmo el pago\n\n----- Original Message -----\nFrom: CobraAI\nSubject: deuda"
     });
@@ -194,9 +224,9 @@ describe("SendgridInboundHandler", () => {
     mockConversationFindFirst.mockResolvedValueOnce(null);
     mockConversationCreate.mockResolvedValueOnce({ id: "conv_new" });
 
-    await handler.handleInbound({
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
       from: "juan@test.com",
-      to: "abc@reply.fogging.org",
+      to: `abc@${REPLY_DOMAIN}`,
       text: "Buen día"
     });
 
@@ -207,10 +237,10 @@ describe("SendgridInboundHandler", () => {
     );
   });
 
-  it("loop prevention: from terminando en @reply.fogging.org → ignorado", async () => {
-    await handler.handleInbound({
-      from: "system@reply.fogging.org",
-      to: "abc@reply.fogging.org",
+  it("loop prevention: from terminando en @{replyDomain} → ignorado", async () => {
+    await handler.handleInbound("org1", REPLY_DOMAIN, {
+      from: `system@${REPLY_DOMAIN}`,
+      to: `abc@${REPLY_DOMAIN}`,
       text: "Mensaje de sistema"
     });
 

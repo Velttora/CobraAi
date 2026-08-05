@@ -25,9 +25,15 @@ export class SendgridInboundHandler {
     private readonly contacts: ContactsService
   ) {}
 
-  async handleInbound(payload: SendgridInboundPayload): Promise<void> {
+  /**
+   * `tenantId` and `replyDomain` arrive already resolved from the webhook's
+   * opaque token (D-19) — `replyDomain` is the same value plan 08-10's
+   * `EmailAdapter` sets as the outbound Reply-To (D-22), never derived
+   * independently here.
+   */
+  async handleInbound(tenantId: string, replyDomain: string, payload: SendgridInboundPayload): Promise<void> {
     // 1. Validar forma + dominio destino
-    if (!this.isValidPayload(payload)) return;
+    if (!this.isValidPayload(payload, replyDomain)) return;
 
     // 2. Extraer email del deudor del campo from
     const emailMatch = /[\w.+-]+@[\w-]+\.[\w.]+/.exec(payload.from ?? "");
@@ -39,7 +45,7 @@ export class SendgridInboundHandler {
     if (
       rawHeaders.includes("auto-submitted: auto") ||
       rawHeaders.includes("x-autoreply:") ||
-      email.endsWith("@reply.fogging.org")
+      (replyDomain && email.endsWith(`@${replyDomain}`))
     ) {
       this.logger.log(`Auto-reply ignorado desde: ${email}`);
       return;
@@ -51,16 +57,16 @@ export class SendgridInboundHandler {
 
     // 5. Detectar opt-out (español)
     if (/no\s+contactar|baja|unsubscribe|cancelar|stop|eliminar/i.test(body)) {
-      await this.handleOptOut(email);
+      await this.handleOptOut(tenantId, email);
       return;
     }
 
-    // 6. Buscar deudor por email
+    // 6. Buscar deudor por email, acotado al tenant resuelto por token
     const debtor = await this.prisma.debtor.findFirst({
-      where: { email, deletedAt: null }
+      where: { email, tenantId, deletedAt: null }
     });
     if (!debtor) {
-      this.logger.warn(`Email inbound de dirección desconocida: ${email}`);
+      this.logger.warn(`Email inbound de dirección desconocida: ${email} (tenant ${tenantId})`);
       return;
     }
 
@@ -112,19 +118,24 @@ export class SendgridInboundHandler {
     );
   }
 
-  private isValidPayload(payload: SendgridInboundPayload): boolean {
+  /**
+   * `replyDomain` is the tenant's own domain (D-22, no platform domain
+   * hardcoded anywhere) — an empty `replyDomain` means the tenant has no
+   * verified inbound domain, so nothing can be accepted for it.
+   */
+  private isValidPayload(payload: SendgridInboundPayload, replyDomain: string): boolean {
     if (!payload.from || (!payload.text && !payload.html)) return false;
     const to = payload.to ?? "";
-    if (!to.includes("reply.fogging.org")) {
+    if (!replyDomain || !to.includes(replyDomain)) {
       this.logger.warn(`Email inbound con destino inesperado: ${to}`);
       return false;
     }
     return true;
   }
 
-  private async handleOptOut(email: string): Promise<void> {
+  private async handleOptOut(tenantId: string, email: string): Promise<void> {
     const debtors = await this.prisma.debtor.findMany({
-      where: { email, deletedAt: null }
+      where: { email, tenantId, deletedAt: null }
     });
     if (debtors.length === 0) return;
 
