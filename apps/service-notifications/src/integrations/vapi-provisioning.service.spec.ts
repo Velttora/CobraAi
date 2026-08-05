@@ -90,7 +90,7 @@ describe("VapiProvisioningService", () => {
 
       await service.importTwilioNumber(makeImportInput());
 
-      const body = (mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[0][1] as { smsEnabled: boolean };
+      const body = (mockedAxios.post as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as { smsEnabled: boolean };
       expect(body.smsEnabled).toBe(false);
     });
 

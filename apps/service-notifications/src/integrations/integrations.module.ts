@@ -4,6 +4,7 @@ import { PrismaService } from "@cobrai/db";
 import { TenantIntegrationService } from "@cobrai/integrations";
 import { PrismaModule } from "../prisma/prisma.module";
 import { TwilioProvisioningService } from "./twilio-provisioning.service";
+import { VapiProvisioningService } from "./vapi-provisioning.service";
 
 /**
  * Per-tenant provisioning and credential-resolution services for the BYO
@@ -14,12 +15,13 @@ import { TwilioProvisioningService } from "./twilio-provisioning.service";
   imports: [ConfigModule, PrismaModule],
   providers: [
     TwilioProvisioningService,
+    VapiProvisioningService,
     {
       provide: TenantIntegrationService,
       useFactory: (prisma: PrismaService) => new TenantIntegrationService(prisma),
       inject: [PrismaService]
     }
   ],
-  exports: [TwilioProvisioningService, TenantIntegrationService]
+  exports: [TwilioProvisioningService, VapiProvisioningService, TenantIntegrationService]
 })
 export class IntegrationsModule {}
