@@ -105,3 +105,7 @@ None - no external service configuration required. `ENCRYPTION_KEY_V1` must even
 ---
 *Phase: 08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro*
 *Completed: 2026-08-04*
+
+## Self-Check: PASSED
+
+All created files verified present on disk (`envelope-encryption.ts`, `envelope-encryption.spec.ts`, `migration.sql`, this SUMMARY.md) and all 5 task/docs commits (`017c6a7`, `033ada1`, `2fa311b`, `fcf2724`, `195af23`) verified present in `git log`.
