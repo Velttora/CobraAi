@@ -242,7 +242,7 @@ Plans:
 
 **Requirements**: D-01 … D-26 (decisiones de `08-CONTEXT.md`; este proyecto no tiene `REQUIREMENTS.md`)
 **Depends on:** Phases 1, 2, 3, 6 (reemplaza la configuración global que esas fases introdujeron)
-**Plans:** 16/19 plans executed
+**Plans:** 19/19 plans complete
 
 Plans:
 
@@ -262,9 +262,9 @@ Plans:
 - [x] 08-14-PLAN.md — API de integraciones (write-only, admin) + salud + deudas sin contactar [ola 5]
 - [x] 08-15-PLAN.md — Identidad de marca e inyección en WhatsApp, correo, voz y el agente LLM [ola 6]
 - [x] 08-16-PLAN.md — Primitivas de UI, hook de datos y esqueleto de `Settings > Integraciones` [ola 6]
-- [ ] 08-17-PLAN.md — Pantalla 1: conexión de canales (BYO primero, Embedded Signup con fallback) [ola 7]
-- [ ] 08-18-PLAN.md — Pantalla 2: configuración de cobro y editor de plantilla de enlace [ola 7]
-- [ ] 08-19-PLAN.md — Pantallas 3 y 4: identidad de marca con vista previa, y estado/salud [ola 7]
+- [x] 08-17-PLAN.md — Pantalla 1: conexión de canales (BYO primero, Embedded Signup con fallback) [ola 7]
+- [x] 08-18-PLAN.md — Pantalla 2: configuración de cobro y editor de plantilla de enlace [ola 7]
+- [x] 08-19-PLAN.md — Pantallas 3 y 4: identidad de marca con vista previa, y estado/salud [ola 7]
 
 ---
 
