@@ -49,10 +49,6 @@ export class WebhooksService {
     }
   }
 
-  async handleWhatsApp(payload: Record<string, unknown>): Promise<void> {
-    this.logger.log("WhatsApp webhook (stub)", payload);
-  }
-
   private async updateMessageByProviderId(
     providerId: string,
     mapStatus: (current: MessageStatus) => MessageStatus

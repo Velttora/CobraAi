@@ -27,7 +27,6 @@ const mockVapiHandler = { handleEndOfCall: mockVapiHandleEndOfCall };
 const mockWebhooksService = {
   handleSendGrid: vi.fn(),
   handleTwilio: vi.fn(),
-  handleWhatsApp: vi.fn()
 };
 
 function makeIntegration(overrides: Partial<DecryptedIntegration> = {}): DecryptedIntegration {

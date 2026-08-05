@@ -45,12 +45,6 @@ export class WebhooksController {
     return successResponse({ received: true });
   }
 
-  @Post("whatsapp")
-  async whatsapp(@Body() body: Record<string, unknown>) {
-    await this.webhooksService.handleWhatsApp(body);
-    return successResponse({ received: true });
-  }
-
   /**
    * Webhook de Twilio para mensajes entrantes de WhatsApp, enrutado por el
    * token opaco de la integración (D-19) — el token resuelve al tenant
