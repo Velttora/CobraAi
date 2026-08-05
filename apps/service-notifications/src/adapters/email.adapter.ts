@@ -1,30 +1,52 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
 import { randomUUID } from "node:crypto";
 import type {
   EmailPort,
   SendEmailTemplateInput,
   SendEmailTemplateResult
 } from "@cobrai/ports";
+import { TenantIntegrationService } from "@cobrai/integrations";
+import { isSimulationEnabled } from "./simulation.guard";
 
 @Injectable()
 export class EmailAdapter implements EmailPort {
   private readonly logger = new Logger(EmailAdapter.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly integrations: TenantIntegrationService) {}
 
   async sendTemplate(
     input: SendEmailTemplateInput
   ): Promise<SendEmailTemplateResult> {
-    const apiKey = this.config.get<string>("SENDGRID_API_KEY");
-    const from = this.config.get<string>("SENDGRID_FROM_EMAIL") ?? "noreply@cobrai.dev";
+    const integration = await this.integrations.resolveByChannel(input.tenant_id, "email");
 
-    if (!apiKey) {
-      this.logger.warn(
-        `SendGrid sandbox: email simulado a ${input.to} (template ${input.template_id})`
+    if (!integration) {
+      // D-17: the previous unconditional "simulate and report success" behaviour
+      // here is exactly the phantom-send pattern this plan removes — under BYO,
+      // a missing tenant credential must be a real failure unless simulation is
+      // explicitly enabled.
+      if (isSimulationEnabled()) {
+        this.logger.warn(
+          `SendGrid sandbox: email simulado a ${input.to} (template ${input.template_id}, tenant ${input.tenant_id})`
+        );
+        return { message_id: randomUUID(), status: "sent", simulated: true };
+      }
+      this.logger.error(
+        `Sin integración de SendGrid verificada para tenant ${input.tenant_id}: envío rechazado (to=${input.to})`
       );
-      return { message_id: randomUUID(), status: "sent" };
+      return { message_id: "", status: "failed" };
     }
+
+    const apiKey = integration.secrets.apiKey;
+    const fromEmail = integration.publicConfig.fromEmail ?? "noreply@cobrai.dev";
+    const fromName = integration.publicConfig.fromName;
+    // D-22: Reply-To is always the tenant's own domain, never the platform's
+    // shared one. Without a tenant-configured domain there is no inbound reply
+    // loop, only outbound (the documented degraded state) — the key must be
+    // entirely absent, not present-but-undefined, because SendGrid v3 rejects
+    // `reply_to: undefined`. An explicit `input.reply_to` (e.g. the agent
+    // replying inside an existing thread) still takes precedence.
+    const replyDomain = integration.publicConfig.replyDomain;
+    const replyTo = input.reply_to ?? (replyDomain ? `reply@${replyDomain}` : undefined);
 
     const subject = input.variables.subject ?? "Notificación CobraAI";
     const html = input.variables.body ?? Object.entries(input.variables)
@@ -39,8 +61,8 @@ export class EmailAdapter implements EmailPort {
       },
       body: JSON.stringify({
         personalizations: [{ to: [{ email: input.to }] }],
-        from: { email: from },
-        ...(input.reply_to ? { reply_to: { email: input.reply_to } } : {}),
+        from: { email: fromEmail, ...(fromName ? { name: fromName } : {}) },
+        ...(replyTo ? { reply_to: { email: replyTo } } : {}),
         subject,
         content: [{ type: "text/html", value: html }]
       })

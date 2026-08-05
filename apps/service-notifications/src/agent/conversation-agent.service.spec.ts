@@ -386,7 +386,7 @@ describe("ConversationAgentService", () => {
     expect(mockPromiseCreate).toHaveBeenCalledTimes(3);
   });
 
-  it("channel email → llama EmailAdapter con reply_to, NO llama WhatsApp", async () => {
+  it("channel email → llama EmailAdapter sin reply_to explícito (el adaptador lo deriva del tenant, D-22), NO llama WhatsApp", async () => {
     await service.processInboundMessage({
       ...basePayload,
       phone: "juan@test.com",
@@ -394,11 +394,10 @@ describe("ConversationAgentService", () => {
     });
 
     expect(mockEmail.sendTemplate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: "juan@test.com",
-        reply_to: "reply@reply.fogging.org"
-      })
+      expect.objectContaining({ to: "juan@test.com" })
     );
+    const callArg = mockEmail.sendTemplate.mock.calls[0]![0] as Record<string, unknown>;
+    expect("reply_to" in callArg).toBe(false);
     expect(mockWhatsapp.sendTemplate).not.toHaveBeenCalled();
   });
 

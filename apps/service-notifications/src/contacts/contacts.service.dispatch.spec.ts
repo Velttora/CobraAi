@@ -15,6 +15,23 @@ import {
   makeWhatsapp
 } from "./contacts.service.fixtures";
 
+function buildForEmail(prisma: ReturnType<typeof makePrisma>, email: ReturnType<typeof makeEmail>) {
+  return new ContactsService(
+    prisma as never,
+    makeCompliance() as never,
+    makeAudit() as never,
+    email as never,
+    makeSms() as never,
+    makeWhatsapp() as never,
+    makeVoice() as never,
+    makeKafka() as never,
+    makeWaterfall() as never,
+    makeConfig() as never,
+    makeDebtorMemory() as never,
+    makeIntegrations() as never
+  );
+}
+
 // D-17: a simulated send must be marked as such wherever it lands in the
 // database, so it never inflates delivery metrics nor consumes the Ley 1266
 // contact quota. This suite lives apart from contacts.service.spec.ts because
@@ -95,5 +112,22 @@ describe("ContactsService — simulated flag persistence (D-17)", () => {
         data: expect.objectContaining({ simulated: false })
       })
     );
+  });
+});
+
+// D-22: reply-to is now derived by EmailAdapter from the tenant's own
+// TenantIntegration, not a fixed platform constant — ContactsService must no
+// longer pass a hardcoded reply address into the email dispatch.
+describe("ContactsService — email dispatch no longer hardcodes reply_to (D-22)", () => {
+  it("dispatchChannel(email) no pasa reply_to — el adaptador lo deriva del tenant", async () => {
+    const prisma = makePrisma();
+    const email = makeEmail();
+    const service = buildForEmail(prisma, email);
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    expect(email.sendTemplate).toHaveBeenCalledOnce();
+    const callArg = email.sendTemplate.mock.calls[0]![0] as Record<string, unknown>;
+    expect("reply_to" in callArg).toBe(false);
   });
 });
