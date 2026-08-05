@@ -242,7 +242,7 @@ Plans:
 
 **Requirements**: D-01 … D-26 (decisiones de `08-CONTEXT.md`; este proyecto no tiene `REQUIREMENTS.md`)
 **Depends on:** Phases 1, 2, 3, 6 (reemplaza la configuración global que esas fases introdujeron)
-**Plans:** 8/19 plans executed
+**Plans:** 11/19 plans executed
 
 Plans:
 
@@ -254,9 +254,9 @@ Plans:
 - [x] 08-06-PLAN.md — Migración de datos idempotente que siembra las credenciales globales (D-18) [ola 3]
 - [x] 08-07-PLAN.md — Aprovisionamiento Twilio ISV (subcuenta + Senders API) e importación del número a Vapi [ola 3]
 - [x] 08-08-PLAN.md — Adaptadores de pasarela: Stripe, Mercado Pago, Wompi, PayU, ePayco [ola 3]
-- [ ] 08-09-PLAN.md — Despacho por configuración del tenant + enlace externo con plantilla + transferencia [ola 4]
-- [ ] 08-10-PLAN.md — Refactor de adaptadores a credenciales por request + flag de simulación + dominio de respuesta [ola 4]
-- [ ] 08-11-PLAN.md — Aprovisionamiento SendGrid: subuser, llave propia, autenticación de dominio y CNAME [ola 4]
+- [x] 08-09-PLAN.md — Despacho por configuración del tenant + enlace externo con plantilla + transferencia [ola 4]
+- [x] 08-10-PLAN.md — Refactor de adaptadores a credenciales por request + flag de simulación + dominio de respuesta [ola 4]
+- [x] 08-11-PLAN.md — Aprovisionamiento SendGrid: subuser, llave propia, autenticación de dominio y CNAME [ola 4]
 - [ ] 08-12-PLAN.md — Webhooks de pago con token opaco y verificación fail-closed [ola 5]
 - [ ] 08-13-PLAN.md — Webhooks de canal con token opaco + dominio de respuesta por tenant [ola 5]
 - [ ] 08-14-PLAN.md — API de integraciones (write-only, admin) + salud + deudas sin contactar [ola 5]
