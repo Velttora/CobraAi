@@ -162,20 +162,6 @@ export type ContactTodayItem = {
   debt: { id: string; portfolio: { id: string; name: string } | null } | null;
 };
 
-export type PromiseItem = {
-  id: string;
-  promisedDate: string;
-  amount: string;
-  createdAt: string;
-  debt: {
-    id: string;
-    currency: string;
-    amountOutstanding: string;
-    portfolio: { id: string; name: string } | null;
-    debtor: { id: string; name: string };
-  };
-};
-
 export type EscalationItem = {
   id: string;
   createdAt: string;
@@ -203,16 +189,6 @@ export function useContactsTodayDetail(enabled: boolean) {
     queryKey: ["workflow-stats-contacts"],
     queryFn: () =>
       fetchApi<ApiItemResponse<ContactTodayItem[]>>(client, "/api/v1/workflows/stats/contacts"),
-    enabled
-  });
-}
-
-export function useActivePromisesDetail(enabled: boolean) {
-  const client = useApiClient();
-  return useQuery({
-    queryKey: ["workflow-stats-promises"],
-    queryFn: () =>
-      fetchApi<ApiItemResponse<PromiseItem[]>>(client, "/api/v1/workflows/stats/promises"),
     enabled
   });
 }
