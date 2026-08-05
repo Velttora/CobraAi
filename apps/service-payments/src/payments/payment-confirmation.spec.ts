@@ -21,7 +21,8 @@ describe("PaymentConfirmationService", () => {
       debtId: "d1",
       amount: 100,
       currency: "COP",
-      gateway: "conekta",
+      gateway: "transfer",
+      provider: "transfer",
       gatewayRef: "gw-123"
     });
 
@@ -57,6 +58,7 @@ describe("PaymentConfirmationService", () => {
       amount: 500,
       currency: "COP",
       gateway: "mercadopago",
+      provider: "mercadopago",
       gatewayRef: "mp-999"
     });
 
@@ -67,5 +69,40 @@ describe("PaymentConfirmationService", () => {
       "t1",
       expect.objectContaining({ debt_id: "d1", amount: 500 })
     );
+  });
+
+  it("persiste el provider (y method cuando está presente) en la fila de Payment", async () => {
+    let createdData: Record<string, unknown> | undefined;
+    const prisma = {
+      payment: { findFirst: vi.fn().mockResolvedValue(null) },
+      debt: { findFirst: vi.fn().mockResolvedValue({ id: "d1", amountOutstanding: 500 }) },
+      $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          payment: {
+            create: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => {
+              createdData = data;
+              return { id: "pay-new", status: "confirmed" };
+            })
+          },
+          paymentLink: { updateMany: vi.fn() }
+        };
+        return fn(tx);
+      })
+    };
+    const kafka = { publish: vi.fn() };
+    const service = new PaymentConfirmationService(prisma as never, kafka as never);
+
+    await service.confirmPayment({
+      tenantId: "t1",
+      debtId: "d1",
+      amount: 500,
+      currency: "COP",
+      gateway: "mercadopago",
+      provider: "mercadopago",
+      method: "pse",
+      gatewayRef: "mp-1000"
+    });
+
+    expect(createdData).toMatchObject({ provider: "mercadopago", method: "pse" });
   });
 });

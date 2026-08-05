@@ -154,12 +154,17 @@ describe("verifyCredentials", () => {
     });
   });
 
-  describe("unimplemented providers", () => {
-    it("returns ok:false with a Spanish not-implemented message instead of throwing", async () => {
-      const result = await verifyCredentials("stripe", { publicConfig: {}, secrets: {} });
+  describe("unrecognized providers", () => {
+    it("returns ok:false with a Spanish not-implemented message instead of throwing, for any provider outside the switch's own cases", async () => {
+      // All ten IntegrationProvider values are implemented as of this plan;
+      // this exercises the defensive `default` branch via a value TS would
+      // otherwise reject, guarding against a future enum addition landing
+      // without a matching case.
+      const unknownProvider = "unknown_future_provider" as Parameters<typeof verifyCredentials>[0];
+      const result = await verifyCredentials(unknownProvider, { publicConfig: {}, secrets: {} });
 
       expect(result.ok).toBe(false);
-      expect(result.message).toBe("Verificación no implementada para stripe");
+      expect(result.message).toBe("Verificación no implementada para unknown_future_provider");
     });
   });
 

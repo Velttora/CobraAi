@@ -85,3 +85,11 @@ export {
   TenantContextMiddleware,
   type TenantContextRequest
 } from "./tenant-context.middleware";
+export {
+  EXTERNAL_LINK_VARIABLES,
+  resolveExternalLinkTemplate,
+  validateExternalLinkTemplate,
+  type ExternalLinkVariable,
+  type ExternalLinkValues,
+  type ExternalLinkTemplateError
+} from "./payment-link-template";

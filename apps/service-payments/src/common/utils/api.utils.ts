@@ -32,14 +32,11 @@ export function countryFromAddress(address: unknown): string {
   return country?.toUpperCase().slice(0, 2) ?? "CO";
 }
 
-export function pickGateway(currency: string, country: string): PaymentGateway {
-  if (currency === "MXN" || country === "MX") return "conekta";
-  if (["COP", "ARS", "BRL"].includes(currency) || ["CO", "AR", "BR"].includes(country)) {
-    return "mercadopago";
-  }
-  return "transfer";
-}
-
+// D-06/D-12: under BYO, the tenant's own configured TenantIntegration is the
+// only valid runtime dispatch key — never the debtor's country. Kept here
+// purely as a UI default suggestion for the legacy `gateway_options` field
+// that the public pay page (apps/web/app/pay/[token]/page.tsx) still reads;
+// it must never be used to select which provider actually processes payment.
 export function gatewayOptionsForCountry(country: string): PaymentGateway[] {
   if (country === "MX") return ["conekta", "spei", "card"];
   if (country === "CO") return ["mercadopago", "pse", "card"];

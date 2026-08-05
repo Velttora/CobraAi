@@ -1,156 +1,74 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import type { PaymentGateway } from "@cobrai/db";
-import { randomUUID } from "node:crypto";
+import { BadRequestException, Injectable } from "@nestjs/common";
+import type { PaymentProvider } from "@cobrai/db";
+import { TenantIntegrationService } from "@cobrai/integrations";
+import type { CheckoutSession, GatewayAdapter } from "./gateway.types";
+import { StripeGateway } from "./stripe.gateway";
+import { MercadoPagoGateway } from "./mercadopago.gateway";
+import { WompiGateway } from "./wompi.gateway";
+import { PayuGateway } from "./payu.gateway";
+import { EpaycoGateway } from "./epayco.gateway";
+import { ExternalLinkGateway } from "./external-link.gateway";
+import { TransferGateway } from "./transfer.gateway";
 
-export type CheckoutSession = {
-  gateway_payment_url: string;
-  gateway_ref: string;
-  instructions?: string;
-};
+export type { CheckoutSession } from "./gateway.types";
 
+export interface CreateCheckoutRequest {
+  tenantId: string;
+  amount: number;
+  currency: string;
+  token: string;
+  debtorName: string;
+  returnUrl: string;
+}
+
+/**
+ * Dispatches checkout creation to the `GatewayAdapter` matching the tenant's
+ * own configured `PaymentProvider` (D-06/D-12). Under BYO there is no
+ * platform-level gateway and no fallback: a tenant with no verified payments
+ * integration cannot create a checkout at all — replaces the legacy
+ * platform-config-driven branching this file used to have.
+ */
 @Injectable()
 export class GatewayService {
-  private readonly logger = new Logger(GatewayService.name);
+  private readonly adapters: Map<PaymentProvider, GatewayAdapter>;
 
-  constructor(private readonly config: ConfigService) {}
-
-  async createCheckout(input: {
-    gateway: PaymentGateway;
-    amount: number;
-    currency: string;
-    token: string;
-    debtorName: string;
-  }): Promise<CheckoutSession> {
-    const ref = randomUUID();
-
-    if (input.gateway === "conekta") {
-      return this.createConektaCheckout(input, ref);
-    }
-    if (input.gateway === "mercadopago") {
-      return this.createMercadoPagoCheckout(input, ref);
-    }
-    return this.createTransferCheckout(input, ref);
+  constructor(
+    private readonly tenantIntegrations: TenantIntegrationService,
+    stripe: StripeGateway,
+    mercadopago: MercadoPagoGateway,
+    wompi: WompiGateway,
+    payu: PayuGateway,
+    epayco: EpaycoGateway,
+    externalLink: ExternalLinkGateway,
+    transfer: TransferGateway
+  ) {
+    const registered: GatewayAdapter[] = [stripe, mercadopago, wompi, payu, epayco, externalLink, transfer];
+    this.adapters = new Map(registered.map((adapter) => [adapter.provider, adapter]));
   }
 
-  private async createConektaCheckout(
-    input: {
-      amount: number;
-      currency: string;
-      token: string;
-    },
-    ref: string
-  ): Promise<CheckoutSession> {
-    const apiKey = this.config.get<string>("CONEKTA_PRIVATE_KEY");
-    if (!apiKey) {
-      this.logger.warn("Conekta sandbox: checkout simulado");
-      return {
-        gateway_payment_url: `https://pay.conekta.com/sandbox/${ref}?token=${input.token}`,
-        gateway_ref: ref
-      };
+  async createCheckout(input: CreateCheckoutRequest): Promise<CheckoutSession> {
+    const integration = await this.tenantIntegrations.resolveByChannel(input.tenantId, "payments");
+    if (!integration) {
+      throw new BadRequestException("La organización no tiene un método de cobro configurado");
     }
 
-    const response = await fetch("https://api.conekta.io/orders", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "application/vnd.conekta-v2.1.0+json"
-      },
-      body: JSON.stringify({
-        currency: input.currency,
-        customer_info: { name: "CobraAI Debtor", email: "payer@cobrai.dev" },
-        line_items: [
-          {
-            name: "Pago de deuda",
-            unit_price: Math.round(input.amount * 100),
-            quantity: 1
-          }
-        ],
-        metadata: { payment_token: input.token, gateway_ref: ref }
-      })
+    // `resolveByChannel(tenantId, "payments")` only ever returns a provider
+    // from CHANNEL_PROVIDERS.payments (a strict subset of PaymentProvider's
+    // values), but its return type is the broader IntegrationProvider union
+    // shared across channels — narrow here rather than widen `adapters`.
+    const adapter = this.adapters.get(integration.provider as PaymentProvider);
+    if (!adapter) {
+      throw new BadRequestException(`No hay un adaptador de pago para ${integration.provider}`);
+    }
+
+    return adapter.createCheckout({
+      amount: input.amount,
+      currency: input.currency,
+      token: input.token,
+      debtorName: input.debtorName,
+      returnUrl: input.returnUrl,
+      publicConfig: integration.publicConfig,
+      secrets: integration.secrets
     });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      this.logger.error(`Conekta error: ${detail}`);
-      throw new Error("No se pudo crear orden Conekta");
-    }
-
-    const data = (await response.json()) as {
-      id?: string;
-      checkout?: { url?: string };
-    };
-
-    return {
-      gateway_payment_url: data.checkout?.url ?? `https://pay.conekta.com/${data.id}`,
-      gateway_ref: data.id ?? ref
-    };
-  }
-
-  private async createMercadoPagoCheckout(
-    input: {
-      amount: number;
-      currency: string;
-      token: string;
-    },
-    ref: string
-  ): Promise<CheckoutSession> {
-    const accessToken = this.config.get<string>("MP_ACCESS_TOKEN");
-    if (!accessToken) {
-      this.logger.warn("Mercado Pago sandbox: checkout simulado");
-      return {
-        gateway_payment_url: `https://www.mercadopago.com/sandbox/checkout/${ref}?token=${input.token}`,
-        gateway_ref: ref
-      };
-    }
-
-    const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        items: [
-          {
-            title: "Pago de deuda CobraAI",
-            quantity: 1,
-            unit_price: input.amount,
-            currency_id: input.currency
-          }
-        ],
-        external_reference: input.token,
-        metadata: { gateway_ref: ref }
-      })
-    });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      this.logger.error(`Mercado Pago error: ${detail}`);
-      throw new Error("No se pudo crear preferencia MP");
-    }
-
-    const data = (await response.json()) as {
-      id?: string;
-      init_point?: string;
-      sandbox_init_point?: string;
-    };
-
-    return {
-      gateway_payment_url: data.sandbox_init_point ?? data.init_point ?? "",
-      gateway_ref: data.id ?? ref
-    };
-  }
-
-  private createTransferCheckout(
-    input: { amount: number; currency: string },
-    ref: string
-  ): CheckoutSession {
-    return {
-      gateway_payment_url: "",
-      gateway_ref: ref,
-      instructions: `Transferencia bancaria por ${input.currency} ${input.amount}. Referencia: ${ref}`
-    };
   }
 }
