@@ -8,6 +8,15 @@ export {
 } from "./audit-formatter";
 export { formatCurrency } from "./currency";
 export {
+  EMPRESA_FALLBACK,
+  EMPTY_BRAND_IDENTITY,
+  resolveBrandVariables,
+  sanitizeBrandIdentity,
+  type BrandIdentity,
+  type BrandVariables
+} from "./brand-identity";
+export { mergeBrandIntoSignature } from "./email-layout-brand";
+export {
   AVAILABLE_EMAIL_VARIABLES,
   DEFAULT_BRAND_COLOR,
   DEFAULT_EMAIL_LAYOUT,

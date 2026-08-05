@@ -245,3 +245,92 @@ describe("TenantService.updateWhatsappSender", () => {
     ).rejects.toThrow(NotFoundException);
   });
 });
+
+describe("TenantService.updateBrandIdentity", () => {
+  const prisma = {
+    tenant: {
+      findFirst: vi.fn(),
+      update: vi.fn()
+    },
+    $queryRaw: vi.fn()
+  };
+  const config = { get: vi.fn() };
+
+  let service: TenantService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = new TenantService(prisma as never, config as never);
+  });
+
+  it("rechaza usuarios que no son admin", async () => {
+    await expect(
+      service.updateBrandIdentity("org1", { commercialName: "Acme" }, "agent")
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.tenant.update).not.toHaveBeenCalled();
+  });
+
+  it("lanza NotFoundException si el tenant no existe", async () => {
+    prisma.tenant.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.updateBrandIdentity("org1", { commercialName: "Acme" }, "admin")
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it("hace merge parcial: enviar solo commercialName deja el resto de campos intacto", async () => {
+    prisma.tenant.findFirst.mockResolvedValue({
+      id: "org1",
+      settings: {
+        brandIdentity: {
+          commercialName: "Nombre Viejo",
+          logoUrl: null,
+          supportPhone: "+57 300 000",
+          supportEmail: null,
+          website: null,
+          address: null,
+          legalName: "Acme S.A.S.",
+          taxId: "900123456-7",
+          legalNotice: null
+        }
+      }
+    });
+    prisma.tenant.update.mockImplementation(({ data }: { data: { settings: Record<string, unknown> } }) => ({
+      id: "org1",
+      name: "Acme",
+      slug: "acme",
+      plan: "trial",
+      settings: data.settings
+    }));
+
+    const result = await service.updateBrandIdentity(
+      "org1",
+      { commercialName: "Nombre Nuevo" },
+      "admin"
+    );
+
+    expect(result.brandIdentity.commercialName).toBe("Nombre Nuevo");
+    expect(result.brandIdentity.supportPhone).toBe("+57 300 000");
+    expect(result.brandIdentity.legalName).toBe("Acme S.A.S.");
+    expect(result.brandIdentity.taxId).toBe("900123456-7");
+  });
+
+  it("nula un logoUrl javascript: en lugar de guardarlo (T-08-15a)", async () => {
+    prisma.tenant.findFirst.mockResolvedValue({ id: "org1", settings: {} });
+    prisma.tenant.update.mockImplementation(({ data }: { data: { settings: Record<string, unknown> } }) => ({
+      id: "org1",
+      name: "Acme",
+      slug: "acme",
+      plan: "trial",
+      settings: data.settings
+    }));
+
+    const result = await service.updateBrandIdentity(
+      "org1",
+      { logoUrl: "javascript:alert(1)" },
+      "admin"
+    );
+
+    expect(result.brandIdentity.logoUrl).toBeNull();
+  });
+});
