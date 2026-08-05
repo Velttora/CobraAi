@@ -15,11 +15,13 @@ const useIntegrationsMock = vi.fn();
 const saveMock = { mutateAsync: vi.fn(), isPending: false };
 const verifyMock = { mutateAsync: vi.fn(), isPending: false };
 const disconnectMock = { mutateAsync: vi.fn(), isPending: false };
+const recheckDnsMock = { mutateAsync: vi.fn(), isPending: false };
 vi.mock("../../../../hooks/use-integrations", () => ({
   useIntegrations: () => useIntegrationsMock(),
   useSaveIntegration: () => saveMock,
   useVerifyIntegration: () => verifyMock,
-  useDisconnectIntegration: () => disconnectMock
+  useDisconnectIntegration: () => disconnectMock,
+  useRecheckDns: () => recheckDnsMock
 }));
 
 function view(overrides: Partial<IntegrationView>): IntegrationView {

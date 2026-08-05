@@ -3,13 +3,14 @@
 import type { ChannelFormProps } from "./channel-config";
 import { secretMetaFor } from "./channel-config";
 import { ChannelTextField } from "./ChannelTextField";
+import { EmailDnsSection } from "./EmailDnsSection";
 import { SecretField } from "./SecretField";
 
 /**
  * Correo card connection area. `managed` provisions a SendGrid subuser
  * server-side (no secret from the tenant); `byo` takes the tenant's own
- * SendGrid API key. Both share `domain`/`fromEmail` — the DNS/CNAME
- * lifecycle (D-03) that follows a save is wired in by plan 08-17 Task 2.
+ * SendGrid API key. Both share `domain`/`fromEmail`, and both follow a save
+ * with the `EmailDnsSection` DNS/CNAME lifecycle (D-03, plan 08-17 Task 2).
  */
 export function EmailFields({
   mode,
@@ -18,7 +19,8 @@ export function EmailFields({
   secretDraft,
   setSecretField,
   secretsMeta,
-  disabled
+  disabled,
+  integration
 }: ChannelFormProps): React.ReactElement {
   if (mode === "managed") {
     return (
@@ -45,6 +47,7 @@ export function EmailFields({
           placeholder="Mi Empresa"
           value={publicConfig.fromName ?? ""}
         />
+        <EmailDnsSection integration={integration} />
       </div>
     );
   }
@@ -76,6 +79,7 @@ export function EmailFields({
       <p className="text-xs text-slate-500">
         La llave necesita permisos de Mail Send y de autenticación de dominio.
       </p>
+      <EmailDnsSection integration={integration} />
     </div>
   );
 }
