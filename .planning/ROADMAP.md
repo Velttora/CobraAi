@@ -242,7 +242,7 @@ Plans:
 
 **Requirements**: D-01 … D-26 (decisiones de `08-CONTEXT.md`; este proyecto no tiene `REQUIREMENTS.md`)
 **Depends on:** Phases 1, 2, 3, 6 (reemplaza la configuración global que esas fases introdujeron)
-**Plans:** 11/19 plans executed
+**Plans:** 14/19 plans executed
 
 Plans:
 
@@ -257,9 +257,9 @@ Plans:
 - [x] 08-09-PLAN.md — Despacho por configuración del tenant + enlace externo con plantilla + transferencia [ola 4]
 - [x] 08-10-PLAN.md — Refactor de adaptadores a credenciales por request + flag de simulación + dominio de respuesta [ola 4]
 - [x] 08-11-PLAN.md — Aprovisionamiento SendGrid: subuser, llave propia, autenticación de dominio y CNAME [ola 4]
-- [ ] 08-12-PLAN.md — Webhooks de pago con token opaco y verificación fail-closed [ola 5]
-- [ ] 08-13-PLAN.md — Webhooks de canal con token opaco + dominio de respuesta por tenant [ola 5]
-- [ ] 08-14-PLAN.md — API de integraciones (write-only, admin) + salud + deudas sin contactar [ola 5]
+- [x] 08-12-PLAN.md — Webhooks de pago con token opaco y verificación fail-closed [ola 5]
+- [x] 08-13-PLAN.md — Webhooks de canal con token opaco + dominio de respuesta por tenant [ola 5]
+- [x] 08-14-PLAN.md — API de integraciones (write-only, admin) + salud + deudas sin contactar [ola 5]
 - [ ] 08-15-PLAN.md — Identidad de marca e inyección en WhatsApp, correo, voz y el agente LLM [ola 6]
 - [ ] 08-16-PLAN.md — Primitivas de UI, hook de datos y esqueleto de `Settings > Integraciones` [ola 6]
 - [ ] 08-17-PLAN.md — Pantalla 1: conexión de canales (BYO primero, Embedded Signup con fallback) [ola 7]
