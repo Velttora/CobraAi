@@ -205,7 +205,7 @@ export class IntegrationsService {
       }
     }
 
-    return this.tenantIntegrations.upsert({
+    const view = await this.tenantIntegrations.upsert({
       tenantId,
       provider,
       mode: "byo",
@@ -214,6 +214,42 @@ export class IntegrationsService {
       skipVerification: SKIP_VERIFICATION_PROVIDERS.includes(provider),
       baseWebhookUrl: this.baseWebhookUrl
     });
+
+    if (view.status === "verified") {
+      await this.retirePreviousPaymentProviders(tenantId, provider);
+    }
+
+    return view;
+  }
+
+  /**
+   * Payments is a single-choice channel: the tenant picks one gateway and every
+   * payment link must route to it.
+   *
+   * `resolveByChannel` returns the first verified provider in a FIXED order
+   * (stripe → wompi → payu → epayco → mercadopago → external_link → transfer),
+   * so leaving an older row verified means it keeps winning no matter what the
+   * tenant selected — a tenant who moved from Stripe to Wompi would still be
+   * charging through Stripe. That is money routed to the wrong processor, so
+   * saving a gateway retires the others.
+   *
+   * Only runs once the new provider is actually usable: if verification failed,
+   * retiring the previous one would leave the tenant unable to charge at all.
+   */
+  private async retirePreviousPaymentProviders(
+    tenantId: string,
+    keep: IntegrationProvider
+  ): Promise<void> {
+    const others = ALL_PROVIDERS.filter(
+      (candidate) => PROVIDER_CHANNEL[candidate] === "payments" && candidate !== keep
+    );
+
+    for (const other of others) {
+      const existing = await this.tenantIntegrations.resolveAny(tenantId, other);
+      if (existing) {
+        await this.tenantIntegrations.disconnect(tenantId, other);
+      }
+    }
   }
 
   private async viewFor(tenantId: string, provider: IntegrationProvider): Promise<IntegrationView> {
