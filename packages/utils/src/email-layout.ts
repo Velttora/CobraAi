@@ -4,11 +4,10 @@
  * FUENTE ÚNICA DE VERDAD: tanto el preview del editor drag-and-drop (web) como
  * el envío real (service-notifications) usan `renderEmailLayout`, de modo que
  * lo que el tenant ve al diseñar es exactamente lo que recibe el deudor.
- *
  * El cuerpo del correo NO vive aquí: lo aporta el mensaje de cada regla
  * (`NotificationTemplate.content` ya renderizado) y se inyecta en el bloque
- * `body`. Este módulo solo define la estructura/identidad del tenant.
- *
+ * `body`. Este módulo solo define la estructura/identidad del tenant; el
+ * bloque `signature` se funde con la marca del tenant (email-layout-brand.ts).
  * HTML email-safe: tablas anidadas, estilos inline, ancho fijo (~600px),
  * fuentes web-safe. Sin CSS externo ni clases.
  */
@@ -17,6 +16,7 @@ import {
   emailLayoutVariables,
   type TemplateVariableDescriptor
 } from "./template-variables";
+import { mergeBrandIntoSignature } from "./email-layout-brand";
 
 export type EmailBlockType =
   | "logo"
@@ -68,10 +68,10 @@ export interface EmailLayoutConfig {
 }
 
 export interface RenderEmailContext {
-  /** Cuerpo del mensaje de la regla, ya con variables sustituidas (texto plano). */
   body: string;
-  /** Variables disponibles para sustituir `{{var}}` en bloques del shell. */
   variables: Record<string, string>;
+  /** Brand identity to merge over the stored EmailSignature fields (UI-SPEC A-05). */
+  brand?: import("./brand-identity").BrandIdentity;
 }
 
 export type EmailVariableDescriptor = Pick<
@@ -355,7 +355,7 @@ function renderBlock(
     case "social":
       return renderSocialBlock(block, settings, signature);
     case "signature":
-      return renderSignatureBlock(settings, signature);
+      return renderSignatureBlock(settings, mergeBrandIntoSignature(signature, ctx.brand));
     default:
       return "";
   }

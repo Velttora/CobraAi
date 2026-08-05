@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { DEFAULT_RETRY_POLICY, type ContactRetryPolicy } from "@cobrai/compliance";
+import { sanitizeBrandIdentity, type BrandIdentity } from "@cobrai/utils";
 
 export type TenantProfile = {
   id: string;
@@ -8,6 +9,7 @@ export type TenantProfile = {
   plan: string;
   contactRetryPolicy: ContactRetryPolicy;
   whatsappFromNumber: string | null;
+  brandIdentity: BrandIdentity;
 };
 
 export type UpdateTenantDto = {
@@ -19,6 +21,8 @@ export type UpdateContactRetryPolicyDto = Partial<ContactRetryPolicy>;
 export type UpdateWhatsappSenderDto = {
   whatsappFromNumber: string | null;
 };
+
+export type UpdateBrandIdentityDto = Partial<BrandIdentity>;
 
 const MIN_WINDOW_HOURS = 1;
 const MAX_WINDOW_HOURS = 24 * 14; // 2 semanas
@@ -65,6 +69,7 @@ export function toTenantProfile(tenant: {
   const settings = (tenant.settings ?? {}) as {
     contactRetryPolicy?: unknown;
     whatsappFromNumber?: unknown;
+    brandIdentity?: unknown;
   };
   return {
     id: tenant.id,
@@ -75,7 +80,8 @@ export function toTenantProfile(tenant: {
     whatsappFromNumber:
       typeof settings.whatsappFromNumber === "string"
         ? settings.whatsappFromNumber
-        : null
+        : null,
+    brandIdentity: sanitizeBrandIdentity(settings.brandIdentity)
   };
 }
 

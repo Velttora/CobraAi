@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { ConfigService } from "@nestjs/config";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { ConversationAgentService } from "./conversation-agent.service";
 
 const { mockChatCreate } = vi.hoisted(() => ({
@@ -289,6 +290,51 @@ describe("ConversationAgentService", () => {
     await service.processInboundMessage(basePayload);
 
     expect(mockDebtorMemory.getUnifiedContext).toHaveBeenCalledWith("org1", "debtor1", "debt1");
+  });
+
+  it("system prompt interpola commercialName/legalName/taxId de la identidad de marca del tenant", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({
+      ...baseDebtor,
+      tenant: {
+        name: "Acme Legal Name",
+        settings: {
+          brandIdentity: {
+            commercialName: "Acme Cobranzas",
+            legalName: "Acme S.A.S.",
+            taxId: "900123456-7"
+          }
+        }
+      }
+    });
+
+    await service.processInboundMessage(basePayload);
+
+    const callArgs = mockChatCreate.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const systemPrompt = callArgs.messages.find((m) => m.role === "system")?.content ?? "";
+
+    expect(systemPrompt).toContain("Acme Cobranzas");
+    expect(systemPrompt).toContain("Acme S.A.S.");
+    expect(systemPrompt).toContain("900123456-7");
+  });
+
+  it("sin identidad de marca ni tenant.name, el prompt no interpola null/undefined", async () => {
+    mockDebtorFindFirst.mockResolvedValueOnce({ ...baseDebtor, tenant: null });
+
+    await service.processInboundMessage(basePayload);
+
+    const callArgs = mockChatCreate.mock.calls[0]?.[0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const systemPrompt = callArgs.messages.find((m) => m.role === "system")?.content ?? "";
+    const identityLine = systemPrompt
+      .split("\n")
+      .find((line: string) => line.includes("Identificar SIEMPRE la empresa acreedora"));
+
+    expect(identityLine).not.toMatch(/\bnull\b/);
+    expect(identityLine).not.toMatch(/\bundefined\b/);
+    expect(systemPrompt).toContain(EMPRESA_FALLBACK);
   });
 
   it("deudor con varias deudas → el system prompt las lista TODAS (no solo la principal)", async () => {

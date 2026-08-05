@@ -102,3 +102,29 @@ describe("buildSystemPrompt — multi-cuenta", () => {
     expect(prompt).not.toContain("Cuentas pendientes:");
   });
 });
+
+describe("buildSystemPrompt — identidad de marca (plan 08-15)", () => {
+  it("interpola companyName/legalName/taxId en la identificación de la empresa acreedora", () => {
+    const prompt = buildSystemPrompt({
+      ...baseContext,
+      companyName: "Acme Cobranzas",
+      legalName: "Acme S.A.S.",
+      taxId: "900123456-7"
+    });
+
+    expect(prompt).toContain("Eres Carlos, agente de cobranza de CobraAI, representando a Acme Cobranzas.");
+    expect(prompt).toContain("Identificar SIEMPRE la empresa acreedora: Acme Cobranzas (razón social: Acme S.A.S., NIT: 900123456-7)");
+  });
+
+  it("sin identidad de marca configurada, no interpola null/undefined ni una interpolación vacía", () => {
+    const prompt = buildSystemPrompt(baseContext);
+    const identityLine = prompt
+      .split("\n")
+      .find((line) => line.includes("Identificar SIEMPRE la empresa acreedora"));
+
+    expect(identityLine).toBe(`- Identificar SIEMPRE la empresa acreedora: ${baseContext.companyName}`);
+    expect(identityLine).not.toMatch(/\bnull\b/);
+    expect(identityLine).not.toMatch(/\bundefined\b/);
+    expect(identityLine).not.toMatch(/\(\s*\)/);
+  });
+});

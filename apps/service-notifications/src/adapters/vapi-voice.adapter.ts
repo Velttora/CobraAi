@@ -9,6 +9,7 @@ import type {
   CallStatus,
 } from "@cobrai/ports";
 import { TenantIntegrationService } from "@cobrai/integrations";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { isSimulationEnabled } from "./simulation.guard";
 
 interface VapiCallResponse {
@@ -203,7 +204,11 @@ export class VapiVoiceAdapter implements VoiceAgentPort {
             variableValues: {
               nombre: ctx.variables["nombre"] ?? "cliente",
               monto: montoEspanol(ctx.variables["monto"] ?? ctx.variables["amount"] ?? "0"),
-              empresa: ctx.variables["empresa"] ?? "CobraAI",
+              empresa: ctx.variables["empresa"] ?? EMPRESA_FALLBACK,
+              // Identificación formal de la empresa acreedora (Ley 1266) cuando el
+              // deudor la pide en la llamada — vacías si el tenant no las configuró.
+              empresa_razon_social: ctx.variables["empresa_razon_social"] ?? "",
+              empresa_nit: ctx.variables["empresa_nit"] ?? "",
               referencia:
                 ctx.variables["referencia"] ?? ctx.variables["external_ref"] ?? "",
               fecha_vencimiento: fechaEspanol(ctx.variables["due_date"]),

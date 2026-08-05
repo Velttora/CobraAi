@@ -17,12 +17,11 @@ import { SmsAdapter } from "../adapters/sms.adapter";
 import { VapiVoiceAdapter } from "../adapters/vapi-voice.adapter";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
-import type { IntegrationChannel } from "@cobrai/integrations";
-import { TenantIntegrationService } from "@cobrai/integrations";
+import { TenantIntegrationService, type IntegrationChannel } from "@cobrai/integrations";
 import {
   DEFAULT_EMAIL_LAYOUT,
   renderEmailLayout,
-  type EmailLayoutConfig
+  type BrandIdentity, type BrandVariables, type EmailLayoutConfig
 } from "@cobrai/utils";
 import {
   decimalToNumber,
@@ -38,6 +37,7 @@ import { WaterfallService } from "../orchestrator/waterfall.service";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import type { CreateContactDto } from "./dto/contact.dto";
 import { recordConversationMessage } from "./record-conversation-message";
+import { resolveTenantBrand } from "./resolve-tenant-brand";
 
 export type ContactRequestPayload = {
   debt_id: string;
@@ -165,7 +165,7 @@ export class ContactsService {
   ) {
     const debt = await this.getDebtContext(tenantId, input.debt_id);
     const debtor = debt.debtor;
-    const empresa = debt.tenant?.name ?? "CobraAI";
+    const brand = resolveTenantBrand(debt.tenant);
     const at = input.scheduled_at ? new Date(input.scheduled_at) : new Date();
 
     // Sin servicio de SMS activo, todo mensaje SMS se envía por WhatsApp.
@@ -237,7 +237,7 @@ export class ContactsService {
     const policy = resolveRetryPolicy(debt.tenant?.settings);
     const attemptNumber = input.attempt_number ?? 1;
 
-    const variables = this.buildVariables(debt, debtor, empresa);
+    const variables = this.buildVariables(debt, debtor, brand.variables);
     // Agrupar todas las deudas activas del deudor EN EL MISMO PORTAFOLIO en un
     // solo contacto (email detallado, WhatsApp/voz moderado). Sobrescribe monto
     // por el total para que las plantillas genéricas muestren el agregado.
@@ -263,8 +263,7 @@ export class ContactsService {
         input.channel,
         debt,
         debtor,
-        template,
-        variables
+        template, variables, brand.identity
       );
 
       const sendFailed = sendResult.status === "failed";
@@ -505,7 +504,7 @@ export class ContactsService {
     debt: Debt & { debtor: Debtor },
     debtor: Debtor,
     template: NotificationTemplate | null,
-    variables: Record<string, string>
+    variables: Record<string, string>, brand: BrandIdentity
   ): Promise<{ messageId: string; status: "sent" | "failed"; body: string; simulated: boolean }> {
     const body = template
       ? renderTemplate(template.content, variables)
@@ -523,7 +522,7 @@ export class ContactsService {
         const layoutConfig = await this.resolvePublishedLayout(tenantId);
         const html = renderEmailLayout(layoutConfig, {
           body: messageBody,
-          variables
+          variables, brand
         });
         const subject = this.deriveEmailSubject(template, variables);
         const result = await this.email.sendTemplate({
@@ -738,7 +737,7 @@ export class ContactsService {
   private buildVariables(
     debt: Debt,
     debtor: Debtor,
-    empresa: string
+    brandVariables: BrandVariables
   ): Record<string, string> {
     const paymentBase =
       this.config.get<string>("PAYMENT_LINK_BASE_URL") ??
@@ -778,7 +777,7 @@ export class ContactsService {
       monto_original: String(original),
       moneda: currency,
       dias_mora: String(diasMora),
-      empresa,
+      ...brandVariables,
       link_pago: `${paymentBase}/${debt.id}`,
       payment_link: `${paymentBase}/${debt.id}`,
       referencia,

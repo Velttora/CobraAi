@@ -3,6 +3,7 @@ import { CurrentUser, type CurrentUserContext } from "../common/decorators/curre
 import { Roles } from "../common/decorators/roles.decorator";
 import { successResponse } from "../common/utils/api.utils";
 import type {
+  UpdateBrandIdentityDto,
   UpdateContactRetryPolicyDto,
   UpdateTenantDto,
   UpdateWhatsappSenderDto
@@ -58,6 +59,21 @@ export class TenantController {
   ) {
     return successResponse(
       await this.tenantService.updateWhatsappSender(
+        user.tenantId,
+        dto,
+        user.role
+      )
+    );
+  }
+
+  @Roles("admin")
+  @Patch("brand-identity")
+  async updateBrandIdentity(
+    @CurrentUser() user: CurrentUserContext,
+    @Body() dto: UpdateBrandIdentityDto
+  ) {
+    return successResponse(
+      await this.tenantService.updateBrandIdentity(
         user.tenantId,
         dto,
         user.role

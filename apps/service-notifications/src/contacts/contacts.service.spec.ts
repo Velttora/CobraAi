@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { ContactsService } from "./contacts.service";
 import { WaterfallService } from "../orchestrator/waterfall.service";
 import {
@@ -224,8 +225,10 @@ describe("ContactsService — email layout + subject", () => {
     await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
 
     const { variables } = sentEmail();
-    // empresa cae a "CobraAI" porque el mock de debt no trae tenant.name
-    expect(variables.subject).toBe("Su saldo con CobraAI vence pronto");
+    // Sin brandIdentity ni tenant.name en el mock de debt, empresa cae al
+    // fallback genérico final (ver resolveTenantBrand: commercialName →
+    // tenant.name → EMPRESA_FALLBACK).
+    expect(variables.subject).toBe(`Su saldo con ${EMPRESA_FALLBACK} vence pronto`);
     // el cuerpo de la regla (renderizado) va dentro del shell
     expect(variables.body).toContain("Hola Juan Pérez");
   });
@@ -271,6 +274,112 @@ describe("ContactsService — email layout + subject", () => {
     expect(variables.body).toContain("EXT-003");
     // Cada cuenta lleva su etapa de mora en tono neutral (Ley 1266).
     expect(variables.body).toMatch(/\((por vencer|vencida hace \d+ días?)\)/);
+  });
+});
+
+describe("ContactsService — brand identity fallback chain (D-24 / plan 08-15)", () => {
+  let service: ContactsService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let email: ReturnType<typeof makeEmail>;
+
+  function build() {
+    service = new ContactsService(
+      prisma as never,
+      makeCompliance() as never,
+      makeAudit() as never,
+      email as never,
+      makeSms() as never,
+      makeWhatsapp() as never,
+      makeVoice() as never,
+      makeKafka() as never,
+      makeWaterfall() as never,
+      makeConfig() as never,
+      makeDebtorMemory() as never,
+      makeIntegrations() as never
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+    email = makeEmail();
+    build();
+  });
+
+  function withTenant(tenant: { name?: string | null; settings?: unknown } | null) {
+    prisma.debt.findFirst.mockResolvedValue({
+      id: "debt1",
+      tenantId: "org1",
+      amountOutstanding: 500000,
+      dueDate: new Date("2026-09-30"),
+      strategyId: null,
+      aiSegment: "medium",
+      externalRef: "EXT-001",
+      tenant,
+      debtor: {
+        id: "debtor1",
+        tenantId: "org1",
+        name: "Juan Pérez",
+        email: "juan@test.com",
+        phones: ["+573001234567"],
+        whatsappOptIn: true,
+        emotionalProfile: null
+      }
+    });
+  }
+
+  it("usa commercialName de brandIdentity cuando está configurado", async () => {
+    withTenant({ name: "Acme Legal Name", settings: { brandIdentity: { commercialName: "Acme Cobranzas" } } });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa).toBe("Acme Cobranzas");
+  });
+
+  it("sin commercialName, cae al nombre de la organización (tenant.name)", async () => {
+    withTenant({ name: "Acme Legal Name", settings: {} });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa).toBe("Acme Legal Name");
+  });
+
+  it("sin commercialName ni tenant.name, cae a EMPRESA_FALLBACK", async () => {
+    withTenant(null);
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa).toBe(EMPRESA_FALLBACK);
+  });
+
+  it("emite empresa_telefono, empresa_correo, empresa_sitio_web, empresa_razon_social, empresa_nit y empresa_aviso_legal", async () => {
+    withTenant({
+      name: "Acme",
+      settings: {
+        brandIdentity: {
+          commercialName: "Acme Cobranzas",
+          supportPhone: "+57 300 000",
+          supportEmail: "hola@acme.co",
+          website: "https://acme.co",
+          legalName: "Acme S.A.S.",
+          taxId: "900123456-7",
+          legalNotice: "Aviso legal de Acme."
+        }
+      }
+    });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa_telefono).toBe("+57 300 000");
+    expect(variables.empresa_correo).toBe("hola@acme.co");
+    expect(variables.empresa_sitio_web).toBe("https://acme.co");
+    expect(variables.empresa_razon_social).toBe("Acme S.A.S.");
+    expect(variables.empresa_nit).toBe("900123456-7");
+    expect(variables.empresa_aviso_legal).toBe("Aviso legal de Acme.");
   });
 });
 
