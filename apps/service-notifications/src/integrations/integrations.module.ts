@@ -8,11 +8,14 @@ import { VapiProvisioningService } from "./vapi-provisioning.service";
 import { WhatsAppConnectService } from "./whatsapp-connect.service";
 import { SendgridProvisioningService } from "./sendgrid-provisioning.service";
 import { EmailConnectService } from "./email-connect.service";
+import { IntegrationsService } from "./integrations.service";
 
 /**
  * Per-tenant provisioning and credential-resolution services for the BYO
- * channel/payment integrations (Phase 8). Plans 08-10 (payment gateway BYO)
- * and 08-14 (webhook token guard) add further providers to this module.
+ * channel/payment integrations (Phase 8). 08-14 adds `IntegrationsService`
+ * (this file) and `IntegrationsController` (registered as `controllers`
+ * once Task 2 creates it) — the REST surface the four Settings >
+ * Integraciones screens consume.
  */
 @Module({
   imports: [ConfigModule, PrismaModule],
@@ -22,6 +25,7 @@ import { EmailConnectService } from "./email-connect.service";
     WhatsAppConnectService,
     SendgridProvisioningService,
     EmailConnectService,
+    IntegrationsService,
     {
       provide: TenantIntegrationService,
       useFactory: (prisma: PrismaService) => new TenantIntegrationService(prisma),
@@ -34,6 +38,7 @@ import { EmailConnectService } from "./email-connect.service";
     WhatsAppConnectService,
     SendgridProvisioningService,
     EmailConnectService,
+    IntegrationsService,
     TenantIntegrationService
   ]
 })
