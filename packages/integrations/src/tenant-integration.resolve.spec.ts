@@ -1,0 +1,169 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IntegrationStatus } from "@cobrai/db";
+import { TenantIntegrationService } from "./tenant-integration.service";
+import { buildRow, makePrismaMock, withTestEncryptionKey } from "./tenant-integration.fixtures";
+
+vi.mock("./verifiers", () => ({
+  verifyCredentials: vi.fn()
+}));
+
+describe("TenantIntegrationService — read paths", () => {
+  const prisma = makePrismaMock();
+
+  let service: TenantIntegrationService;
+  let restoreKey: () => void;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    restoreKey = withTestEncryptionKey();
+    service = new TenantIntegrationService(prisma as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    restoreKey();
+  });
+
+  describe("resolve", () => {
+    it("returns decrypted secrets and publicConfig for a verified row", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow());
+
+      const result = await service.resolve("tenantA", "sendgrid");
+
+      expect(result).not.toBeNull();
+      expect(result?.secrets).toEqual({ apiKey: "sk_live_abcd1234" });
+      expect(result?.publicConfig).toEqual({ domain: "example.com" });
+    });
+
+    it.each<IntegrationStatus>(["failed", "pending_dns", "pending_meta", "verifying", "not_configured"])(
+      "returns null for status=%s instead of a stale credential",
+      async (status) => {
+        prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow({ status }));
+
+        const result = await service.resolve("tenantA", "sendgrid");
+
+        expect(result).toBeNull();
+      }
+    );
+
+    it("returns null for a soft-deleted row", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(
+        buildRow({ deletedAt: new Date("2026-02-01T00:00:00.000Z") })
+      );
+
+      const result = await service.resolve("tenantA", "sendgrid");
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when there is no row at all", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(null);
+
+      const result = await service.resolve("tenantA", "sendgrid");
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null and does not throw when the ciphertext is corrupted", async () => {
+      const row = buildRow();
+      const tampered = Buffer.from(row.secretsCipher);
+      tampered[tampered.length - 1] = tampered[tampered.length - 1] ^ 0xff;
+      prisma.tenantIntegration.findUnique.mockResolvedValue({ ...row, secretsCipher: tampered });
+
+      const result = await service.resolve("tenantA", "sendgrid");
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("resolve — caching", () => {
+    it("does not hit Prisma again on a second call inside the TTL", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow());
+
+      await service.resolve("tenantA", "sendgrid");
+      await service.resolve("tenantA", "sendgrid");
+
+      expect(prisma.tenantIntegration.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    it("hits Prisma again once the TTL has expired", async () => {
+      vi.useFakeTimers();
+      const shortTtlService = new TenantIntegrationService(prisma as never, 1_000);
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow());
+
+      await shortTtlService.resolve("tenantA", "sendgrid");
+      vi.advanceTimersByTime(1_001);
+      await shortTtlService.resolve("tenantA", "sendgrid");
+
+      expect(prisma.tenantIntegration.findUnique).toHaveBeenCalledTimes(2);
+    });
+
+    it("never serves tenant A's cached credential to tenant B", async () => {
+      prisma.tenantIntegration.findUnique.mockImplementation(
+        ({ where }: { where: { tenantId_provider: { tenantId: string } } }) =>
+          Promise.resolve(
+            buildRow({
+              tenantId: where.tenantId_provider.tenantId,
+              secretsPlain: { apiKey: `key-${where.tenantId_provider.tenantId}` }
+            })
+          )
+      );
+
+      const resultA = await service.resolve("tenantA", "sendgrid");
+      const resultB = await service.resolve("tenantB", "sendgrid");
+
+      expect(prisma.tenantIntegration.findUnique).toHaveBeenCalledTimes(2);
+      expect(resultA?.secrets["apiKey"]).toBe("key-tenantA");
+      expect(resultB?.secrets["apiKey"]).toBe("key-tenantB");
+    });
+
+    it("invalidate forces the next resolve to hit Prisma", async () => {
+      prisma.tenantIntegration.findUnique.mockResolvedValue(buildRow());
+
+      await service.resolve("tenantA", "sendgrid");
+      service.invalidate("tenantA", "sendgrid");
+      await service.resolve("tenantA", "sendgrid");
+
+      expect(prisma.tenantIntegration.findUnique).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("hasVerifiedChannel", () => {
+    it("is true when any payments-channel provider row is verified", async () => {
+      prisma.tenantIntegration.count.mockResolvedValue(1);
+
+      const result = await service.hasVerifiedChannel("tenantA", "payments");
+
+      expect(result).toBe(true);
+    });
+
+    it("is false when no payments-channel provider row is verified", async () => {
+      prisma.tenantIntegration.count.mockResolvedValue(0);
+
+      const result = await service.hasVerifiedChannel("tenantA", "payments");
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("resolveByWebhookToken", () => {
+    it("returns a row whose status is failed, regardless of verification state", async () => {
+      prisma.tenantIntegration.findFirst.mockResolvedValue(
+        buildRow({ status: "failed", webhookToken: "tok-1" })
+      );
+
+      const result = await service.resolveByWebhookToken("tok-1");
+
+      expect(result).not.toBeNull();
+      expect(result?.status).toBe("failed");
+    });
+
+    it("returns null for an unknown token", async () => {
+      prisma.tenantIntegration.findFirst.mockResolvedValue(null);
+
+      const result = await service.resolveByWebhookToken("unknown-token");
+
+      expect(result).toBeNull();
+    });
+  });
+});
