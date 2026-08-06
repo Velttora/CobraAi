@@ -5,16 +5,18 @@ import type { Route } from "next";
 import { useEffect } from "react";
 import {
   useContactsTodayDetail,
-  useActivePromisesDetail,
   useEscalationsTodayDetail,
   type ContactTodayItem,
-  type PromiseItem,
   type EscalationItem
 } from "../../hooks/use-workflows";
 import { formatDateTime } from "../../lib/formatters";
 import { cn } from "../../lib/utils";
 
-export type OpsDrawerKind = "contacts" | "promises" | "escalations" | null;
+/**
+ * El detalle de promesas salió de aquí: la página de promesas y acuerdos
+ * muestra lo mismo y más (avance del plan, canal, última conversación).
+ */
+export type OpsDrawerKind = "contacts" | "escalations" | null;
 
 const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
@@ -34,7 +36,6 @@ const OUTCOME_LABELS: Record<string, { label: string; className: string }> = {
 
 const TITLES: Record<NonNullable<OpsDrawerKind>, string> = {
   contacts: "Contactos de hoy",
-  promises: "Promesas activas",
   escalations: "Escalaciones de hoy"
 };
 
@@ -73,50 +74,6 @@ function ContactsList({ items, loading }: { items: ContactTodayItem[]; loading: 
                 <span className="text-xs text-slate-300 dark:text-slate-600">{c.status}</span>
               )}
             </div>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-function PromisesList({ items, loading }: { items: PromiseItem[]; loading: boolean }) {
-  if (loading) return <DrawerSkeleton />;
-  if (items.length === 0) return <EmptyState text="Sin promesas activas" />;
-
-  return (
-    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-      {items.map((p) => {
-        const dueDate = new Date(p.promisedDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const isOverdue = dueDate < today;
-        const amount = Number(p.amount);
-        const currency = p.debt.currency ?? "COP";
-        const formatted = new Intl.NumberFormat("es-CO", {
-          style: "currency",
-          currency,
-          maximumFractionDigits: currency === "COP" ? 0 : 2
-        }).format(amount);
-
-        return (
-          <li className="flex items-center justify-between gap-3 py-3" key={p.id}>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                {p.debt.debtor.name}
-              </p>
-              <p className="text-xs text-slate-400">
-                Vence: <span className={cn("font-medium", isOverdue ? "text-red-500" : "text-slate-600 dark:text-slate-300")}>
-                  {dueDate.toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}
-                </span>
-              </p>
-              {p.debt.portfolio && (
-                <p className="text-xs text-slate-400">{p.debt.portfolio.name}</p>
-              )}
-            </div>
-            <p className="shrink-0 text-sm font-semibold text-slate-800 dark:text-slate-200">
-              {formatted}
-            </p>
           </li>
         );
       })}
@@ -181,7 +138,6 @@ export function OpsDrawer({ kind, onClose }: Props) {
   const isOpen = kind !== null;
 
   const contactsQuery = useContactsTodayDetail(kind === "contacts");
-  const promisesQuery = useActivePromisesDetail(kind === "promises");
   const escalationsQuery = useEscalationsTodayDetail(kind === "escalations");
 
   // Cerrar con Escape
@@ -235,12 +191,6 @@ export function OpsDrawer({ kind, onClose }: Props) {
             <ContactsList
               items={contactsQuery.data?.data ?? []}
               loading={contactsQuery.isLoading}
-            />
-          )}
-          {kind === "promises" && (
-            <PromisesList
-              items={promisesQuery.data?.data ?? []}
-              loading={promisesQuery.isLoading}
             />
           )}
           {kind === "escalations" && (

@@ -229,16 +229,29 @@ describe("describeWorkflowRule", () => {
   it("traduce pago confirmado a mensaje de agradecimiento", () => {
     const desc = describeWorkflowRule({
       trigger: "payment_confirmed",
-      condition: { amount_outstanding: 0 },
+      condition: {},
       action: "send_notification",
       channel: "whatsapp"
     });
     expect(desc.when).toBe(
-      "Cuando se confirma el pago total (saldo en cero)"
+      "Cuando se confirma un pago (parcial o total)"
     );
     expect(desc.does).toBe("Envía un mensaje de agradecimiento por WhatsApp");
     expect(desc.summary).toBe(
-      "Cuando se confirma el pago total (saldo en cero), envía un mensaje de agradecimiento por WhatsApp."
+      "Cuando se confirma un pago (parcial o total), envía un mensaje de agradecimiento por WhatsApp."
+    );
+  });
+
+  it("traduce promesa cumplida", () => {
+    const desc = describeWorkflowRule({
+      trigger: "promise_kept",
+      condition: {},
+      action: "send_notification",
+      channel: "whatsapp"
+    });
+    expect(desc.when).toBe("Cuando el deudor cumple una promesa o cuota");
+    expect(desc.does).toBe(
+      "Envía un mensaje de confirmación por WhatsApp"
     );
   });
 });

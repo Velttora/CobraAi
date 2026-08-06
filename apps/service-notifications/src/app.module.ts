@@ -11,6 +11,7 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { HealthModule } from "./health/health.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { KafkaModule } from "./kafka/kafka.module";
+import { NegotiationModule } from "./negotiation/negotiation.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TemplatesModule } from "./templates/templates.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
@@ -23,6 +24,7 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
     ContactsModule,
     TemplatesModule,
     ConversationsModule,
+    NegotiationModule,
     WebhooksModule,
     IntegrationsModule,
     HealthModule

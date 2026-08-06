@@ -7,7 +7,7 @@ import { KafkaService } from "../kafka/kafka.service";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
 import { EmailAdapter } from "../adapters/email.adapter";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
-import { PaymentPlanService } from "../agent/payment-plan.service";
+import { NegotiationService } from "../negotiation/negotiation.service";
 import { ContactsService } from "../contacts/contacts.service";
 
 type ContactOutcome =
@@ -74,7 +74,7 @@ export class VapiWebhookHandler {
     private readonly compliance: ComplianceService,
     private readonly config: ConfigService,
     private readonly debtorMemory: DebtorMemoryService,
-    private readonly paymentPlans: PaymentPlanService,
+    private readonly negotiations: NegotiationService,
     private readonly contacts: ContactsService,
   ) {}
 
@@ -306,12 +306,15 @@ export class VapiWebhookHandler {
       intervalDays: structuredData?.interval_days ?? 30,
     });
 
-    const planId = await this.paymentPlans.createPlan(tenantId, {
+    // El agente de voz propone; el plan no existe hasta que alguien lo apruebe.
+    const requestId = await this.negotiations.requestApproval({
+      tenantId,
       debtId,
+      kind: "payment_plan",
       installments,
-      createdVia: "voice",
+      channel: "voice",
     });
-    return planId !== null;
+    return requestId !== null;
   }
 
   private async registerPromiseFromCall(

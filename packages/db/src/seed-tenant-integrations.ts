@@ -29,7 +29,13 @@ const prisma = new PrismaClient();
  */
 const SEED_WEBHOOK_CAPABLE_PROVIDERS: IntegrationProvider[] = ["twilio_whatsapp", "sendgrid", "mercadopago"];
 
-/** Domain already in production use for the reply-to of every outbound email (see `email.constants.ts`). */
+/**
+ * Domain that was the hardcoded reply-to for every outbound email before this
+ * phase. Seeded as each existing tenant's `replyDomain` so the inbound loop
+ * keeps working across the cutover; new tenants configure their own and this
+ * value is never applied to them. The constant it used to live in
+ * (`email.constants.ts`) was deleted with the hardcoded reply-to (D-22).
+ */
 const REPLY_DOMAIN = "reply.fogging.org";
 
 type SeedTenant = Pick<Tenant, "id" | "settings">;

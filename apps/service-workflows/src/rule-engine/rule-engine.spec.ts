@@ -137,5 +137,43 @@ describe("RuleEngineService", () => {
         })
       ).toBe(true);
     });
+
+    it.each([
+      "disputed",
+      "paid_partial",
+      "paid_full",
+      "written_off",
+      "legal",
+      "legal_risk",
+      "promised",
+      "plan",
+      "new",
+      "analyzing"
+    ] as const)(
+      "estado %s: nunca aplica reglas de schedule/mora (ni match-all)",
+      (status) => {
+        const debt = { ...baseDebt, status };
+        expect(
+          engine.ruleAppliesToDebt(debt as never, debtor as never, {})
+        ).toBe(false);
+        expect(
+          engine.ruleAppliesToDebt(debt as never, debtor as never, {
+            aging_days: { gte: 0, lte: 30 }
+          })
+        ).toBe(false);
+      }
+    );
+
+    it("evaluateRules también rechaza disputed y pagadas", () => {
+      for (const status of ["disputed", "paid_full", "paid_partial", "written_off"]) {
+        const result = engine.evaluateRules(
+          { ...baseDebt, status } as never,
+          debtor as never,
+          {}
+        );
+        expect(result.applied).toBe(false);
+        expect(result.reason).toBe("debt_not_collectable");
+      }
+    });
   });
 });

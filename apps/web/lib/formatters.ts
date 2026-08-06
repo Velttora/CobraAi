@@ -49,6 +49,23 @@ export function formatRelativeDate(iso: string | Date): string {
   return rtf.format(-diffSeconds, "second");
 }
 
+/**
+ * Fecha sin hora. Se formatea en UTC a propósito: los campos `@db.Date`
+ * (fecha pactada, vencimiento) se guardan a medianoche UTC y convertirlos a
+ * hora Colombia los correría un día hacia atrás.
+ */
+export function formatDateOnly(iso: string | Date | null | undefined): string {
+  if (!iso) return "—";
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(DEFAULT_LOCALE, {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+}
+
 export function formatDuration(seconds: number | null): string {
   if (!seconds) return "—";
   const m = Math.floor(seconds / 60);

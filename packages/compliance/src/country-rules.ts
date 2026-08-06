@@ -35,8 +35,9 @@ export const COUNTRY_RULES: Record<string, CountryRuleSet> = {
   CO: {
     code: "CO",
     timezone: "America/Bogota",
-    hours: { startHour: 8, endHour: 18, days: [0, 1, 2, 3, 4, 5, 6] },
-    frequency: {},
+    // Lun–vie. Fines de semana fuera; festivos nacionales se bloquean en ComplianceService.
+    hours: { startHour: 8, endHour: 18, days: [1, 2, 3, 4, 5] },
+    frequency: { maxPerDayPerChannel: 1 },
     requireCreditorIdentification: true,
     requireExplicitConsent: true
   }

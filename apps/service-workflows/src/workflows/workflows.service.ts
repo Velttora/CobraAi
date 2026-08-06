@@ -17,9 +17,9 @@ import {
   daysSinceLastContact,
   getAgingBucket,
   planOperationalScores,
-  PROMISE_SAFE_DEBT_STATUSES
+  PROMISE_SAFE_DEBT_STATUSES,
+  startOfTodayUtc
 } from "@cobrai/utils";
-import { startOfTodayUtc } from "@cobrai/utils";
 import { isAutomationGraceActive } from "@cobrai/workflow-packages";
 import {
   computeAgingDays,
@@ -27,6 +27,10 @@ import {
 } from "../common/utils/api.utils";
 import { KafkaService } from "../kafka/kafka.service";
 import { RuleEngineService } from "../rule-engine/rule-engine.service";
+import {
+  isNonCollectableForProactiveTrigger,
+  SCHEDULE_CONTACT_STATUSES
+} from "../rule-engine/collectable-statuses";
 import {
   canTransition,
   resolveTransition,
@@ -200,21 +204,32 @@ export class WorkflowsService {
     });
   }
 
-  async handlePaymentConfirmed(
+  /**
+   * Reacciona a un pago ya aplicado por service-portfolios.
+   *
+   * No escribe el estado de la deuda: ese cálculo vive completo en
+   * PaymentEventsService, que es quien tiene el saldo, las promesas y los planes
+   * resueltos en el mismo paso. Duplicarlo aquí hacía que el estado final
+   * dependiera de qué consumidor de `cobrai.payment.confirmed` ganara la
+   * carrera.
+   */
+  async handlePaymentApplied(
     tenantId: string,
     payload: Record<string, unknown>
   ): Promise<void> {
     const debtId = String(payload.debt_id ?? "");
     if (!debtId) return;
 
-    const outstanding = Number(payload.amount_outstanding ?? 0);
-    await this.applyTransition(
-      tenantId,
-      debtId,
-      "PAYMENT_CONFIRMED",
-      outstanding > 0 ? "paid_partial" : "paid_full"
-    );
     await this.evaluateTriggerRules(tenantId, debtId, "payment_confirmed");
+  }
+
+  async handlePromiseKept(
+    tenantId: string,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    const debtId = String(payload.debt_id ?? "");
+    if (!debtId) return;
+    await this.evaluateTriggerRules(tenantId, debtId, "promise_kept");
   }
 
   async triggerDebtEvaluation(
@@ -249,7 +264,7 @@ export class WorkflowsService {
               tenantId,
               deletedAt: null,
               portfolioId: { in: portfolioIds },
-              status: { in: ["upcoming", "active", "contacted", "promised"] }
+              status: { in: [...SCHEDULE_CONTACT_STATUSES, "promised"] }
             },
             include: { debtor: true },
             take: 200
@@ -618,9 +633,9 @@ export class WorkflowsService {
           tenantId,
           portfolioId: portfolio.id,
           deletedAt: null,
-          // "upcoming" entra para habilitar recordatorios pre-vencimiento;
-          // el gate ruleAppliesToDebt evita que reglas de mora las toquen.
-          status: { in: ["upcoming", "active", "contacted"] }
+          // upcoming entra para pre-vencimiento; ruleAppliesToDebt evita mora.
+          // disputed/paid_*/written_off/… quedan fuera (SCHEDULE_CONTACT_STATUSES).
+          status: { in: [...SCHEDULE_CONTACT_STATUSES] }
         },
         include: { debtor: { include: { consents: true } } }
       });
@@ -749,7 +764,10 @@ export class WorkflowsService {
     const brokenPromises = await this.prisma.promiseToPay.findMany({
       where: {
         tenantId,
-        status: "pending",
+        // `partial` también vence. Filtrar solo `pending` volvía inmortal a
+        // toda promesa con un abono encima: nunca se rompía, la deuda no
+        // regresaba a gestión y el compromiso quedaba abierto para siempre.
+        status: { in: ["pending", "partial"] },
         promisedDate: { lt: startOfTodayUtc() },
         deletedAt: null,
         // No marcar como rota una promesa cuya deuda ya está saldada/castigada:
@@ -859,6 +877,21 @@ export class WorkflowsService {
     if (isAutomationGraceActive(portfolio.automationStartsAt)) {
       this.logger.log(
         `Trigger ${trigger} diferido (gracia) debt=${debtId} hasta ${portfolio.automationStartsAt?.toISOString()}`
+      );
+      return;
+    }
+
+    // Contacto proactivo por evento: no insistir sobre disputadas, pagadas ni
+    // legales. payment_confirmed / promise_kept / debt_created se exceptúan
+    // (agradecimiento, promesa cumplida, bienvenida).
+    if (
+      trigger !== "payment_confirmed" &&
+      trigger !== "promise_kept" &&
+      trigger !== "debt_created" &&
+      isNonCollectableForProactiveTrigger(debt.status)
+    ) {
+      this.logger.log(
+        `Trigger ${trigger} omitido debt=${debtId} status=${debt.status} (no cobrable)`
       );
       return;
     }
@@ -1218,10 +1251,14 @@ export class WorkflowsService {
 
     const templateHint =
       rule.trigger === "payment_confirmed"
-        ? "agradecimiento"
-        : rule.trigger === "debt_created"
-          ? "bienvenida"
-          : "workflow_automation";
+        ? Number(debt.amountOutstanding) > 0
+          ? "agradecimiento_parcial"
+          : "agradecimiento"
+        : rule.trigger === "promise_kept"
+          ? "promesa_cumplida"
+          : rule.trigger === "debt_created"
+            ? "bienvenida"
+            : "workflow_automation";
 
     await this.kafka.publish(
       "cobrai.debtor.contact_queue",

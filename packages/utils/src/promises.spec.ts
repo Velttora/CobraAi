@@ -1,39 +1,89 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPaymentToPromise,
   buildInstallmentSchedule,
-  canBreakPromiseForDebtStatus,
-  resolvePromiseStatusForPayment
+  canBreakPromiseForDebtStatus
 } from "./promises";
 
-describe("resolvePromiseStatusForPayment", () => {
+describe("applyPaymentToPromise", () => {
   it("deuda saldada por completo → kept (aunque el pago sea menor al prometido)", () => {
     expect(
-      resolvePromiseStatusForPayment({
+      applyPaymentToPromise({
         promiseAmount: 1_000_000,
+        alreadyPaid: 0,
         amountPaid: 100_000,
         debtPaidFull: true
       })
-    ).toBe("kept");
+    ).toEqual({ status: "kept", amountPaid: 1_000_000 });
   });
 
-  it("pago parcial que cubre el monto prometido → kept", () => {
+  it("pago que cubre el monto prometido → kept", () => {
     expect(
-      resolvePromiseStatusForPayment({
+      applyPaymentToPromise({
         promiseAmount: 500_000,
+        alreadyPaid: 0,
         amountPaid: 500_000,
         debtPaidFull: false
       })
-    ).toBe("kept");
+    ).toEqual({ status: "kept", amountPaid: 500_000 });
   });
 
-  it("pago parcial menor al prometido → partial (no se rompe)", () => {
+  it("pago menor al prometido → partial, con el abono registrado", () => {
     expect(
-      resolvePromiseStatusForPayment({
+      applyPaymentToPromise({
         promiseAmount: 1_000_000,
+        alreadyPaid: 0,
         amountPaid: 300_000,
         debtPaidFull: false
       })
-    ).toBe("partial");
+    ).toEqual({ status: "partial", amountPaid: 300_000 });
+  });
+
+  it("dos abonos de la mitad cumplen la promesa", () => {
+    // El caso que antes nunca cerraba: cada pago se medía contra el total y
+    // perdía, así que al vencer se fichaba como incumplido a quien pagó todo.
+    const primero = applyPaymentToPromise({
+      promiseAmount: 500_000,
+      alreadyPaid: 0,
+      amountPaid: 250_000,
+      debtPaidFull: false
+    });
+    expect(primero).toEqual({ status: "partial", amountPaid: 250_000 });
+
+    expect(
+      applyPaymentToPromise({
+        promiseAmount: 500_000,
+        alreadyPaid: primero.amountPaid,
+        amountPaid: 250_000,
+        debtPaidFull: false
+      })
+    ).toEqual({ status: "kept", amountPaid: 500_000 });
+  });
+
+  it("no acredita más de lo prometido cuando el pago se pasa", () => {
+    expect(
+      applyPaymentToPromise({
+        promiseAmount: 500_000,
+        alreadyPaid: 100_000,
+        amountPaid: 900_000,
+        debtPaidFull: false
+      })
+    ).toEqual({ status: "kept", amountPaid: 500_000 });
+  });
+
+  it("acumula tres abonos que todavía no alcanzan", () => {
+    let paid = 0;
+    for (const abono of [100_000, 100_000, 100_000]) {
+      const result = applyPaymentToPromise({
+        promiseAmount: 500_000,
+        alreadyPaid: paid,
+        amountPaid: abono,
+        debtPaidFull: false
+      });
+      paid = result.amountPaid;
+      expect(result.status).toBe("partial");
+    }
+    expect(paid).toBe(300_000);
   });
 });
 

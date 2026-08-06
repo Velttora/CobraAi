@@ -8,7 +8,12 @@
       "name": "Bienvenida — WhatsApp",
       "trigger": "debt_created",
       "condition": {
-        "status": ["new", "upcoming", "analyzing", "active"]
+        "status": [
+          "new",
+          "upcoming",
+          "analyzing",
+          "active"
+        ]
       },
       "action": "send_notification",
       "channel": "whatsapp",
@@ -18,7 +23,12 @@
     {
       "name": "Score medio-bajo — WhatsApp",
       "trigger": "score_updated",
-      "condition": { "ai_score": { "lt": 60 }, "whatsapp_opt_in": true },
+      "condition": {
+        "ai_score": {
+          "lt": 60
+        },
+        "whatsapp_opt_in": true
+      },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 1,
@@ -27,7 +37,11 @@
     {
       "name": "Score bajo — WhatsApp",
       "trigger": "score_updated",
-      "condition": { "ai_score": { "lt": 40 } },
+      "condition": {
+        "ai_score": {
+          "lt": 40
+        }
+      },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 2,
@@ -36,7 +50,13 @@
     {
       "name": "Pre-vencimiento -7d — WhatsApp",
       "trigger": "schedule",
-      "condition": { "days_to_due": { "gte": 1, "lte": 7 }, "whatsapp_opt_in": true },
+      "condition": {
+        "days_to_due": {
+          "gte": 1,
+          "lte": 7
+        },
+        "whatsapp_opt_in": true
+      },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 0,
@@ -45,7 +65,13 @@
     {
       "name": "Aging 0-30 — WhatsApp",
       "trigger": "schedule",
-      "condition": { "aging_days": { "gte": 0, "lte": 30 }, "whatsapp_opt_in": true },
+      "condition": {
+        "aging_days": {
+          "gte": 0,
+          "lte": 30
+        },
+        "whatsapp_opt_in": true
+      },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 0,
@@ -54,7 +80,13 @@
     {
       "name": "Aging 31-60 — WhatsApp",
       "trigger": "schedule",
-      "condition": { "aging_days": { "gte": 31, "lte": 60 }, "whatsapp_opt_in": true },
+      "condition": {
+        "aging_days": {
+          "gte": 31,
+          "lte": 60
+        },
+        "whatsapp_opt_in": true
+      },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 0,
@@ -63,7 +95,12 @@
     {
       "name": "Aging 61-90 — llamada IA",
       "trigger": "schedule",
-      "condition": { "aging_days": { "gte": 61, "lte": 90 } },
+      "condition": {
+        "aging_days": {
+          "gte": 61,
+          "lte": 90
+        }
+      },
       "action": "send_notification",
       "channel": "voice",
       "delay_hours": 0,
@@ -72,7 +109,11 @@
     {
       "name": "Aging 180+ — escalamiento legal",
       "trigger": "schedule",
-      "condition": { "aging_days": { "gte": 181 } },
+      "condition": {
+        "aging_days": {
+          "gte": 181
+        }
+      },
       "action": "escalate_human",
       "channel": "voice",
       "delay_hours": 0,
@@ -88,9 +129,20 @@
       "priority": 5
     },
     {
-      "name": "Pago confirmado — agradecimiento WhatsApp",
+      "name": "Promesa cumplida — WhatsApp",
+      "trigger": "promise_kept",
+      "condition": {},
+      "action": "send_notification",
+      "channel": "whatsapp",
+      "delay_hours": 0,
+      "priority": 8
+    },
+    {
+      "name": "Pago recibido — agradecimiento WhatsApp",
       "trigger": "payment_confirmed",
-      "condition": { "amount_outstanding": 0 },
+      "condition": {
+        "amount_outstanding": 0
+      },
       "action": "send_notification",
       "channel": "whatsapp",
       "delay_hours": 0,

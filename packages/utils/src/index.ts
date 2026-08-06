@@ -63,11 +63,12 @@ export { normalizePhoneE164 } from "./validation";
 export {
   buildInstallmentSchedule,
   canBreakPromiseForDebtStatus,
-  resolvePromiseStatusForPayment,
+  applyPaymentToPromise,
   PROMISE_SAFE_DEBT_STATUSES,
   type InstallmentPlanItem,
   type ResolvedPromiseStatus
 } from "./promises";
+export { resolveDebtStatusAfterPayment } from "./debt-status-after-payment";
 export {
   agingRecoveryScore,
   amountNormalizedRecoveryScore,

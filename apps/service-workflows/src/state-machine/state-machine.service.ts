@@ -38,7 +38,13 @@ const TRANSITIONS: Partial<
   },
   disputed: { CONTACT_EFFECTIVE: "contacted" },
   legal_risk: { ESCALATE_LEGAL: "legal" },
-  plan: { PAYMENT_CONFIRMED: "paid_partial" }
+  plan: {
+    // Documental: el estado tras un pago lo decide PaymentEventsService en
+    // service-portfolios, que es quien tiene saldo, promesas y plan resueltos.
+    // Aquí PAYMENT_CONFIRMED solo queda para la acción `update_status` de una
+    // regla, que fuerza el destino explícitamente.
+    PAYMENT_CONFIRMED: "paid_partial"
+  }
 };
 
 export function canTransition(

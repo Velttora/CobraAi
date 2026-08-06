@@ -14,8 +14,8 @@ import { EmailAdapter } from "../adapters/email.adapter";
 import { buildInstallmentSchedule } from "@cobrai/utils";
 import { buildSystemPrompt } from "./prompts/cobrai-system.prompt";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
-import { PaymentPlanService } from "./payment-plan.service";
 import { resolveTenantBrand } from "../contacts/resolve-tenant-brand";
+import { NegotiationService } from "../negotiation/negotiation.service";
 
 export interface InboundMessagePayload {
   debtor_id: string;
@@ -80,7 +80,7 @@ export class ConversationAgentService {
     private readonly whatsapp: TwilioWhatsAppAdapter,
     private readonly debtorMemory: DebtorMemoryService,
     private readonly email: EmailAdapter,
-    private readonly paymentPlans: PaymentPlanService,
+    private readonly negotiations: NegotiationService,
     private readonly compliance: ComplianceService
   ) {
     const apiKey = config.get<string>("OPENAI_API_KEY");
@@ -445,8 +445,11 @@ export class ConversationAgentService {
   }
 
   /**
-   * Crea un plan de cuotas a partir de lo acordado. Acepta cuotas explícitas
+   * Propone un plan de cuotas a partir de lo acordado. Acepta cuotas explícitas
    * (fechas + montos) o un número de cuotas para repartir el saldo por igual.
+   *
+   * No crea el plan: lo deja esperando aprobación humana. Ningún acuerdo se
+   * cierra sin que una persona lo autorice.
    */
   private async registerPaymentPlan(
     response: AgentResponse,
@@ -478,16 +481,23 @@ export class ConversationAgentService {
       return;
     }
 
-    const planId = await this.paymentPlans.createPlan(ctx.tenant_id, {
+    // El agente propone; el plan no existe hasta que una persona lo apruebe.
+    const requestId = await this.negotiations.requestApproval({
+      tenantId: ctx.tenant_id,
       debtId: ctx.debt_id,
+      kind: "payment_plan",
       installments,
-      createdVia: ctx.channel
+      channel: ctx.channel
     });
-    if (!planId) {
+    if (!requestId) {
       this.logger.warn(
-        `plan_request con cuotas insuficientes para deuda ${ctx.debt_id} — no se crea plan`
+        `plan_request con cuotas insuficientes para deuda ${ctx.debt_id} — no se propone plan`
       );
+      return;
     }
+    this.logger.log(
+      `Plan propuesto para deuda ${ctx.debt_id} — esperando aprobación (${requestId})`
+    );
   }
 
   private extractText(content: string): string {

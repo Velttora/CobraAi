@@ -6,11 +6,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../../lib/utils";
 import { useEscalations } from "../../hooks/use-conversations";
+import { usePendingApprovalsCount } from "../../hooks/use-negotiations";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/portfolios", label: "Portafolios" },
   { href: "/conversations", label: "Conversaciones" },
+  { href: "/negotiations", label: "Promesas y acuerdos" },
   { href: "/audit", label: "Auditoría" },
   { href: "/settings", label: "Configuración" }
 ];
@@ -19,6 +21,9 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: escalationsData } = useEscalations();
   const escalationCount = escalationsData?.data.length ?? 0;
+  // Acuerdos esperando aprobación: nada avanza hasta que alguien decida, y el
+  // deudor quedó con una respuesta pendiente.
+  const pendingApprovals = usePendingApprovalsCount();
 
   return (
     <aside
@@ -31,6 +36,7 @@ export function Sidebar() {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
           const isConversations = item.href === "/conversations";
+          const isNegotiations = item.href === "/negotiations";
 
           return (
             <Link
@@ -51,6 +57,14 @@ export function Sidebar() {
                   className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white"
                 >
                   {escalationCount > 99 ? "99+" : escalationCount}
+                </span>
+              )}
+              {isNegotiations && pendingApprovals > 0 && (
+                <span
+                  aria-label={`${pendingApprovals} acuerdos esperando aprobación`}
+                  className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white"
+                >
+                  {pendingApprovals > 99 ? "99+" : pendingApprovals}
                 </span>
               )}
             </Link>

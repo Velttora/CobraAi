@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { PrismaClient } = require("@prisma/client");
+const { splitSqlStatements } = require("./split-sql-statements.cjs");
 
 const prisma = new PrismaClient();
 const migrationsDir = "/app/prisma-migrate/migrations";
@@ -21,14 +22,6 @@ function migrationChecksum(sql) {
   return crypto.createHash("sha256").update(sql).digest("hex");
 }
 
-/** Quita comentarios `--` y divide en sentencias SQL ejecutables. */
-function splitSqlStatements(sql) {
-  const withoutComments = sql.replace(/^--.*$/gm, "").trim();
-  return withoutComments
-    .split(";")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0);
-}
 
 async function executeStatements(statements) {
   for (const statement of statements) {

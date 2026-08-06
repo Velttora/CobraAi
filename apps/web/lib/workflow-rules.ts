@@ -27,8 +27,9 @@ const TRIGGER_LIFECYCLE_ORDER = {
   score_updated: 2,
   schedule: 3,
   promise_broken: 4,
-  payment_confirmed: 5,
-  manual: 6
+  promise_kept: 5,
+  payment_confirmed: 6,
+  manual: 7
 } as const;
 
 const AGING_BUCKET_ORDER = {
@@ -362,8 +363,10 @@ function describeWhen(rule: RuleDescribable): string {
     }
     case "promise_broken":
       return "Cuando el deudor incumple una promesa de pago";
+    case "promise_kept":
+      return "Cuando el deudor cumple una promesa o cuota";
     case "payment_confirmed":
-      return "Cuando se confirma el pago total (saldo en cero)";
+      return "Cuando se confirma un pago (parcial o total)";
     case "manual":
       return "Cuando se ejecuta manualmente";
     default:
@@ -384,6 +387,10 @@ function describeDoes(rule: RuleDescribable): string {
         if (resolved === "voice") return "Hace una llamada de agradecimiento con IA";
         if (channel) return `Envía un mensaje de agradecimiento por ${channel}`;
         return "Envía un mensaje de agradecimiento al deudor";
+      }
+      if (rule.trigger === "promise_kept") {
+        if (channel) return `Envía un mensaje de confirmación por ${channel}`;
+        return "Confirma al deudor que su promesa quedó cumplida";
       }
       if (resolved === "voice") return "Hace una llamada con IA";
       if (channel) return `Envía un ${channel}`;
