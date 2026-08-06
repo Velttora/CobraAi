@@ -27,6 +27,8 @@ export interface ChannelCardProps {
   onSaved?: () => void;
 }
 
+import { apiErrorMessage } from "../../../lib/api-error";
+
 const NETWORK_ERROR_TOAST = "No se pudo guardar. Revisa tu conexión e intenta de nuevo.";
 const FOCUS_RING_MS = 2000;
 
@@ -133,16 +135,16 @@ export function ChannelCard({
         resetDrafts();
         onSaved?.();
       }
-    } catch {
-      toast.error(NETWORK_ERROR_TOAST);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, NETWORK_ERROR_TOAST));
     }
   }
 
   async function handleVerify(targetProvider: string): Promise<void> {
     try {
       await verifyIntegration.mutateAsync(targetProvider);
-    } catch {
-      toast.error(NETWORK_ERROR_TOAST);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, NETWORK_ERROR_TOAST));
     }
   }
 
@@ -152,8 +154,8 @@ export function ChannelCard({
       await disconnectIntegration.mutateAsync(provider);
       toast.success("Canal desconectado");
       resetDrafts();
-    } catch {
-      toast.error(NETWORK_ERROR_TOAST);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, NETWORK_ERROR_TOAST));
     }
   }
 

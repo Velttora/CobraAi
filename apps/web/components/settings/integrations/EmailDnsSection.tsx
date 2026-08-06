@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useRecheckDns } from "../../../hooks/use-integrations";
 import type { IntegrationView } from "../../../lib/types";
 import { DnsRecordsTable } from "./DnsRecordsTable";
+import { apiErrorMessage } from "../../../lib/api-error";
 
 export interface EmailDnsSectionProps {
   integration?: IntegrationView;
@@ -27,8 +28,8 @@ export function EmailDnsSection({ integration }: EmailDnsSectionProps): React.Re
   async function handleRecheck(): Promise<void> {
     try {
       await recheckDns.mutateAsync();
-    } catch {
-      toast.error("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
     }
   }
 
