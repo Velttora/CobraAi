@@ -61,9 +61,30 @@ export class PayuGateway implements GatewayAdapter {
       test: "0"
     });
 
+    // PayU's WebCheckout parameter table marks payer and buyer identity
+    // Mandatory: Yes. Without them its own form validation rejects the
+    // request before the debtor can enter card details, so the payment link
+    // is simply dead. They are appended rather than inlined above because
+    // they are absent from the signature formula — adding them there would
+    // break it.
+    appendIfPresent(params, "payerFullName", input.debtorName);
+    appendIfPresent(params, "buyerFullName", input.debtorName);
+    appendIfPresent(params, "payerEmail", input.debtorEmail);
+    appendIfPresent(params, "buyerEmail", input.debtorEmail);
+    appendIfPresent(params, "payerPhone", input.debtorPhone);
+    appendIfPresent(params, "payerDocument", input.debtorDocument);
+    appendIfPresent(params, "buyerDocument", input.debtorDocument);
+    appendIfPresent(params, "payerDocumentType", input.debtorDocumentType);
+    appendIfPresent(params, "buyerDocumentType", input.debtorDocumentType);
+
     return {
       gateway_payment_url: `${PAYU_CHECKOUT_URL}?${params.toString()}`,
       gateway_ref: referenceCode
     };
   }
+}
+
+/** Omits the key entirely when the debtor record has no value for it. */
+function appendIfPresent(params: URLSearchParams, key: string, value?: string): void {
+  if (value && value.trim()) params.set(key, value.trim());
 }

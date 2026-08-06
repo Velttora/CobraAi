@@ -6,6 +6,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { PrismaService, type PaymentProvider } from "@cobrai/db";
 import { TenantIntegrationService } from "@cobrai/integrations";
+import { debtorIdentity } from "./debtor-identity";
 import {
   countryFromAddress,
   decimalToNumber,
@@ -151,6 +152,7 @@ export class PaymentLinksService {
       currency: link.currency,
       token: link.token,
       debtorName: link.debt.debtor.name,
+      ...debtorIdentity(link.debt.debtor),
       returnUrl: `${baseUrl.replace(/\/$/, "")}/${link.token}`
     });
 

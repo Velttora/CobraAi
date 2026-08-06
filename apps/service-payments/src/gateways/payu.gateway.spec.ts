@@ -68,3 +68,60 @@ describe("PayuGateway", () => {
     expect(result.gateway_payment_url).not.toContain(baseInput.secrets.apiKey);
   });
 });
+
+describe("PayuGateway — identidad obligatoria del pagador", () => {
+  const base = {
+    amount: 150000,
+    currency: "COP",
+    token: "tok-1",
+    debtorName: "Ana Pérez",
+    publicConfig: { merchantId: "508029", accountId: "512321" },
+    secrets: { apiKey: "test_key" },
+    returnUrl: "https://app.cobrai.dev/pay/tok-1"
+  };
+
+  // PayU marca estos campos Mandatory: Yes y su propio formulario rechaza la
+  // petición sin ellos — el enlace de pago quedaba muerto antes de que el
+  // deudor pudiera siquiera ingresar la tarjeta.
+  it("envía los datos de pagador y comprador que PayU exige", async () => {
+    const session = await new PayuGateway().createCheckout({
+      ...base,
+      debtorEmail: "ana@example.com",
+      debtorPhone: "+573001234567",
+      debtorDocument: "1032456789",
+      debtorDocumentType: "CC"
+    } as never);
+
+    const query = new URL(session.gateway_payment_url).searchParams;
+    expect(query.get("payerFullName")).toBe("Ana Pérez");
+    expect(query.get("buyerFullName")).toBe("Ana Pérez");
+    expect(query.get("payerEmail")).toBe("ana@example.com");
+    expect(query.get("buyerEmail")).toBe("ana@example.com");
+    expect(query.get("payerPhone")).toBe("+573001234567");
+    expect(query.get("payerDocument")).toBe("1032456789");
+    expect(query.get("buyerDocument")).toBe("1032456789");
+    expect(query.get("payerDocumentType")).toBe("CC");
+    expect(query.get("buyerDocumentType")).toBe("CC");
+  });
+
+  it("omite las claves que el deudor no tiene, en vez de mandarlas vacías", async () => {
+    const session = await new PayuGateway().createCheckout(base as never);
+
+    const query = new URL(session.gateway_payment_url).searchParams;
+    expect(query.has("payerEmail")).toBe(false);
+    expect(query.has("payerDocument")).toBe(false);
+    expect(query.get("payerFullName")).toBe("Ana Pérez");
+  });
+
+  it("no altera la firma, que se calcula sin los campos de identidad", async () => {
+    const withIdentity = await new PayuGateway().createCheckout({
+      ...base,
+      debtorEmail: "ana@example.com"
+    } as never);
+    const withoutIdentity = await new PayuGateway().createCheckout(base as never);
+
+    expect(new URL(withIdentity.gateway_payment_url).searchParams.get("signature")).toBe(
+      new URL(withoutIdentity.gateway_payment_url).searchParams.get("signature")
+    );
+  });
+});
