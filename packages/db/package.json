@@ -31,7 +31,6 @@
     "db:backfill-consents": "tsx src/backfill-consents.ts",
     "db:backfill-escalations": "tsx src/backfill-escalations.ts",
     "db:backfill-payment-thank-you": "tsx src/backfill-payment-thank-you.ts",
-    "db:backfill-thank-you-condition": "tsx src/backfill-thank-you-condition.ts",
     "db:clear": "tsx src/clear-database.ts",
     "db:studio": "prisma studio",
     "lint": "eslint \"src/**/*.ts\"",

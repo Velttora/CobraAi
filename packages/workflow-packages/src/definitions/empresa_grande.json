@@ -123,7 +123,7 @@
       "name": "Pago total — agradecimiento email",
       "trigger": "payment_confirmed",
       "condition": {
-        "status": "paid_full"
+        "amount_outstanding": 0
       },
       "action": "send_notification",
       "channel": "email",
