@@ -32,6 +32,23 @@ export function formatDateTime(iso: string | Date): string {
   });
 }
 
+/** Fecha relativa en español ("hace 3 días", "hace 2 horas"), zona Colombia. */
+export function formatRelativeDate(iso: string | Date): string {
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(d.getTime())) return "—";
+
+  const diffSeconds = Math.round((Date.now() - d.getTime()) / 1000);
+  const diffMinutes = Math.round(diffSeconds / 60);
+  const diffHours = Math.round(diffMinutes / 60);
+  const diffDays = Math.round(diffHours / 24);
+
+  const rtf = new Intl.RelativeTimeFormat(DEFAULT_LOCALE, { numeric: "auto" });
+  if (Math.abs(diffDays) >= 1) return rtf.format(-diffDays, "day");
+  if (Math.abs(diffHours) >= 1) return rtf.format(-diffHours, "hour");
+  if (Math.abs(diffMinutes) >= 1) return rtf.format(-diffMinutes, "minute");
+  return rtf.format(-diffSeconds, "second");
+}
+
 /**
  * Fecha sin hora. Se formatea en UTC a propósito: los campos `@db.Date`
  * (fecha pactada, vencimiento) se guardan a medianoche UTC y convertirlos a

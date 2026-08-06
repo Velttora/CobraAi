@@ -1,151 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { ContactsService } from "./contacts.service";
-
-// ---------------------------------------------------------------------------
-// Prisma mock factory
-// ---------------------------------------------------------------------------
-function makePrisma() {
-  return {
-    debt: {
-      findFirst: vi.fn().mockResolvedValue({
-        id: "debt1",
-        tenantId: "org1",
-        amountOutstanding: 500000,
-        dueDate: new Date("2026-09-30"),
-        strategyId: null,
-        aiSegment: "medium",
-        externalRef: "EXT-001",
-        debtor: {
-          id: "debtor1",
-          tenantId: "org1",
-          name: "Juan Pérez",
-          email: "juan@test.com",
-          phones: ["+573001234567"],
-          whatsappOptIn: true,
-          emotionalProfile: null
-        }
-      }),
-      // Agrupación por deudor: sin otras deudas en el portafolio → contacto de deuda única.
-      findMany: vi.fn().mockResolvedValue([])
-    },
-    contact: {
-      findMany: vi.fn().mockResolvedValue([]),
-      findFirst: vi.fn().mockResolvedValue(null),
-      create: vi.fn().mockResolvedValue({ id: "contact1" }),
-      update: vi.fn().mockResolvedValue({ id: "contact1", status: "completed" })
-    },
-    tenant: {
-      findUnique: vi.fn().mockResolvedValue(null)
-    },
-    conversation: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      create: vi.fn().mockResolvedValue({ id: "conv1" }),
-      update: vi.fn().mockResolvedValue({ id: "conv1" })
-    },
-    message: {
-      create: vi.fn().mockResolvedValue({ id: "msg1" })
-    },
-    promiseToPay: {
-      findFirst: vi.fn().mockResolvedValue(null),
-      count: vi.fn().mockResolvedValue(0)
-    },
-    notificationTemplate: {
-      findFirst: vi.fn().mockResolvedValue(null)
-    },
-    emailLayout: {
-      findUnique: vi.fn().mockResolvedValue(null)
-    }
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Other dependency mocks
-// ---------------------------------------------------------------------------
-function makeCompliance() {
-  return {
-    checkBeforeSend: vi.fn().mockResolvedValue({ allowed: true })
-  };
-}
-
-function makeAudit() {
-  return {
-    logContactLifecycle: vi.fn().mockResolvedValue(undefined)
-  };
-}
-
-function makeEmail() {
-  return {
-    sendTemplate: vi.fn().mockResolvedValue({ message_id: "em1", status: "sent" })
-  };
-}
-
-function makeSms() {
-  return {
-    sendSMS: vi.fn().mockResolvedValue({ message_id: "sms1", status: "sent" })
-  };
-}
-
-function makeWhatsapp() {
-  return {
-    sendTemplate: vi.fn().mockResolvedValue({ message_id: "wa1", status: "sent" })
-  };
-}
-
-function makeVoice() {
-  return {
-    initiateCall: vi.fn().mockResolvedValue({ call_id: "call1", status: "queued" })
-  };
-}
-
-function makeKafka() {
-  return {
-    publish: vi.fn().mockResolvedValue(undefined)
-  };
-}
-
-function makeWaterfall() {
-  return {
-    nextChannel: vi.fn().mockReturnValue("voice")
-  };
-}
-
-function makeConfig() {
-  return {
-    get: vi.fn().mockReturnValue(null)
-  };
-}
-
-function makeDebtorMemory() {
-  return {
-    getUnifiedContext: vi.fn().mockResolvedValue({
-      debtorHistory: {
-        previousContactsCount: 2,
-        brokenPromisesCount: 0,
-        lastOutcome: "promise_made",
-        lastContactDaysAgo: 5,
-        preferredChannel: "voice",
-        callSummary: null,
-        hasPromisePending: false,
-        promisedDate: null,
-        livingSummary: "Deudor cooperativo, prometió pagar.",
-        overallSentiment: "positivo",
-        paymentBehavior: "cumplidor"
-      },
-      emotionalProfile: {
-        summary: "Deudor cooperativo, prometió pagar.",
-        sentiment: "positivo",
-        lastIntent: "promesa_pago",
-        paymentBehavior: "cumplidor",
-        sentimentScore: 0.7,
-        updatedAt: new Date().toISOString(),
-        interactionCount: 2
-      }
-    }),
-    refreshMemory: vi.fn().mockResolvedValue(undefined),
-    registerPendingDebt: vi.fn().mockResolvedValue(undefined),
-    clearPendingDebts: vi.fn().mockResolvedValue(undefined)
-  };
-}
+import { WaterfallService } from "../orchestrator/waterfall.service";
+import {
+  makeAudit,
+  makeCompliance,
+  makeConfig,
+  makeDebtorMemory,
+  makeEmail,
+  makeIntegrations,
+  makeKafka,
+  makePrisma,
+  makeSms,
+  makeVoice,
+  makeWaterfall,
+  makeWhatsapp
+} from "./contacts.service.fixtures";
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -178,7 +48,8 @@ describe("ContactsService — voice enrichment via DebtorMemoryService", () => {
       makeKafka() as never,
       makeWaterfall() as never,
       makeConfig() as never,
-      debtorMemory as never
+      debtorMemory as never,
+      makeIntegrations() as never
     );
   });
 
@@ -290,7 +161,8 @@ describe("ContactsService — email layout + subject", () => {
       makeKafka() as never,
       makeWaterfall() as never,
       makeConfig() as never,
-      makeDebtorMemory() as never
+      makeDebtorMemory() as never,
+      makeIntegrations() as never
     );
   }
 
@@ -353,8 +225,10 @@ describe("ContactsService — email layout + subject", () => {
     await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
 
     const { variables } = sentEmail();
-    // empresa cae a "CobraAI" porque el mock de debt no trae tenant.name
-    expect(variables.subject).toBe("Su saldo con CobraAI vence pronto");
+    // Sin brandIdentity ni tenant.name en el mock de debt, empresa cae al
+    // fallback genérico final (ver resolveTenantBrand: commercialName →
+    // tenant.name → EMPRESA_FALLBACK).
+    expect(variables.subject).toBe(`Su saldo con ${EMPRESA_FALLBACK} vence pronto`);
     // el cuerpo de la regla (renderizado) va dentro del shell
     expect(variables.body).toContain("Hola Juan Pérez");
   });
@@ -403,6 +277,112 @@ describe("ContactsService — email layout + subject", () => {
   });
 });
 
+describe("ContactsService — brand identity fallback chain (D-24 / plan 08-15)", () => {
+  let service: ContactsService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let email: ReturnType<typeof makeEmail>;
+
+  function build() {
+    service = new ContactsService(
+      prisma as never,
+      makeCompliance() as never,
+      makeAudit() as never,
+      email as never,
+      makeSms() as never,
+      makeWhatsapp() as never,
+      makeVoice() as never,
+      makeKafka() as never,
+      makeWaterfall() as never,
+      makeConfig() as never,
+      makeDebtorMemory() as never,
+      makeIntegrations() as never
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+    email = makeEmail();
+    build();
+  });
+
+  function withTenant(tenant: { name?: string | null; settings?: unknown } | null) {
+    prisma.debt.findFirst.mockResolvedValue({
+      id: "debt1",
+      tenantId: "org1",
+      amountOutstanding: 500000,
+      dueDate: new Date("2026-09-30"),
+      strategyId: null,
+      aiSegment: "medium",
+      externalRef: "EXT-001",
+      tenant,
+      debtor: {
+        id: "debtor1",
+        tenantId: "org1",
+        name: "Juan Pérez",
+        email: "juan@test.com",
+        phones: ["+573001234567"],
+        whatsappOptIn: true,
+        emotionalProfile: null
+      }
+    });
+  }
+
+  it("usa commercialName de brandIdentity cuando está configurado", async () => {
+    withTenant({ name: "Acme Legal Name", settings: { brandIdentity: { commercialName: "Acme Cobranzas" } } });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa).toBe("Acme Cobranzas");
+  });
+
+  it("sin commercialName, cae al nombre de la organización (tenant.name)", async () => {
+    withTenant({ name: "Acme Legal Name", settings: {} });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa).toBe("Acme Legal Name");
+  });
+
+  it("sin commercialName ni tenant.name, cae a EMPRESA_FALLBACK", async () => {
+    withTenant(null);
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa).toBe(EMPRESA_FALLBACK);
+  });
+
+  it("emite empresa_telefono, empresa_correo, empresa_sitio_web, empresa_razon_social, empresa_nit y empresa_aviso_legal", async () => {
+    withTenant({
+      name: "Acme",
+      settings: {
+        brandIdentity: {
+          commercialName: "Acme Cobranzas",
+          supportPhone: "+57 300 000",
+          supportEmail: "hola@acme.co",
+          website: "https://acme.co",
+          legalName: "Acme S.A.S.",
+          taxId: "900123456-7",
+          legalNotice: "Aviso legal de Acme."
+        }
+      }
+    });
+
+    await service.executeContact("org1", { debt_id: "debt1", channel: "email" });
+
+    const { variables } = email.sendTemplate.mock.calls[0]![0]! as { variables: Record<string, string> };
+    expect(variables.empresa_telefono).toBe("+57 300 000");
+    expect(variables.empresa_correo).toBe("hola@acme.co");
+    expect(variables.empresa_sitio_web).toBe("https://acme.co");
+    expect(variables.empresa_razon_social).toBe("Acme S.A.S.");
+    expect(variables.empresa_nit).toBe("900123456-7");
+    expect(variables.empresa_aviso_legal).toBe("Aviso legal de Acme.");
+  });
+});
+
 describe("ContactsService.markResponse", () => {
   let service: ContactsService;
   let prisma: ReturnType<typeof makePrisma>;
@@ -421,7 +401,8 @@ describe("ContactsService.markResponse", () => {
       makeKafka() as never,
       makeWaterfall() as never,
       makeConfig() as never,
-      makeDebtorMemory() as never
+      makeDebtorMemory() as never,
+      makeIntegrations() as never
     );
   });
 
@@ -472,5 +453,132 @@ describe("ContactsService.markResponse", () => {
     await service.markResponse("org1", "debtor1", "effective", "whatsapp");
 
     expect(prisma.contact.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("ContactsService — waterfall skips unconfigured channels (D-16)", () => {
+  let service: ContactsService;
+  let prisma: ReturnType<typeof makePrisma>;
+  let kafka: ReturnType<typeof makeKafka>;
+  let integrations: ReturnType<typeof makeIntegrations>;
+
+  function build(compliance: unknown = makeCompliance()) {
+    service = new ContactsService(
+      prisma as never,
+      compliance as never,
+      makeAudit() as never,
+      makeEmail() as never,
+      makeSms() as never,
+      makeWhatsapp() as never,
+      makeVoice() as never,
+      kafka as never,
+      new WaterfallService() as never,
+      makeConfig() as never,
+      makeDebtorMemory() as never,
+      integrations as never
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrisma();
+    kafka = makeKafka();
+    integrations = makeIntegrations();
+    build();
+  });
+
+  it("omite whatsapp sin integración verificada y selecciona email", async () => {
+    integrations.hasVerifiedChannel.mockImplementation(
+      async (_tenantId: string, channel: string) => channel === "email"
+    );
+    const executeSpy = vi
+      .spyOn(service, "executeContact")
+      .mockResolvedValue({ blocked: false } as never);
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    expect(executeSpy).toHaveBeenCalledWith(
+      "org1",
+      expect.objectContaining({ channel: "email" })
+    );
+  });
+
+  it("tenant sin ningún canal verificado escala a humano y no ejecuta el contacto", async () => {
+    integrations.hasVerifiedChannel.mockResolvedValue(false);
+    const executeSpy = vi.spyOn(service, "executeContact");
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    expect(executeSpy).not.toHaveBeenCalled();
+    expect(kafka.publish).toHaveBeenCalledWith(
+      "cobrai.debt.escalated",
+      "org1",
+      expect.objectContaining({
+        debt_id: "debt1",
+        rule_id: "channel_not_configured",
+        rule_name: "Sin canal configurado",
+        target: "human"
+      })
+    );
+  });
+
+  it("el mismo caso también publica cobrai.contact.failed.no_response con no_channel_configured", async () => {
+    integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    expect(kafka.publish).toHaveBeenCalledWith(
+      "cobrai.contact.failed.no_response",
+      "org1",
+      { debt_id: "debt1", reason: "no_channel_configured" }
+    );
+  });
+
+  it("deudor sin teléfono ni correo sigue el camino no_available_channel (anti-regresión)", async () => {
+    prisma.debt.findFirst.mockResolvedValue({
+      id: "debt1",
+      tenantId: "org1",
+      amountOutstanding: 500000,
+      dueDate: new Date("2026-09-30"),
+      strategyId: null,
+      aiSegment: "medium",
+      externalRef: "EXT-001",
+      debtor: {
+        id: "debtor1",
+        tenantId: "org1",
+        name: "Juan Pérez",
+        email: null,
+        phones: [],
+        whatsappOptIn: false,
+        emotionalProfile: null
+      }
+    });
+
+    await service.handleContactRequested("org1", { debt_id: "debt1" });
+
+    // reachableChannels() is empty, so isChannelConfigured is never even queried.
+    expect(integrations.hasVerifiedChannel).not.toHaveBeenCalled();
+    expect(kafka.publish).toHaveBeenCalledTimes(1);
+    expect(kafka.publish).toHaveBeenCalledWith(
+      "cobrai.contact.failed.no_response",
+      "org1",
+      { debt_id: "debt1", reason: "no_available_channel" }
+    );
+  });
+
+  it("executeContact con canal explícito no configurado no crea fila Contact ni la reprograma", async () => {
+    build({
+      checkBeforeSend: vi
+        .fn()
+        .mockResolvedValue({ allowed: false, reason: "channel_not_configured" })
+    });
+
+    const result = await service.executeContact("org1", {
+      debt_id: "debt1",
+      channel: "whatsapp"
+    });
+
+    expect(result).toEqual({ blocked: true, reason: "channel_not_configured" });
+    expect(prisma.contact.create).not.toHaveBeenCalled();
   });
 });

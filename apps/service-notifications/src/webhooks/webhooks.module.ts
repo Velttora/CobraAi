@@ -1,4 +1,8 @@
 import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { PrismaService } from "@cobrai/db";
+import { AuditService } from "@cobrai/compliance";
+import { TenantIntegrationService } from "@cobrai/integrations";
 import { AdaptersModule } from "../adapters/adapters.module";
 import { ComplianceModule } from "../compliance/compliance.module";
 import { ContactsModule } from "../contacts/contacts.module";
@@ -15,12 +19,30 @@ import { SendgridInboundHandler } from "./sendgrid-inbound.handler";
   imports: [
     AdaptersModule,
     ComplianceModule,
+    ConfigModule,
     ContactsModule,
     KafkaModule,
     MemoryModule,
     NegotiationModule
   ],
   controllers: [WebhooksController],
-  providers: [WebhooksService, TwilioWaWebhookHandler, VapiWebhookHandler, SendgridInboundHandler]
+  providers: [
+    WebhooksService,
+    TwilioWaWebhookHandler,
+    VapiWebhookHandler,
+    SendgridInboundHandler,
+    // Token guard collaborators (D-19/D-20), factory providers following
+    // compliance.module.ts's pattern.
+    {
+      provide: TenantIntegrationService,
+      useFactory: (prisma: PrismaService) => new TenantIntegrationService(prisma),
+      inject: [PrismaService]
+    },
+    {
+      provide: AuditService,
+      useFactory: (prisma: PrismaService) => new AuditService(prisma),
+      inject: [PrismaService]
+    }
+  ]
 })
 export class WebhooksModule {}

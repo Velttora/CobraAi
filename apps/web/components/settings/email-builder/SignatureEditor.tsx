@@ -1,11 +1,20 @@
 "use client";
 
+import type { Route } from "next";
+import Link from "next/link";
+import { mergeBrandIntoSignature } from "@cobrai/utils";
 import type { EmailSignature, EmailSocialLink } from "@cobrai/utils/email-layout";
 import { Plus, Trash2 } from "lucide-react";
+import { useTenant } from "../../../hooks/use-tenant";
 
-const inputClass =
-  "mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950";
-
+// UI-SPEC A-05: companyName/logoUrl/address/phone/website/legalDisclaimer used
+// to be a second, independently-editable copy of the tenant's company
+// identity ("Integraciones > Marca" being the first). Two editable copies of
+// the same data can silently diverge and show a different company name in
+// email than in WhatsApp — exactly the failure this phase exists to prevent.
+// These six fields are now a read-only mirror of the brand identity, merged
+// the same way the real send does (`mergeBrandIntoSignature`, 08-15).
+// `socials` is never touched by that merge and stays owned here.
 export function SignatureEditor({
   signature,
   onChange
@@ -13,8 +22,9 @@ export function SignatureEditor({
   signature: EmailSignature;
   onChange: (next: EmailSignature) => void;
 }): React.ReactElement {
-  const set = (key: keyof EmailSignature, value: unknown) =>
-    onChange({ ...signature, [key]: value === "" ? undefined : value });
+  const tenantQuery = useTenant();
+  const brand = tenantQuery.data?.data?.brandIdentity;
+  const merged = mergeBrandIntoSignature(signature, brand);
 
   const socials = signature.socials ?? [];
   const setSocials = (next: EmailSocialLink[]) => onChange({ ...signature, socials: next });
@@ -31,27 +41,53 @@ export function SignatureEditor({
         todos los correos.
       </p>
 
-      <label className="block text-sm">
-        Nombre de la empresa
-        <input className={inputClass} onChange={(e) => set("companyName", e.target.value)} value={signature.companyName ?? ""} />
-      </label>
-      <label className="block text-sm">
-        URL del logo
-        <input className={inputClass} onChange={(e) => set("logoUrl", e.target.value)} placeholder="https://..." value={signature.logoUrl ?? ""} />
-      </label>
-      <label className="block text-sm">
-        Dirección
-        <textarea className={`${inputClass} min-h-16`} onChange={(e) => set("address", e.target.value)} value={signature.address ?? ""} />
-      </label>
-      <div className="grid grid-cols-2 gap-3">
-        <label className="block text-sm">
-          Teléfono
-          <input className={inputClass} onChange={(e) => set("phone", e.target.value)} value={signature.phone ?? ""} />
-        </label>
-        <label className="block text-sm">
-          Sitio web
-          <input className={inputClass} onChange={(e) => set("website", e.target.value)} value={signature.website ?? ""} />
-        </label>
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/50">
+        <dl className="space-y-2">
+          <div>
+            <dt className="text-xs font-medium text-slate-500">Nombre de la empresa</dt>
+            <dd className="text-sm text-slate-900 dark:text-slate-100">
+              {merged.companyName || "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-slate-500">URL del logo</dt>
+            <dd className="break-all text-sm text-slate-900 dark:text-slate-100">
+              {merged.logoUrl || "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-slate-500">Dirección</dt>
+            <dd className="whitespace-pre-line text-sm text-slate-900 dark:text-slate-100">
+              {merged.address || "—"}
+            </dd>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Teléfono</dt>
+              <dd className="text-sm text-slate-900 dark:text-slate-100">
+                {merged.phone || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-slate-500">Sitio web</dt>
+              <dd className="break-all text-sm text-slate-900 dark:text-slate-100">
+                {merged.website || "—"}
+              </dd>
+            </div>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-slate-500">Aviso legal</dt>
+            <dd className="whitespace-pre-line text-sm text-slate-900 dark:text-slate-100">
+              {merged.legalDisclaimer || "—"}
+            </dd>
+          </div>
+        </dl>
+        <Link
+          className="mt-2 inline-block text-xs text-[#D85A30] hover:underline"
+          href={"/settings/integrations/brand" as Route}
+        >
+          Estos datos se editan en Integraciones → Marca
+        </Link>
       </div>
 
       <div>
@@ -92,16 +128,6 @@ export function SignatureEditor({
           ))}
         </div>
       </div>
-
-      <label className="block text-sm">
-        Aviso legal
-        <textarea
-          className={`${inputClass} min-h-20`}
-          onChange={(e) => set("legalDisclaimer", e.target.value)}
-          placeholder="Por defecto: aviso de Ley 1266 de 2008 (Habeas Data)."
-          value={signature.legalDisclaimer ?? ""}
-        />
-      </label>
     </div>
   );
 }

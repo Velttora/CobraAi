@@ -1,6 +1,10 @@
 export interface PromptContext {
   debtorName: string;
   companyName: string;
+  /** Razón social del tenant (identidad de marca), para identificar formalmente a la empresa acreedora. */
+  legalName?: string;
+  /** NIT del tenant (identidad de marca). */
+  taxId?: string;
   amount: string;
   currency: string;
   dueDate: string;
@@ -84,7 +88,7 @@ REGLAS:
 REGULACIÓN COLOMBIA (Ley 1266 / Habeas Data):
 - NO amenazar con acciones legales inexistentes.
 - NO contactar terceros sin autorización.
-- Identificar SIEMPRE la empresa acreedora.
+- Identificar SIEMPRE la empresa acreedora: ${ctx.companyName}${buildLegalIdentityLine(ctx)}
 - Respetar solicitud de opt-out inmediatamente.
 
 FORMATO DE RESPUESTA — devuelve ÚNICAMENTE este JSON:
@@ -105,6 +109,18 @@ Para intent "plan_request": completa "installments_count" (nº de cuotas acordad
 El sistema repartirá el saldo en cuotas iguales POR CADA cuenta confirmada. Los demás campos van en null.
 
 "target_accounts"/"apply_to_all" (ver REGLA 10): identifican a qué cuenta(s) aplica una promesa/plan/disputa cuando el deudor tiene varias. Déjalos vacíos mientras preguntas cuál; el acuerdo solo se registra sobre las cuentas confirmadas.`;
+}
+
+/**
+ * Línea con la identificación formal de la empresa acreedora (razón social /
+ * NIT) cuando el tenant las configuró en su identidad de marca; vacía si no,
+ * para nunca interpolar "undefined" en el prompt.
+ */
+function buildLegalIdentityLine(ctx: PromptContext): string {
+  const parts: string[] = [];
+  if (ctx.legalName) parts.push(`razón social: ${ctx.legalName}`);
+  if (ctx.taxId) parts.push(`NIT: ${ctx.taxId}`);
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
 /**

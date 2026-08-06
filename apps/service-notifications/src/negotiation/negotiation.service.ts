@@ -1,5 +1,6 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService, type ContactChannel } from "@cobrai/db";
+import { normalizeClerkRole } from "../integrations/integrations.provider-utils";
 import { parseMessagePayload } from "../common/utils/api.utils";
 import {
   PaymentPlanService,
@@ -155,6 +156,22 @@ const DEBT_SELECT = {
   debtor: { select: { id: true, name: true } }
 } as const;
 
+/**
+ * Approving a negotiation forgives debt or commits a tenant to a payment plan —
+ * the two most financially consequential actions in the product. Gated in the
+ * service layer, not only at the controller, matching the `assertAdmin` pattern
+ * in `IntegrationsService`: this must hold even if the method is ever called
+ * directly, bypassing api-gateway's header injection. The gateway's proxy is
+ * generic and performs no per-route role checks, so nothing upstream compensates.
+ */
+function assertNegotiationApprover(role?: string): void {
+  if (normalizeClerkRole(role) !== "admin") {
+    throw new ForbiddenException(
+      "Solo administradores pueden aprobar o rechazar acuerdos"
+    );
+  }
+}
+
 @Injectable()
 export class NegotiationService {
   private readonly logger = new Logger(NegotiationService.name);
@@ -289,8 +306,10 @@ export class NegotiationService {
   async approve(
     tenantId: string,
     id: string,
-    approvedBy?: string
+    approvedBy?: string,
+    role?: string
   ): Promise<{ negotiation_id: string; plan_id: string | null; status: string }> {
+    assertNegotiationApprover(role);
     const negotiation = await this.findPending(tenantId, id);
     const request = this.lastRequest(negotiation.history);
     const kind: ApprovalKind =
@@ -341,8 +360,9 @@ export class NegotiationService {
   async reject(
     tenantId: string,
     id: string,
-    input: { reason?: string; rejectedBy?: string } = {}
+    input: { reason?: string; rejectedBy?: string; role?: string } = {}
   ): Promise<{ negotiation_id: string; status: string }> {
+    assertNegotiationApprover(input.role);
     const negotiation = await this.findPending(tenantId, id);
     const request = this.lastRequest(negotiation.history);
 

@@ -24,27 +24,29 @@ export class TwilioWaWebhookHandler {
     private readonly contacts: ContactsService
   ) {}
 
-  async handleInbound(payload: TwilioWaInboundPayload): Promise<void> {
+  /**
+   * `tenantId` arrives already resolved from the webhook's opaque token
+   * (D-19, `resolveWebhookIntegration` in `integration-webhook-token.guard.ts`)
+   * — this handler never re-derives it from the payload.
+   */
+  async handleInbound(tenantId: string, payload: TwilioWaInboundPayload): Promise<void> {
     const phone =
       payload.WaId ?? payload.From.replace("whatsapp:", "").replace("+", "");
     const body = payload.Body?.trim() ?? "";
 
-    this.logger.log(`WA inbound de ${phone}: "${body.substring(0, 50)}"`);
+    this.logger.log(`WA inbound de ${phone} (tenant ${tenantId}): "${body.substring(0, 50)}"`);
 
     // Detectar STOP / opt-out
     if (/^(stop|para|detener|cancelar|baja|no más|no mas)$/i.test(body)) {
-      await this.handleOptOut(phone);
+      await this.handleOptOut(tenantId, phone);
       return;
     }
 
-    // Si "To" es el WhatsApp Business dedicado de algún tenant, lo resuelve directo
-    // y elimina la ambigüedad cuando el mismo deudor le debe a varios tenants.
-    const tenantId = await this.resolveTenantByToNumber(payload.To);
-
-    // Buscar deudor por teléfono (raw query para buscar en array JSON)
+    // Buscar deudor por teléfono, acotado al tenant resuelto por token
+    // (raw query para buscar en array JSON).
     const debtor = await this.findDebtorByPhone(phone, tenantId);
     if (!debtor) {
-      this.logger.warn(`WA inbound de número desconocido: ${phone}`);
+      this.logger.warn(`WA inbound de número desconocido: ${phone} (tenant ${tenantId})`);
       return;
     }
 
@@ -98,11 +100,12 @@ export class TwilioWaWebhookHandler {
     );
   }
 
-  private async handleOptOut(phone: string): Promise<void> {
-    // Buscar deudores con este teléfono y revocar consents de WA
+  private async handleOptOut(tenantId: string, phone: string): Promise<void> {
+    // Buscar deudores con este teléfono, acotado al tenant, y revocar consents de WA
     const debtors = await this.prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM debtors
       WHERE deleted_at IS NULL
+      AND tenant_id = ${tenantId}
       AND phones::text LIKE ${`%${phone}%`}
     `;
 
@@ -118,57 +121,24 @@ export class TwilioWaWebhookHandler {
       data: { revokedAt: new Date() }
     });
 
-    this.logger.log(`Opt-out WA registrado para ${phone}`);
+    this.logger.log(`Opt-out WA registrado para ${phone} (tenant ${tenantId})`);
   }
 
   /**
-   * Si el número al que le escribió el deudor ("To") es el WhatsApp Business
-   * dedicado de algún tenant (settings.whatsappFromNumber), resuelve ese tenant sin
-   * ambigüedad. Si "To" es el número compartido (sandbox/global), retorna null y el
-   * caller cae al desempate heurístico entre tenants en findDebtorByPhone.
+   * El tenant ya llega resuelto sin ambigüedad desde el token del webhook
+   * (D-19), así que la búsqueda del deudor por teléfono va acotada
+   * directamente a ese tenant — dos deudores con el mismo número en
+   * tenants distintos ya no pueden confundirse entre sí (raw query para
+   * buscar en el array JSON de teléfonos).
    */
-  private async resolveTenantByToNumber(to: string): Promise<string | null> {
-    const normalized = to.startsWith("whatsapp:") ? to : `whatsapp:${to}`;
+  private async findDebtorByPhone(phone: string, tenantId: string) {
     const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT id FROM tenants
+      SELECT id FROM debtors
       WHERE deleted_at IS NULL
-      AND settings->>'whatsappFromNumber' = ${normalized}
+      AND tenant_id = ${tenantId}
+      AND phones::text LIKE ${`%${phone}%`}
       LIMIT 1
     `;
-    return rows[0]?.id ?? null;
-  }
-
-  /**
-   * El mismo teléfono puede existir en deudores de tenants distintos cuando comparten
-   * el número de WhatsApp (sandbox/global sin contexto de tenant). Si ya se resolvió
-   * el tenant por el número "To" (ver resolveTenantByToNumber), busca solo ahí sin
-   * ambigüedad. De lo contrario, prioriza al deudor con un contacto "pending"
-   * (esperando su respuesta) — la señal más fuerte de a quién le está respondiendo el
-   * deudor — y, en su defecto, el actualizado más recientemente.
-   */
-  private async findDebtorByPhone(phone: string, tenantId: string | null) {
-    const rows = tenantId
-      ? await this.prisma.$queryRaw<Array<{ id: string; tenant_id: string }>>`
-          SELECT id, tenant_id FROM debtors
-          WHERE deleted_at IS NULL
-          AND tenant_id = ${tenantId}
-          AND phones::text LIKE ${`%${phone}%`}
-          LIMIT 1
-        `
-      : await this.prisma.$queryRaw<Array<{ id: string; tenant_id: string }>>`
-          SELECT d.id, d.tenant_id FROM debtors d
-          WHERE d.deleted_at IS NULL
-          AND d.phones::text LIKE ${`%${phone}%`}
-          ORDER BY
-            EXISTS (
-              SELECT 1 FROM contacts c
-              WHERE c.debtor_id = d.id
-              AND c.deleted_at IS NULL
-              AND c.response_status = 'pending'
-            ) DESC,
-            d.updated_at DESC
-          LIMIT 1
-        `;
 
     if (!rows[0]) return null;
 

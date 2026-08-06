@@ -24,6 +24,9 @@ describe("ComplianceService", () => {
     contactConsent: { findFirst: vi.fn() },
     holiday: { findFirst: vi.fn() }
   };
+  const integrations = {
+    hasVerifiedChannel: vi.fn()
+  };
 
   let service: ComplianceService;
 
@@ -32,11 +35,20 @@ describe("ComplianceService", () => {
     const consent = new ConsentService(prisma as never);
     const optOut = new OptOutService(prisma as never);
     const audit = new AuditService(prisma as never);
-    service = new ComplianceService(prisma as never, consent, optOut, audit);
+    service = new ComplianceService(
+      prisma as never,
+      consent,
+      optOut,
+      audit,
+      integrations as never
+    );
     prisma.auditLog.create.mockResolvedValue({});
     prisma.contact.count.mockResolvedValue(0);
     prisma.tenant.findUnique.mockResolvedValue({ settings: {} });
     prisma.holiday.findFirst.mockResolvedValue(null); // default: not a holiday
+    // Every existing test in this file exercises paths that assume the channel is
+    // configured (D-16) — keep them exercising the paths they were written for.
+    integrations.hasVerifiedChannel.mockResolvedValue(true);
   });
 
   it("bloquea México domingo", async () => {
@@ -180,6 +192,27 @@ describe("ComplianceService", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.reason).toBe("frequency_limit");
+  });
+
+  it("no cuenta contactos simulados contra el cupo diario de la Ley 1266 (D-17)", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.count.mockResolvedValue(0);
+
+    await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "whatsapp",
+      at: new Date("2026-05-26T15:00:00.000Z")
+    });
+
+    // Un envío simulado nunca llegó al deudor: si entrara en el conteo, una
+    // corrida con simulación activa dejaría al deudor sin poder recibir un
+    // contacto real.
+    const frequencyQuery = prisma.contact.count.mock.calls.at(-1)?.[0];
+    expect(frequencyQuery.where.simulated).toBe(false);
   });
 
   it("bloquea en cooldown de reintento tras un ciclo sin respuesta", async () => {
@@ -388,5 +421,126 @@ describe("ComplianceService", () => {
 
     expect(result.reason).not.toBe("holiday");
     expect(result.allowed).toBe(true);
+  });
+
+  describe("channel_not_configured gate (D-16)", () => {
+    it("checkContact bloquea whatsapp cuando no hay integración verificada", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(debtor());
+      prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+      integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+      const result = await service.checkContact({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "whatsapp",
+        at: new Date("2026-05-26T15:00:00.000Z") // 10:00 Bogotá
+      });
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe("channel_not_configured");
+      expect(result.next_allowed_at).toBeUndefined();
+      expect(integrations.hasVerifiedChannel).toHaveBeenCalledWith("t1", "whatsapp");
+    });
+
+    it("checkContact cae al flujo normal de horario/frecuencia una vez verificada la integración", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(debtor());
+      prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+      prisma.contact.findFirst.mockResolvedValue(null);
+      integrations.hasVerifiedChannel.mockResolvedValue(true);
+
+      const result = await service.checkContact({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "whatsapp",
+        at: new Date("2026-05-26T15:00:00.000Z") // 10:00 Bogotá
+      });
+
+      expect(result.allowed).toBe(true);
+    });
+
+    it("isChannelEligible bloquea email cuando no hay integración sendgrid verificada", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(debtor());
+      prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+      integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+      const result = await service.isChannelEligible({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "email",
+        at: new Date("2026-05-26T15:00:00.000Z")
+      });
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe("channel_not_configured");
+      expect(integrations.hasVerifiedChannel).toHaveBeenCalledWith("t1", "email");
+    });
+
+    it("opt_out gana sobre channel_not_configured (orden del gate)", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(
+        debtor({ address: { country: "CO", opt_out_global: true } })
+      );
+      integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+      const result = await service.checkContact({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "whatsapp",
+        at: new Date("2026-05-26T15:00:00.000Z")
+      });
+
+      expect(result.reason).toBe("opt_out_global");
+      expect(result.reason).not.toBe("channel_not_configured");
+      // No debe siquiera consultarse la integración una vez que opt-out ya decidió.
+      expect(integrations.hasVerifiedChannel).not.toHaveBeenCalled();
+    });
+
+    it("registra channel_not_configured en el audit log igual que cualquier otra razón", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(debtor());
+      prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+      integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+      await service.checkContact({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "whatsapp",
+        at: new Date("2026-05-26T15:00:00.000Z")
+      });
+
+      expect(prisma.auditLog.create).toHaveBeenCalled();
+      const [[call]] = prisma.auditLog.create.mock.calls;
+      expect(call.data.changes.reason).toBe("channel_not_configured");
+    });
+
+    it("channel sms se evalúa contra la integración de whatsapp", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(debtor());
+      prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+      integrations.hasVerifiedChannel.mockResolvedValue(false);
+
+      const result = await service.checkContact({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "sms",
+        at: new Date("2026-05-26T15:00:00.000Z")
+      });
+
+      expect(result.reason).toBe("channel_not_configured");
+      expect(integrations.hasVerifiedChannel).toHaveBeenCalledWith("t1", "whatsapp");
+    });
+
+    it("channel internal nunca se gatea", async () => {
+      prisma.debtor.findFirst.mockResolvedValue(debtor());
+      prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+      prisma.contact.findFirst.mockResolvedValue(null);
+
+      const result = await service.checkContact({
+        tenantId: "t1",
+        debtorId: "d1",
+        channel: "internal",
+        at: new Date("2026-05-26T15:00:00.000Z")
+      });
+
+      expect(result.allowed).toBe(true);
+      expect(integrations.hasVerifiedChannel).not.toHaveBeenCalled();
+    });
   });
 });

@@ -16,4 +16,6 @@ export interface SendEmailTemplateInput {
 export interface SendEmailTemplateResult {
   message_id: string;
   status: "sent" | "failed";
+  /** True when no verified tenant credential existed and this send was simulated (D-17). */
+  simulated?: boolean;
 }

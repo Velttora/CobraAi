@@ -8,6 +8,15 @@ export {
 } from "./audit-formatter";
 export { formatCurrency } from "./currency";
 export {
+  EMPRESA_FALLBACK,
+  EMPTY_BRAND_IDENTITY,
+  resolveBrandVariables,
+  sanitizeBrandIdentity,
+  type BrandIdentity,
+  type BrandVariables
+} from "./brand-identity";
+export { mergeBrandIntoSignature } from "./email-layout-brand";
+export {
   AVAILABLE_EMAIL_VARIABLES,
   DEFAULT_BRAND_COLOR,
   DEFAULT_EMAIL_LAYOUT,
@@ -46,6 +55,11 @@ export {
   type DebtStatus
 } from "./quarters";
 export { normalizePhoneE164 } from "./validation";
+// Envelope encryption is deliberately NOT re-exported here. It depends on
+// `node:crypto`, and this barrel is imported by the Next.js app, which would
+// pull server-only secret-handling code into the browser bundle. Import it
+// from the `@cobrai/utils/crypto` subpath instead — same convention as
+// `@cobrai/utils/email-layout`.
 export {
   buildInstallmentSchedule,
   canBreakPromiseForDebtStatus,
@@ -79,3 +93,11 @@ export {
   TenantContextMiddleware,
   type TenantContextRequest
 } from "./tenant-context.middleware";
+export {
+  EXTERNAL_LINK_VARIABLES,
+  resolveExternalLinkTemplate,
+  validateExternalLinkTemplate,
+  type ExternalLinkVariable,
+  type ExternalLinkValues,
+  type ExternalLinkTemplateError
+} from "./payment-link-template";

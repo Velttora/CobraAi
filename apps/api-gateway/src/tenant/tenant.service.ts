@@ -5,12 +5,14 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { ensureTenantRecord, PrismaService, type Prisma, type Tenant } from "@cobrai/db";
+import { sanitizeBrandIdentity } from "@cobrai/utils";
 import { normalizeClerkRole } from "../common/types/clerk-request";
 import {
   normalizeWhatsappFromNumber,
   sanitizeContactRetryPolicy,
   toTenantProfile,
   type TenantProfile,
+  type UpdateBrandIdentityDto,
   type UpdateContactRetryPolicyDto,
   type UpdateWhatsappSenderDto
 } from "./dto/tenant-profile.dto";
@@ -168,6 +170,43 @@ export class TenantService {
           ...currentSettings,
           whatsappFromNumber: normalized
         } as Prisma.InputJsonValue
+      }
+    });
+
+    return toTenantProfile(tenant);
+  }
+
+  /**
+   * Actualiza (merge parcial) la identidad de marca del tenant — nombre
+   * comercial, logo, contacto y firma legal. No es un secreto (a diferencia
+   * de las credenciales de `TenantIntegration`), así que vive en
+   * `Tenant.settings` igual que `contactRetryPolicy`/`whatsappFromNumber`.
+   */
+  async updateBrandIdentity(
+    tenantId: string,
+    patch: UpdateBrandIdentityDto,
+    role?: string
+  ): Promise<TenantProfile> {
+    this.assertAdmin(role);
+
+    const current = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null }
+    });
+    if (!current) {
+      throw new NotFoundException("Organización no encontrada");
+    }
+
+    const currentSettings = (current.settings ?? {}) as Record<string, unknown>;
+    const currentIdentity = sanitizeBrandIdentity(currentSettings.brandIdentity);
+    const nextIdentity = sanitizeBrandIdentity({ ...currentIdentity, ...patch });
+
+    const tenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        settings: {
+          ...currentSettings,
+          brandIdentity: nextIdentity
+        } as unknown as Prisma.InputJsonValue
       }
     });
 

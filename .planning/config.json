@@ -6,7 +6,8 @@
     "mode": "yolo",
     "granularity": "standard",
     "model_profile": "balanced",
-    "auto_commit": true
+    "auto_commit": true,
+    "_auto_chain_active": false
   },
   "intel": {
     "enabled": false

@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-08-05T00:02:05.995Z"
+status: Executing Phase 08
+last_updated: "2026-08-05T04:20:32.302Z"
 progress:
   total_phases: 8
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 36
-  completed_plans: 10
-  percent: 28
+  completed_plans: 29
+  percent: 50
 ---
 
 # STATE
@@ -25,7 +25,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 - **Completadas:** Phases 1, 2, 3, 4, 5, 6
 - **Core MVP:** construido por Cursor (portafolios, auth, workflows, email/SMS, pagos, stubs WA/Voice)
 - **Post-roadmap:** WhatsApp + Voz (Vapi) + Email (SendGrid, dominio fogging.org autenticado) operativos en local. SMS deshabilitado por flag (sin proveedor CO). Lazo email bidireccional cerrado.
-- **Last session:** 2026-08-04 — Phase 8 planeada de punta a punta: contexto (26 decisiones), research, UI-SPEC, PATTERNS, VALIDATION y 19 planes en 7 waves; gsd-plan-checker PASSED sin bloqueantes. Todo vive en la rama `docs/phase-08-tenant-byo-context`, sin push. Dos checkpoints humanos antes de codear: 08-02 (tier de SendGrid, enrolamiento ISV de Twilio, app de Meta) y 08-08 (verificación del paquete `stripe`). Siguiente paso: `/gsd-execute-phase 8`. Resume file: `.planning/phases/08-configuraci-n-por-tenant-byo-canales-e-identidad-de-cobro/08-01-PLAN.md`
+- **Last session:** 2026-08-05T04:20:32.155Z
 
 ## Fases
 
@@ -38,7 +38,7 @@ CobraAI — WhatsApp & Voice Agent (fases reales post-MVP-core)
 | 5 | Memoria Unificada del Deudor | ✅ completa (4/4 planes — sentimentScore + emotionalProfile activos) |
 | 6 | Email Bidireccional con Agente | ✅ completa (4/4 planes) |
 | 7 | Días Festivos (Colombia) | ✅ completa (2/2 planes) |
-| 8 | Configuración por Tenant (BYO): canales e identidad de cobro | 📋 planeada (19 planes, 7 waves — plan-checker PASSED sin bloqueantes) |
+| 8 | Configuración por Tenant (BYO): canales e identidad de cobro | ✅ ejecutada (19/19 planes, 7 waves) — verificada PASS-WITH-CONCERNS, 24/26 decisiones completas. Falta acción humana antes de producción: ver `08-VERIFICATION.md` |
 
 ## Evolución del roadmap
 

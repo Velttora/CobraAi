@@ -12,7 +12,9 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
+    "@cobrai/compliance": "workspace:*",
     "@cobrai/db": "workspace:*",
+    "@cobrai/integrations": "workspace:*",
     "@cobrai/test-utils": "workspace:*",
     "@cobrai/kafka": "workspace:*",
     "@cobrai/types": "workspace:*",

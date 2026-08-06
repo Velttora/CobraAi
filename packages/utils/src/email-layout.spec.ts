@@ -5,6 +5,7 @@ import {
   renderEmailLayout,
   type EmailLayoutConfig
 } from "./email-layout";
+import { EMPTY_BRAND_IDENTITY, type BrandIdentity } from "./brand-identity";
 
 const VARS = {
   nombre: "María López",
@@ -102,6 +103,62 @@ describe("renderEmailLayout", () => {
     expect(html).toContain("Acme Cobranzas");
     expect(html).toContain("Su saldo está pendiente.");
     expect(html).toContain('href="https://pay.cobrai.dev/abc"');
+  });
+
+  describe("brand identity read-through (UI-SPEC A-05)", () => {
+    const config: Partial<EmailLayoutConfig> = {
+      blocks: [{ id: "s", type: "signature", props: {} }],
+      signature: {
+        companyName: "Nombre Antiguo del Builder",
+        phone: "+57 300 111",
+        website: "antiguo.co",
+        address: "Dirección antigua",
+        legalDisclaimer: "Aviso antiguo del builder.",
+        socials: [{ type: "instagram", url: "https://instagram.com/acme" }]
+      }
+    };
+    const brand: BrandIdentity = {
+      ...EMPTY_BRAND_IDENTITY,
+      commercialName: "Acme Cobranzas S.A.S.",
+      logoUrl: "https://cdn.acme.co/logo.png",
+      supportPhone: "+57 300 999",
+      website: "https://acme.co",
+      address: "Nueva dirección de marca",
+      legalNotice: "Nuevo aviso legal de marca."
+    };
+
+    it("brand identity overrides the stored signature fields it maps to", () => {
+      const html = renderEmailLayout(config, { body: "x", variables: {}, brand });
+      expect(html).toContain("Acme Cobranzas S.A.S.");
+      expect(html).toContain("+57 300 999");
+      expect(html).toContain("acme.co");
+      expect(html).toContain("Nueva dirección de marca");
+      expect(html).toContain("Nuevo aviso legal de marca.");
+      expect(html).not.toContain("Nombre Antiguo del Builder");
+      expect(html).not.toContain("Dirección antigua");
+    });
+
+    it("preserves socials untouched — they stay owned by the email builder", () => {
+      const html = renderEmailLayout(config, { body: "x", variables: {}, brand });
+      expect(html).toContain("https://instagram.com/acme");
+    });
+
+    it("a null brand field falls back to the stored signature value", () => {
+      const partialBrand: BrandIdentity = { ...EMPTY_BRAND_IDENTITY, commercialName: "Acme Cobranzas S.A.S." };
+      const html = renderEmailLayout(config, { body: "x", variables: {}, brand: partialBrand });
+      // commercialName is set on the brand → wins
+      expect(html).toContain("Acme Cobranzas S.A.S.");
+      // every other field is null on the brand → the stored signature value survives
+      expect(html).toContain("+57 300 111");
+      expect(html).toContain("Dirección antigua");
+      expect(html).toContain("Aviso antiguo del builder.");
+    });
+
+    it("anti-regression: existing rendering is unchanged when no brand identity is supplied", () => {
+      const html = renderEmailLayout(config, { body: "x", variables: {} });
+      expect(html).toContain("Nombre Antiguo del Builder");
+      expect(html).toContain("Dirección antigua");
+    });
   });
 });
 

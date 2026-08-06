@@ -1,57 +1,78 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
-import { ConfigService } from "@nestjs/config";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { EMPRESA_FALLBACK } from "@cobrai/utils";
 import { TwilioWhatsAppAdapter } from "./twilio-whatsapp.adapter";
 
 const mockCreate = vi.fn();
-const mockPrisma = {
-  contactConsent: { findFirst: vi.fn() },
-  tenant: { findUnique: vi.fn().mockResolvedValue(null) }
-};
-
-vi.mock("twilio", () => ({
-  default: vi.fn(() => ({
-    messages: { create: mockCreate }
-  }))
+const mockTwilioFactory = vi.fn((_sid?: string, _token?: string) => ({
+  messages: { create: mockCreate }
 }));
 
-function makeConfig(): ConfigService {
-  const map: Record<string, string> = {
-    TWILIO_ACCOUNT_SID: "ACtest",
-    TWILIO_AUTH_TOKEN: "authtest",
-    TWILIO_WA_FROM: "whatsapp:+14155238886"
-  };
+vi.mock("twilio", () => ({
+  default: (sid?: string, token?: string) => mockTwilioFactory(sid, token)
+}));
+
+const mockPrisma = {
+  contactConsent: { findFirst: vi.fn() }
+};
+
+function makeIntegrations(overrides: { resolveByChannel?: ReturnType<typeof vi.fn> } = {}) {
   return {
-    get: (key: string) => map[key],
-    getOrThrow: (key: string) => {
-      const val = map[key];
-      if (!val) throw new Error(`Missing config: ${key}`);
-      return val;
-    }
-  } as unknown as ConfigService;
+    resolveByChannel:
+      overrides.resolveByChannel ??
+      vi.fn().mockResolvedValue({
+        secrets: { accountSid: "ACtest", authToken: "authtest" },
+        publicConfig: { fromNumber: "whatsapp:+14155238886" }
+      })
+  };
 }
 
 describe("TwilioWhatsAppAdapter", () => {
+  let integrations: ReturnType<typeof makeIntegrations>;
   let adapter: TwilioWhatsAppAdapter;
+  let originalEnv: string | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreate.mockResolvedValue({ sid: "SMtest123" });
-    adapter = new TwilioWhatsAppAdapter(makeConfig(), mockPrisma as never);
+    integrations = makeIntegrations();
+    adapter = new TwilioWhatsAppAdapter(integrations as never, mockPrisma as never);
+    originalEnv = process.env.SIMULATE_OUTBOUND_SENDS;
   });
 
-  it("sin credenciales Twilio → modo sandbox sin llamar a la API", async () => {
-    const sandbox = new TwilioWhatsAppAdapter(
-      { get: () => undefined } as unknown as ConfigService,
-      mockPrisma as never
-    );
-    const result = await sandbox.sendTemplate({
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.SIMULATE_OUTBOUND_SENDS;
+    else process.env.SIMULATE_OUTBOUND_SENDS = originalEnv;
+  });
+
+  it("sin integración verificada y simulación apagada → status failed, no llama a la API", async () => {
+    integrations.resolveByChannel.mockResolvedValueOnce(null);
+    delete process.env.SIMULATE_OUTBOUND_SENDS;
+
+    const result = await adapter.sendTemplate({
       to: "+573001234567",
       template_id: "recordatorio",
       variables: { nombre: "Juan" },
       tenant_id: "org_test"
     });
+
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(result).toEqual({ message_id: "", status: "failed" });
+  });
+
+  it("sin integración verificada y simulación encendida → sent simulado", async () => {
+    integrations.resolveByChannel.mockResolvedValueOnce(null);
+    process.env.SIMULATE_OUTBOUND_SENDS = "true";
+
+    const result = await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "recordatorio",
+      variables: { nombre: "Juan" },
+      tenant_id: "org_test"
+    });
+
     expect(mockCreate).not.toHaveBeenCalled();
     expect(result.status).toBe("sent");
+    expect(result.simulated).toBe(true);
     expect(result.message_id).toMatch(/^sandbox-/);
   });
 
@@ -105,6 +126,31 @@ describe("TwilioWhatsAppAdapter", () => {
     expect(callArg?.body).toContain("500000");
   });
 
+  it("sin variables.empresa → el mensaje usa EMPRESA_FALLBACK (D-24)", async () => {
+    // template_id genérico (no matchea recordatorio/plan_pago/confirmacion) →
+    // cae en la rama por defecto de renderBody, la única que interpola empresa.
+    await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "cobrai_generico",
+      variables: { nombre: "María", monto: "500000" },
+      tenant_id: "org_test"
+    });
+    const callArg = mockCreate.mock.calls[0]?.[0] as { body: string };
+    expect(callArg?.body).toContain(EMPRESA_FALLBACK);
+  });
+
+  it("con variables.empresa (nombre comercial del tenant) → lo usa, no el fallback", async () => {
+    await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "cobrai_generico",
+      variables: { nombre: "María", monto: "500000", empresa: "Acme Cobranzas" },
+      tenant_id: "org_test"
+    });
+    const callArg = mockCreate.mock.calls[0]?.[0] as { body: string };
+    expect(callArg?.body).toContain("Acme Cobranzas");
+    expect(callArg?.body).not.toContain(EMPRESA_FALLBACK);
+  });
+
   it("body pre-renderizado en variables → se usa directamente", async () => {
     await adapter.sendTemplate({
       to: "+573001234567",
@@ -116,9 +162,37 @@ describe("TwilioWhatsAppAdapter", () => {
     expect(callArg?.body).toBe("Entendido, le confirmo su pago.");
   });
 
-  it("tenant con whatsappFromNumber propio → lo usa en vez del número compartido", async () => {
-    mockPrisma.tenant.findUnique.mockResolvedValueOnce({
-      settings: { whatsappFromNumber: "whatsapp:+19998887777" }
+  it("dos tenants distintos → dos clientes Twilio construidos con su propio accountSid", async () => {
+    integrations.resolveByChannel.mockResolvedValueOnce({
+      secrets: { accountSid: "AC_tenant_A", authToken: "token_A" },
+      publicConfig: { fromNumber: "whatsapp:+10000000001" }
+    });
+    await adapter.sendTemplate({
+      to: "+573001234567",
+      template_id: "recordatorio",
+      variables: {},
+      tenant_id: "tenant_A"
+    });
+
+    integrations.resolveByChannel.mockResolvedValueOnce({
+      secrets: { accountSid: "AC_tenant_B", authToken: "token_B" },
+      publicConfig: { fromNumber: "whatsapp:+10000000002" }
+    });
+    await adapter.sendTemplate({
+      to: "+573007654321",
+      template_id: "recordatorio",
+      variables: {},
+      tenant_id: "tenant_B"
+    });
+
+    expect(mockTwilioFactory).toHaveBeenNthCalledWith(1, "AC_tenant_A", "token_A");
+    expect(mockTwilioFactory).toHaveBeenNthCalledWith(2, "AC_tenant_B", "token_B");
+  });
+
+  it("usa publicConfig.fromNumber del tenant resuelto como From", async () => {
+    integrations.resolveByChannel.mockResolvedValueOnce({
+      secrets: { accountSid: "ACtest", authToken: "authtest" },
+      publicConfig: { fromNumber: "whatsapp:+19998887777" }
     });
     await adapter.sendTemplate({
       to: "+573001234567",

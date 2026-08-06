@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_BRAND_IDENTITY } from "@cobrai/utils";
 import { sanitizeContactRetryPolicy, toTenantProfile } from "./tenant-profile.dto";
 
 describe("sanitizeContactRetryPolicy", () => {
@@ -106,5 +107,29 @@ describe("toTenantProfile", () => {
       escalation: "same_channel",
       escalateTo: "human"
     });
+  });
+
+  it("expone brandIdentity con EMPTY_BRAND_IDENTITY cuando el tenant nunca la configuró", () => {
+    const profile = toTenantProfile({
+      id: "t1",
+      name: "Acme",
+      slug: "acme",
+      plan: "trial",
+      settings: {}
+    });
+    expect(profile.brandIdentity).toEqual(EMPTY_BRAND_IDENTITY);
+  });
+
+  it("lee la identidad de marca guardada en settings.brandIdentity", () => {
+    const profile = toTenantProfile({
+      id: "t1",
+      name: "Acme",
+      slug: "acme",
+      plan: "trial",
+      settings: {
+        brandIdentity: { commercialName: "Acme Cobranzas" }
+      }
+    });
+    expect(profile.brandIdentity.commercialName).toBe("Acme Cobranzas");
   });
 });

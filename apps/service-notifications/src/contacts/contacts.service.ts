@@ -16,15 +16,14 @@ import { EmailAdapter } from "../adapters/email.adapter";
 import { SmsAdapter } from "../adapters/sms.adapter";
 import { VapiVoiceAdapter } from "../adapters/vapi-voice.adapter";
 import { TwilioWhatsAppAdapter } from "../adapters/twilio-whatsapp.adapter";
-import { EMAIL_REPLY_TO } from "../common/email.constants";
 import { AuditService, ComplianceService, resolveRetryPolicy } from "@cobrai/compliance";
+import { TenantIntegrationService, type IntegrationChannel } from "@cobrai/integrations";
 import {
   DEFAULT_EMAIL_LAYOUT,
   renderEmailLayout,
-  type EmailLayoutConfig
+  type BrandIdentity, type BrandVariables, type EmailLayoutConfig
 } from "@cobrai/utils";
 import {
-  buildMessageContent,
   decimalToNumber,
   fechaEspanol,
   formatDate,
@@ -37,6 +36,8 @@ import { KafkaService } from "../kafka/kafka.service";
 import { WaterfallService } from "../orchestrator/waterfall.service";
 import { DebtorMemoryService } from "../memory/debtor-memory.service";
 import type { CreateContactDto } from "./dto/contact.dto";
+import { recordConversationMessage } from "./record-conversation-message";
+import { resolveTenantBrand } from "./resolve-tenant-brand";
 
 export type ContactRequestPayload = {
   debt_id: string;
@@ -65,7 +66,8 @@ export class ContactsService {
     private readonly kafka: KafkaService,
     private readonly waterfall: WaterfallService,
     private readonly config: ConfigService,
-    private readonly debtorMemory: DebtorMemoryService
+    private readonly debtorMemory: DebtorMemoryService,
+    private readonly integrations: TenantIntegrationService
   ) {}
 
   async list(tenantId: string, debtId?: string, channel?: ContactChannel, portfolioId?: string) {
@@ -112,7 +114,7 @@ export class ContactsService {
     }
 
     const debt = await this.getDebtContext(tenantId, payload.debt_id);
-    const channels = this.availableChannels(debt.debtor);
+    const channels = await this.availableChannels(tenantId, debt.debtor);
     // Reintento: si la política es "same_channel" reintenta el mismo canal; si no
     // (default "switch_channel" o primer intento), avanza al siguiente canal disponible.
     const channel =
@@ -120,10 +122,25 @@ export class ContactsService {
         ? payload.previous_channel
         : this.waterfall.nextChannel(payload.previous_channel ?? null, channels);
     if (!channel) {
+      // Distinguish "debtor unreachable" (no phone/email at all) from "debtor
+      // reachable but the tenant has no verified integration for any of those
+      // channels" (D-16) — the latter escalates to a human instead of silently
+      // dropping the debt.
+      const reachable = this.reachableChannels(debt.debtor);
+      const reason =
+        reachable.length > 0 ? "no_channel_configured" : "no_available_channel";
       await this.kafka.publish("cobrai.contact.failed.no_response", tenantId, {
         debt_id: payload.debt_id,
-        reason: "no_available_channel"
+        reason
       });
+      if (reason === "no_channel_configured") {
+        await this.kafka.publish("cobrai.debt.escalated", tenantId, {
+          debt_id: payload.debt_id,
+          rule_id: "channel_not_configured",
+          rule_name: "Sin canal configurado",
+          target: "human"
+        });
+      }
       return;
     }
 
@@ -148,7 +165,7 @@ export class ContactsService {
   ) {
     const debt = await this.getDebtContext(tenantId, input.debt_id);
     const debtor = debt.debtor;
-    const empresa = debt.tenant?.name ?? "CobraAI";
+    const brand = resolveTenantBrand(debt.tenant);
     const at = input.scheduled_at ? new Date(input.scheduled_at) : new Date();
 
     // Sin servicio de SMS activo, todo mensaje SMS se envía por WhatsApp.
@@ -197,6 +214,10 @@ export class ContactsService {
         });
       }
 
+      // channel_not_configured (D-16) falls through to here: it is a terminal block,
+      // never rescheduled like outside_hours and never memory-registered like
+      // awaiting_response/retry_cooldown — timing cannot resolve a missing
+      // TenantIntegration, only the tenant configuring one can.
       this.logger.warn(
         `Contacto bloqueado debt=${debt.id} channel=${input.channel} reason=${compliance.reason}`
       );
@@ -216,7 +237,7 @@ export class ContactsService {
     const policy = resolveRetryPolicy(debt.tenant?.settings);
     const attemptNumber = input.attempt_number ?? 1;
 
-    const variables = this.buildVariables(debt, debtor, empresa);
+    const variables = this.buildVariables(debt, debtor, brand.variables);
     // Agrupar todas las deudas activas del deudor EN EL MISMO PORTAFOLIO en un
     // solo contacto (email detallado, WhatsApp/voz moderado). Sobrescribe monto
     // por el total para que las plantillas genéricas muestren el agregado.
@@ -242,13 +263,13 @@ export class ContactsService {
         input.channel,
         debt,
         debtor,
-        template,
-        variables
+        template, variables, brand.identity
       );
 
       const sendFailed = sendResult.status === "failed";
 
-      await this.recordConversationMessage(
+      await recordConversationMessage(
+        this.prisma,
         tenantId,
         debtor.id,
         debt.id,
@@ -257,7 +278,8 @@ export class ContactsService {
         variables,
         sendResult.messageId,
         sendResult.body,
-        sendResult.status
+        sendResult.status,
+        sendResult.simulated
       );
 
       const completed = await this.prisma.contact.update({
@@ -265,6 +287,9 @@ export class ContactsService {
         data: {
           status: sendFailed ? "failed" : "completed",
           endedAt: new Date(),
+          // D-17: a simulated send must be distinguishable from a real one so it
+          // never inflates delivery metrics nor consumes the Ley 1266 quota.
+          simulated: sendResult.simulated,
           // Un envío fallido nunca llegó al deudor — no tiene sentido esperar respuesta
           // por él; se marca sin_contacto de inmediato para que el reintento no espere
           // la ventana completa por algo que ya sabemos que no se entregó.
@@ -479,8 +504,8 @@ export class ContactsService {
     debt: Debt & { debtor: Debtor },
     debtor: Debtor,
     template: NotificationTemplate | null,
-    variables: Record<string, string>
-  ): Promise<{ messageId: string; status: "sent" | "failed"; body: string }> {
+    variables: Record<string, string>, brand: BrandIdentity
+  ): Promise<{ messageId: string; status: "sent" | "failed"; body: string; simulated: boolean }> {
     const body = template
       ? renderTemplate(template.content, variables)
       : `Recordatorio de pago: ${variables.amount}`;
@@ -497,18 +522,22 @@ export class ContactsService {
         const layoutConfig = await this.resolvePublishedLayout(tenantId);
         const html = renderEmailLayout(layoutConfig, {
           body: messageBody,
-          variables
+          variables, brand
         });
         const subject = this.deriveEmailSubject(template, variables);
         const result = await this.email.sendTemplate({
           to,
           template_id: template?.id ?? "default",
           variables: { ...variables, body: html, subject },
-          tenant_id: tenantId,
-          reply_to: EMAIL_REPLY_TO
+          tenant_id: tenantId
         });
         // Guardamos el mensaje legible (no el HTML) en la conversación.
-        return { messageId: result.message_id, status: result.status, body: messageBody };
+        return {
+          messageId: result.message_id,
+          status: result.status,
+          body: messageBody,
+          simulated: result.simulated ?? false
+        };
       }
       case "sms": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -518,7 +547,7 @@ export class ContactsService {
           body,
           tenant_id: tenantId
         });
-        return { messageId: result.message_id, status: result.status, body };
+        return { messageId: result.message_id, status: result.status, body, simulated: result.simulated ?? false };
       }
       case "whatsapp": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -529,7 +558,7 @@ export class ContactsService {
           variables,
           tenant_id: tenantId
         });
-        return { messageId: result.message_id, status: result.status, body };
+        return { messageId: result.message_id, status: result.status, body, simulated: result.simulated ?? false };
       }
       case "voice": {
         const phone = phonesFromDebtor(debtor.phones)[0];
@@ -563,7 +592,8 @@ export class ContactsService {
           status: result.status === "failed" ? "failed" : "sent",
           // Persist the actual opening line Vapi delivers, not the voice script
           // template (which Vapi ignores — it uses its own assistant prompt).
-          body: callHistory.first_message_override ?? "Llamada encolada"
+          body: callHistory.first_message_override ?? "Llamada encolada",
+          simulated: result.simulated ?? false
         };
       }
       default:
@@ -621,61 +651,6 @@ export class ContactsService {
     }
     const empresa = variables.empresa ?? "CobraAI";
     return `Recordatorio de pago — ${empresa}`;
-  }
-
-  private async recordConversationMessage(
-    tenantId: string,
-    debtorId: string,
-    debtId: string,
-    channel: ContactChannel,
-    template: NotificationTemplate | null,
-    variables: Record<string, string>,
-    providerMessageId: string,
-    body: string,
-    sendStatus: "sent" | "failed"
-  ): Promise<void> {
-    let conversation = await this.prisma.conversation.findFirst({
-      where: { tenantId, debtorId, channel, deletedAt: null }
-    });
-
-    if (!conversation) {
-      conversation = await this.prisma.conversation.create({
-        data: {
-          tenantId,
-          debtorId,
-          debtId,
-          channel,
-          status: "open",
-          lastMessageAt: new Date()
-        }
-      });
-    } else {
-      await this.prisma.conversation.update({
-        where: { id: conversation.id },
-        data: { lastMessageAt: new Date(), debtId }
-      });
-    }
-
-    await this.prisma.message.create({
-      data: {
-        tenantId,
-        conversationId: conversation.id,
-        direction: "out",
-        channel,
-        content: buildMessageContent(
-          // For voice, the template is not what the debtor hears (Vapi drives the
-          // call from its own assistant), so rendering it would persist raw script
-          // scaffolding and unresolved variables. Store the clean call body instead.
-          channel !== "voice" && template
-            ? renderTemplate(template.content, variables)
-            : body,
-          providerMessageId
-        ),
-        status: sendStatus,
-        templateId: template?.id,
-        sentAt: new Date()
-      }
-    });
   }
 
   private async loadVoiceCallHistory(
@@ -762,7 +737,7 @@ export class ContactsService {
   private buildVariables(
     debt: Debt,
     debtor: Debtor,
-    empresa: string
+    brandVariables: BrandVariables
   ): Record<string, string> {
     const paymentBase =
       this.config.get<string>("PAYMENT_LINK_BASE_URL") ??
@@ -802,7 +777,7 @@ export class ContactsService {
       monto_original: String(original),
       moneda: currency,
       dias_mora: String(diasMora),
-      empresa,
+      ...brandVariables,
       link_pago: `${paymentBase}/${debt.id}`,
       payment_link: `${paymentBase}/${debt.id}`,
       referencia,
@@ -943,7 +918,8 @@ export class ContactsService {
     });
   }
 
-  private availableChannels(debtor: Debtor): ContactChannel[] {
+  /** Channels the debtor can technically be reached on, ignoring tenant configuration. */
+  private reachableChannels(debtor: Debtor): ContactChannel[] {
     const channels: ContactChannel[] = [];
     if (debtor.whatsappOptIn && phonesFromDebtor(debtor.phones).length > 0) {
       channels.push("whatsapp");
@@ -958,6 +934,31 @@ export class ContactsService {
       channels.push("email");
     }
     return channels;
+  }
+
+  /**
+   * Reachable channels the tenant also has a verified TenantIntegration for (D-16).
+   * Consults the same source of truth as ComplianceService.isChannelConfigured so the
+   * waterfall never attempts (and gets blocked on) a channel it could have skipped.
+   */
+  private async availableChannels(
+    tenantId: string,
+    debtor: Debtor
+  ): Promise<ContactChannel[]> {
+    const reachable = this.reachableChannels(debtor);
+    const configured = await Promise.all(
+      reachable.map((channel) => this.isChannelConfigured(tenantId, channel))
+    );
+    return reachable.filter((_channel, index) => configured[index]);
+  }
+
+  /** sms is routed over WhatsApp today, mirroring ComplianceService's mapping. */
+  private async isChannelConfigured(
+    tenantId: string,
+    channel: ContactChannel
+  ): Promise<boolean> {
+    const mapped: IntegrationChannel = channel === "sms" ? "whatsapp" : (channel as IntegrationChannel);
+    return this.integrations.hasVerifiedChannel(tenantId, mapped);
   }
 
   private async getDebtContext(tenantId: string, debtId: string) {

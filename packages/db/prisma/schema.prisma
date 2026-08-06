@@ -163,6 +163,69 @@ enum PaymentGateway {
   @@map("payment_gateway")
 }
 
+// D-12: splits the legacy PaymentGateway enum (which conflated payment
+// method with payment provider) into a dedicated provider enum. Under
+// BYO payments (D-06) the provider is whatever the tenant configured,
+// never something the platform infers. The deprecated legacy provider
+// (D-15) is intentionally not carried forward here.
+enum PaymentProvider {
+  stripe
+  wompi
+  payu
+  epayco
+  mercadopago
+  external_link
+  transfer
+
+  @@map("payment_provider")
+}
+
+enum PaymentMethod {
+  card
+  pse
+  nequi
+  bancolombia_transfer
+  cash
+  bank_transfer
+  pix
+  spei
+
+  @@map("payment_method")
+}
+
+enum IntegrationProvider {
+  twilio_whatsapp
+  twilio_voice
+  sendgrid
+  stripe
+  wompi
+  payu
+  epayco
+  mercadopago
+  external_link
+  transfer
+
+  @@map("integration_provider")
+}
+
+enum IntegrationMode {
+  managed
+  byo
+
+  @@map("integration_mode")
+}
+
+enum IntegrationStatus {
+  not_configured
+  verifying
+  verified
+  failed
+  pending_dns
+  pending_meta
+
+  @@map("integration_status")
+}
+
 enum PaymentStatus {
   pending
   confirmed
@@ -275,6 +338,7 @@ model Tenant {
   paymentPlans                 PaymentPlan[]
   payments                     Payment[]
   paymentLinks                 PaymentLink[]
+  integrations                 TenantIntegration[]
   conversations                Conversation[]
   notificationTemplates        NotificationTemplate[]
   contactConsents              ContactConsent[]
@@ -448,6 +512,7 @@ model Contact {
   debtorId        String                @map("debtor_id") @db.Uuid
   channel         ContactChannel
   status          ContactStatus         @default(scheduled)
+  simulated       Boolean               @default(false)
   outcome         ContactOutcome?
   responseStatus  ContactResponseStatus @default(pending) @map("response_status")
   respondedAt     DateTime?             @map("responded_at")
@@ -664,6 +729,8 @@ model Payment {
   amount         Decimal        @db.Decimal(15, 2)
   currency       String         @default("COP") @db.Char(3)
   gateway        PaymentGateway
+  provider       PaymentProvider
+  method         PaymentMethod?
   gatewayRef     String?        @unique @map("gateway_ref")
   status         PaymentStatus  @default(pending)
   idempotencyKey String         @unique @map("idempotency_key")
@@ -689,6 +756,8 @@ model PaymentLink {
   amount    Decimal           @db.Decimal(15, 2)
   currency  String            @default("COP") @db.Char(3)
   gateway   PaymentGateway
+  provider  PaymentProvider
+  method    PaymentMethod?
   status    PaymentLinkStatus @default(active)
   expiresAt DateTime          @map("expires_at")
   usedAt    DateTime?         @map("used_at")
@@ -704,6 +773,30 @@ model PaymentLink {
   @@index([tenantId, debtId])
   @@index([tenantId, status])
   @@map("payment_links")
+}
+
+model TenantIntegration {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String              @map("tenant_id")
+  provider       IntegrationProvider
+  mode           IntegrationMode     @default(managed)
+  status         IntegrationStatus   @default(not_configured)
+  publicConfig   Json                @default("{}") @map("public_config")
+  secretsCipher  Bytes?              @map("secrets_cipher")
+  secretsMeta    Json                @default("{}") @map("secrets_meta")
+  keyVersion     Int                 @default(1) @map("key_version")
+  webhookToken   String?             @unique @map("webhook_token")
+  verifiedAt     DateTime?           @map("verified_at")
+  failureMessage String?             @map("failure_message")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  deletedAt      DateTime?           @map("deleted_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, provider])
+  @@index([tenantId, status])
+  @@map("tenant_integrations")
 }
 
 model Conversation {
@@ -737,6 +830,7 @@ model Message {
   channel        ContactChannel
   content        String
   status         MessageStatus    @default(sent)
+  simulated      Boolean          @default(false)
   templateId     String?          @map("template_id") @db.Uuid
   sentAt         DateTime?        @map("sent_at")
   createdAt      DateTime         @default(now()) @map("created_at")
