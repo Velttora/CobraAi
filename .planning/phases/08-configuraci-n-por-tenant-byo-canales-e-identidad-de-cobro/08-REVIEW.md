@@ -8,7 +8,9 @@
 
 ## Verdict
 
-**One HIGH finding, fixed.** No critical findings. No unaddressed findings at any severity.
+**Two HIGH findings, both fixed. One MEDIUM, reported for the repo owner to decide.** No critical findings.
+
+A second pass ran after `main` was merged into the branch, on the theory that main's newer work was written against pre-phase-8 assumptions. That pass produced the `simulated` finding and the `whatsapp-sender` finding below.
 
 The money path, the compliance choke point, the migration backfill and the multi-step provisioning flow all hold up under inspection.
 
@@ -28,6 +30,36 @@ The money path, the compliance choke point, the migration backfill and the multi
 **Fix:** extracted `CredentialCache`, where expiry means deletion: `get` drops an expired entry instead of returning it, and every write sweeps expired entries. Two tests cover it — a credential is gone once its TTL passes even if its key is never resolved again, and the cache stays bounded across many tenants. Commit `3ef3777`.
 
 **Note on the first attempt:** the initial fix only swept past a 64-entry threshold, which left secrets resident below that size. The test caught it. Worth recording because the threshold looked like a reasonable optimisation and was wrong for exactly the reason the finding is about.
+
+---
+
+## HIGH — `simulated` was written everywhere and read nowhere (FIXED)
+
+**Where:** `packages/compliance/src/compliance.service.ts` (frequency check)
+
+**What was wrong:** D-17 added a `simulated` flag to `Contact` and `Message` so a simulated send would "never inflate delivery metrics nor consume the Ley 1266 quota". The marking half shipped: adapters set it, `ContactsService` propagated it, `record-conversation-message` persisted it. The exclusion half did not exist — **no query anywhere filtered on it.**
+
+**Concrete failure:** the daily per-channel frequency check counted simulated contacts, so a run with simulation enabled spent a debtor's legal contact allowance on sends that never reached them. The debtor is then blocked from a real contact because a fake one "already happened". Worse than the bug itself: anyone reading D-17 would reasonably believe the metrics were already clean.
+
+**Fix:** the frequency check now excludes `simulated: true`, covered by a test asserting the filter is present in the query. Commit `f77f18b`.
+
+**Not changed, reported instead:** `service-portfolios/src/ai-scoring/scoring.service.ts` and `service-workflows/src/workflows/workflows.service.ts` also count contacts without the filter. Changing them shifts scoring and workflow behaviour beyond this phase's scope, so they are left as a deliberate decision for a follow-up.
+
+---
+
+## MEDIUM — `PATCH /api/v1/tenant/whatsapp-sender` succeeds and does nothing
+
+**Where:** `apps/api-gateway/src/tenant/tenant.controller.ts:55`, `tenant.service.ts:139-171`
+
+**What is wrong:** the endpoint validates a WhatsApp number, normalises it, enforces uniqueness across tenants with a raw SQL check, persists it to `settings.whatsappFromNumber` and returns it in the tenant profile. Since this phase, `twilio-whatsapp.adapter.ts:50` reads **only** `integration.publicConfig.fromNumber`. Nothing consults `settings.whatsappFromNumber` on the send path any more — the cutover seed reads it once, historically, and that is all.
+
+**Concrete failure:** an admin changes their WhatsApp sender through this endpoint, gets a `200`, sees the new number reflected in the tenant profile, and every message continues to go out from the number stored in `TenantIntegration`. Configuration and behaviour diverge silently, which is precisely the failure mode this phase existed to remove.
+
+**Not fixed here, deliberately.** The web app never calls it and no test covers it, so removal looks safe — but it is a public API endpoint and deleting one is a contract decision for the repo owner, not a reviewer. Options, in order of preference:
+
+1. Remove the endpoint and drop `whatsappFromNumber` from the tenant-profile DTO. Keep the stored settings value untouched so the cutover seed can still read it.
+2. Make it write through to `TenantIntegration`, which duplicates `PUT /api/v1/integrations/:provider`.
+3. Leave it and accept the divergence — not recommended; a 200 that changes nothing is worse than a 4xx.
 
 ---
 
