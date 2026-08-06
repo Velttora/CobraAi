@@ -194,6 +194,27 @@ describe("ComplianceService", () => {
     expect(result.reason).toBe("frequency_limit");
   });
 
+  it("no cuenta contactos simulados contra el cupo diario de la Ley 1266 (D-17)", async () => {
+    prisma.debtor.findFirst.mockResolvedValue(
+      debtor({ address: { country: "CO" } })
+    );
+    prisma.contactConsent.findFirst.mockResolvedValue({ id: "c1" });
+    prisma.contact.count.mockResolvedValue(0);
+
+    await service.checkContact({
+      tenantId: "t1",
+      debtorId: "d1",
+      channel: "whatsapp",
+      at: new Date("2026-05-26T15:00:00.000Z")
+    });
+
+    // Un envío simulado nunca llegó al deudor: si entrara en el conteo, una
+    // corrida con simulación activa dejaría al deudor sin poder recibir un
+    // contacto real.
+    const frequencyQuery = prisma.contact.count.mock.calls.at(-1)?.[0];
+    expect(frequencyQuery.where.simulated).toBe(false);
+  });
+
   it("bloquea en cooldown de reintento tras un ciclo sin respuesta", async () => {
     prisma.debtor.findFirst.mockResolvedValue(
       debtor({ address: { country: "CO" } })

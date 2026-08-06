@@ -251,7 +251,12 @@ export class ComplianceService {
         channel,
         deletedAt: null,
         status: { in: ["scheduled", "in_progress", "completed"] },
-        createdAt: { gte: dayStart, lte: dayEnd }
+        createdAt: { gte: dayStart, lte: dayEnd },
+        // D-17: a simulated send never reached the debtor, so it cannot consume
+        // their Ley 1266 allowance. Without this the flag is written and never
+        // read, and a run with simulation enabled silently locks a debtor out
+        // of a real contact because a fake one "already happened".
+        simulated: false
       }
     });
 
