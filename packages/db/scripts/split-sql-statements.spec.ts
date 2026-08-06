@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-// El runner de producción es CommonJS: se carga tal cual corre en Fly.
+// Módulo CommonJS sin dependencias: se carga tal cual corre en Fly, sin
+// arrastrar el runner (que instancia Prisma y arranca al importarse).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { splitSqlStatements } = require("./prod-migrate-deploy.cjs") as {
+const { splitSqlStatements } = require("./split-sql-statements.cjs") as {
   splitSqlStatements: (sql: string) => string[];
 };
 
