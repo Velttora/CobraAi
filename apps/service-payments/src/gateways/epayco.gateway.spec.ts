@@ -15,41 +15,35 @@ describe("EpaycoGateway", () => {
     returnUrl: "https://app.cobrai.dev/pay/return"
   };
 
-  it("returns a checkout URL carrying publicKey, the token as invoice, amount, currency and the response URL", async () => {
+  // El endpoint `checkout.epayco.co/checkout.php` devuelve HTTP 403 desde el
+  // 2026-08-06 (verificado en vivo; el mismo host sigue sirviendo checkout.js
+  // con 200, así que es el endpoint que desapareció, no el host). Entregarle
+  // al deudor una URL que da 403 significa que no puede pagar y el tenant solo
+  // se entera por una deuda impaga, así que el gateway falla al crear el link.
+  it("falla de forma explícita en vez de entregar una URL muerta", async () => {
+    await expect(gateway.createCheckout(baseInput)).rejects.toThrow(
+      /deshabilitada/
+    );
+  });
+
+  it("el mensaje de error le dice al tenant qué hacer mientras tanto", async () => {
+    await expect(gateway.createCheckout(baseInput)).rejects.toThrow(
+      /Configura otro proveedor de cobro/
+    );
+  });
+
+  // Cuando se restaure el gateway contra un sandbox real, estos son los
+  // invariantes que la implementación anterior cumplía y que la nueva debe
+  // seguir cumpliendo: la llave privada nunca viaja en la URL, el token va
+  // como `invoice` (ePayco lo devuelve en `x_id_factura`, que lee el webhook
+  // del plan 08-12) y el monto va con dos decimales exactos.
+  it.skip("[restauración] lleva el token como invoice y nunca la llave privada", async () => {
     const result = await gateway.createCheckout(baseInput);
     const url = new URL(result.gateway_payment_url);
 
-    expect(url.searchParams.get("public_key")).toBe("pub_test_epayco");
     expect(url.searchParams.get("invoice")).toBe("tok-epayco-654");
-    expect(url.searchParams.get("currency")).toBe("cop");
-    expect(url.searchParams.get("response")).toBe("https://app.cobrai.dev/pay/return");
-  });
-
-  it("sends the exact decimal amount ('450000.00') for a 450000 COP input", async () => {
-    const result = await gateway.createCheckout(baseInput);
-    const url = new URL(result.gateway_payment_url);
     expect(url.searchParams.get("amount")).toBe("450000.00");
-  });
-
-  it("carries the PaymentLink.token as the invoice reconciliation field, echoed back as x_id_factura", async () => {
-    const result = await gateway.createCheckout(baseInput);
-    expect(result.gateway_ref).toBe("tok-epayco-654");
-  });
-
-  it("throws when publicConfig.custIdCliente is absent", async () => {
-    await expect(
-      gateway.createCheckout({ ...baseInput, publicConfig: { publicKey: "pub_test_epayco" } })
-    ).rejects.toThrow();
-  });
-
-  it("throws when publicConfig.publicKey is absent", async () => {
-    await expect(
-      gateway.createCheckout({ ...baseInput, publicConfig: { custIdCliente: "12345" } })
-    ).rejects.toThrow();
-  });
-
-  it("never includes the private key in the returned checkout URL", async () => {
-    const result = await gateway.createCheckout(baseInput);
-    expect(result.gateway_payment_url).not.toContain(baseInput.secrets.privateKey);
+    expect(url.searchParams.get("currency")).toBe("cop");
+    expect(result.gateway_payment_url).not.toContain("priv_test_epayco");
   });
 });
