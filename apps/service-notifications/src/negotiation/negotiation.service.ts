@@ -1,6 +1,10 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { PrismaService } from "@cobrai/db";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { PrismaService, type ContactChannel } from "@cobrai/db";
 import { parseMessagePayload } from "../common/utils/api.utils";
+import {
+  PaymentPlanService,
+  type PlanInstallmentInput
+} from "../agent/payment-plan.service";
 import {
   daysOverdue,
   derivePlanState,
@@ -33,6 +37,20 @@ const MAX_SCAN = 500;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
 const PREVIEW_CHARS = 160;
+
+/** Qué se está pidiendo aprobar. */
+export type ApprovalKind = "payment_plan" | "settlement_remainder";
+
+interface ApprovalRequestEntry {
+  decision: string;
+  kind?: ApprovalKind;
+  notes?: string | null;
+  installments?: {
+    installment_number: number;
+    amount: number;
+    due_date: string;
+  }[];
+}
 
 export interface CommitmentFilters {
   status?: string;
@@ -85,6 +103,10 @@ export interface CommitmentItem {
   days_overdue: number | null;
   channel: string | null;
   notes: string | null;
+  /** Qué hay que aprobar; null cuando el compromiso ya está vigente. */
+  approval_kind?: ApprovalKind | null;
+  /** Descuento que implica el acuerdo propuesto, sobre el saldo actual. */
+  discount_pct?: number | null;
 
   conversation: CommitmentConversation | null;
   /** Duplicado plano: la card enlaza al hilo sin desempacar el objeto. */
@@ -99,6 +121,9 @@ export interface CommitmentItem {
 
 export interface CommitmentSummary {
   total: number;
+  /** Acuerdos propuestos que esperan que una persona decida. */
+  awaiting_approval: number;
+  awaiting_approval_amount: number;
   pending: number;
   overdue: number;
   kept: number;
@@ -134,7 +159,291 @@ const DEBT_SELECT = {
 export class NegotiationService {
   private readonly logger = new Logger(NegotiationService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentPlans: PaymentPlanService
+  ) {}
+
+  // ─── Aprobación humana ────────────────────────────────────────────────────
+
+  /**
+   * Deja un acuerdo propuesto esperando decisión, sin materializar nada.
+   *
+   * Ningún acuerdo se cierra solo: el agente propone y una persona aprueba. Por
+   * eso acá no se crea el plan ni se mueve el saldo — solo se guarda lo que se
+   * va a ejecutar si alguien dice que sí.
+   *
+   * Devuelve el id de la solicitud, o null si la propuesta no forma un acuerdo
+   * (un plan necesita al menos 2 cuotas; con una sola es una promesa simple).
+   */
+  async requestApproval(input: {
+    tenantId: string;
+    debtId: string;
+    kind: ApprovalKind;
+    installments?: PlanInstallmentInput[];
+    /** Monto a condonar, solo para `settlement_remainder`. */
+    settlementAmount?: number;
+    conversationId?: string | null;
+    channel?: ContactChannel | null;
+    planId?: string | null;
+    notes?: string;
+  }): Promise<string | null> {
+    const installments = (input.installments ?? [])
+      .filter((i) => i.amount > 0 && Boolean(i.dueDate))
+      .sort((a, b) => a.installmentNumber - b.installmentNumber);
+
+    if (input.kind === "payment_plan" && installments.length < 2) {
+      return null;
+    }
+
+    const debt = await this.prisma.debt.findFirst({
+      where: { id: input.debtId, tenantId: input.tenantId, deletedAt: null },
+      select: { id: true, debtorId: true, amountOutstanding: true }
+    });
+    if (!debt) return null;
+
+    const outstanding = Number(debt.amountOutstanding);
+    const amount =
+      input.kind === "payment_plan"
+        ? installments.reduce((sum, i) => sum + i.amount, 0)
+        : Math.max(0, input.settlementAmount ?? 0);
+    if (amount <= 0) return null;
+
+    const entry = {
+      at: new Date().toISOString(),
+      decision: "approval_requested",
+      kind: input.kind,
+      // Se guarda el calendario completo: al aprobar se ejecuta exactamente lo
+      // que se le mostró a quien aprobó, no una recalculación posterior.
+      installments: installments.map((i) => ({
+        installment_number: i.installmentNumber,
+        amount: i.amount,
+        due_date: i.dueDate
+      })),
+      notes: input.notes ?? null,
+      reasons: ["requiere_aprobacion_humana"]
+    };
+
+    const data = {
+      status: "escalated" as const,
+      channel: input.channel ?? null,
+      conversationId: input.conversationId ?? null,
+      originalAmount: outstanding,
+      offerSettlementAmount: amount,
+      offerInstallments:
+        input.kind === "payment_plan" ? installments.length : 1,
+      offerDiscountPct:
+        outstanding > 0 && input.kind === "payment_plan"
+          ? Math.max(0, Math.round(((outstanding - amount) / outstanding) * 100))
+          : null,
+      planId: input.planId ?? null
+    };
+
+    // Una propuesta nueva sobre la misma deuda reemplaza a la que seguía
+    // esperando: dos solicitudes vivas para lo mismo obligan a adivinar cuál
+    // está vigente.
+    const open = await this.prisma.negotiation.findFirst({
+      where: {
+        tenantId: input.tenantId,
+        debtId: input.debtId,
+        status: "escalated",
+        deletedAt: null
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+
+    if (open) {
+      const history = Array.isArray(open.history) ? [...open.history] : [];
+      history.push(entry);
+      await this.prisma.negotiation.update({
+        where: { id: open.id },
+        data: { ...data, history: history as never }
+      });
+      return open.id;
+    }
+
+    const created = await this.prisma.negotiation.create({
+      data: {
+        tenantId: input.tenantId,
+        debtId: debt.id,
+        debtorId: debt.debtorId,
+        round: 0,
+        ...data,
+        history: [entry] as never
+      }
+    });
+
+    this.logger.log(
+      `Acuerdo esperando aprobación negociación=${created.id} deuda=${input.debtId} ` +
+        `tipo=${input.kind} monto=${amount}`
+    );
+    return created.id;
+  }
+
+  /**
+   * Un humano aprueba: recién acá el acuerdo existe de verdad.
+   *
+   * Se ejecuta con los términos exactos que quedaron guardados, sin recalcular:
+   * lo que se aprueba tiene que ser lo mismo que se mostró.
+   */
+  async approve(
+    tenantId: string,
+    id: string,
+    approvedBy?: string
+  ): Promise<{ negotiation_id: string; plan_id: string | null; status: string }> {
+    const negotiation = await this.findPending(tenantId, id);
+    const request = this.lastRequest(negotiation.history);
+    const kind: ApprovalKind =
+      request?.kind === "settlement_remainder"
+        ? "settlement_remainder"
+        : "payment_plan";
+
+    let planId: string | null = negotiation.planId;
+
+    if (kind === "payment_plan") {
+      planId = await this.paymentPlans.createPlan(tenantId, {
+        debtId: negotiation.debtId,
+        installments: (request?.installments ?? []).map((i) => ({
+          installmentNumber: i.installment_number,
+          amount: i.amount,
+          dueDate: i.due_date
+        })),
+        createdVia: negotiation.channel ?? undefined,
+        notes: request?.notes ?? undefined
+      });
+    } else {
+      await this.forgiveRemainder(tenantId, negotiation.debtId, {
+        amount: Number(negotiation.offerSettlementAmount ?? 0),
+        planId: negotiation.planId,
+        approvedBy
+      });
+    }
+
+    await this.closeNegotiation(negotiation.id, negotiation.history, {
+      status: "agreed",
+      planId,
+      entry: {
+        at: new Date().toISOString(),
+        decision: "approved",
+        kind,
+        approved_by: approvedBy ?? null
+      }
+    });
+
+    this.logger.log(
+      `Acuerdo aprobado negociación=${id} deuda=${negotiation.debtId} ` +
+        `tipo=${kind} plan=${planId ?? "—"} por=${approvedBy ?? "—"}`
+    );
+    return { negotiation_id: id, plan_id: planId, status: "agreed" };
+  }
+
+  /** Un humano rechaza: no se materializa nada y la deuda vuelve a gestión. */
+  async reject(
+    tenantId: string,
+    id: string,
+    input: { reason?: string; rejectedBy?: string } = {}
+  ): Promise<{ negotiation_id: string; status: string }> {
+    const negotiation = await this.findPending(tenantId, id);
+    const request = this.lastRequest(negotiation.history);
+
+    if (request?.kind === "settlement_remainder") {
+      // El remanente vuelve a ser deuda cobrable: el acuerdo cumplido no
+      // alcanzó para cerrarla y nadie autorizó perdonar lo que falta.
+      await this.prisma.debt.updateMany({
+        where: { id: negotiation.debtId, tenantId },
+        data: { status: "active" }
+      });
+    }
+
+    await this.closeNegotiation(negotiation.id, negotiation.history, {
+      status: "rejected",
+      planId: negotiation.planId,
+      entry: {
+        at: new Date().toISOString(),
+        decision: "rejected",
+        kind: request?.kind ?? "payment_plan",
+        rejected_by: input.rejectedBy ?? null,
+        reason: input.reason ?? null
+      }
+    });
+
+    this.logger.log(
+      `Acuerdo rechazado negociación=${id} deuda=${negotiation.debtId} ` +
+        `por=${input.rejectedBy ?? "—"}`
+    );
+    return { negotiation_id: id, status: "rejected" };
+  }
+
+  private async findPending(tenantId: string, id: string) {
+    const row = await this.prisma.negotiation.findFirst({
+      where: { id, tenantId, deletedAt: null }
+    });
+    if (!row) {
+      throw new NotFoundException("Acuerdo no encontrado");
+    }
+    if (row.status !== "escalated") {
+      throw new NotFoundException("Este acuerdo ya fue resuelto");
+    }
+    return row;
+  }
+
+  private lastRequest(history: unknown): ApprovalRequestEntry | null {
+    const entries = Array.isArray(history) ? history : [];
+    for (let i = entries.length - 1; i >= 0; i -= 1) {
+      const entry = entries[i] as ApprovalRequestEntry | null;
+      if (entry?.decision === "approval_requested") return entry;
+    }
+    return null;
+  }
+
+  private async closeNegotiation(
+    id: string,
+    history: unknown,
+    input: {
+      status: "agreed" | "rejected";
+      planId: string | null;
+      entry: Record<string, unknown>;
+    }
+  ): Promise<void> {
+    const entries = Array.isArray(history) ? [...history] : [];
+    entries.push(input.entry);
+    await this.prisma.negotiation.update({
+      where: { id },
+      data: {
+        status: input.status,
+        planId: input.planId,
+        agreedAt: input.status === "agreed" ? new Date() : null,
+        history: entries as never
+      }
+    });
+  }
+
+  /** Condonar mueve plata: solo ocurre con un humano detrás y queda firmado. */
+  private async forgiveRemainder(
+    tenantId: string,
+    debtId: string,
+    input: { amount: number; planId: string | null; approvedBy?: string }
+  ): Promise<void> {
+    await this.prisma.debt.updateMany({
+      where: { id: debtId, tenantId },
+      data: { amountOutstanding: 0, status: "paid_full" }
+    });
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId,
+        userId: input.approvedBy ?? null,
+        action: "debt.balance_forgiven",
+        resourceType: "debt",
+        resourceId: debtId,
+        changes: {
+          forgiven_amount: input.amount,
+          plan_id: input.planId,
+          approved_by: input.approvedBy ?? null,
+          reason: "settlement_approved"
+        }
+      }
+    });
+  }
 
   /** Compromisos del tenant, ya filtrados y ordenados para la bandeja. */
   async list(
@@ -177,6 +486,8 @@ export class NegotiationService {
 
     return {
       total: items.length,
+      awaiting_approval: count("awaiting_approval"),
+      awaiting_approval_amount: amount("awaiting_approval"),
       pending: count("pending"),
       overdue,
       kept,
@@ -253,12 +564,72 @@ export class NegotiationService {
     ]);
 
     const items: CommitmentItem[] = [
+      ...(await this.listPendingApprovals(tenantId, filters)),
       ...plans.map((plan) => this.planToItem(plan, now)),
       ...promises.map((promise) => this.promiseToItem(promise, now))
     ];
 
     await this.attachConversations(tenantId, items);
     return items;
+  }
+
+  /**
+   * Acuerdos propuestos que esperan decisión humana. Van primero en la bandeja
+   * porque son lo único que no avanza solo: hasta que alguien decida, el deudor
+   * quedó con una respuesta pendiente.
+   */
+  private async listPendingApprovals(
+    tenantId: string,
+    filters: CommitmentFilters
+  ): Promise<CommitmentItem[]> {
+    const debtWhere = this.debtWhere(filters);
+    const rows = await this.prisma.negotiation.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        status: "escalated",
+        ...(filters.debtId ? { debtId: filters.debtId } : {}),
+        ...(Object.keys(debtWhere).length > 0 ? { debt: debtWhere } : {})
+      },
+      orderBy: { updatedAt: "asc" },
+      take: MAX_SCAN,
+      include: { debt: { select: DEBT_SELECT } }
+    });
+
+    return rows.map((row) => {
+      const request = this.lastRequest(row.history);
+      const firstDue = request?.installments?.[0]?.due_date ?? null;
+      const isSettlement = request?.kind === "settlement_remainder";
+
+      return {
+        id: row.id,
+        source: "direct_plan" as const,
+        status: "escalated" as const,
+        commitment_state: "awaiting_approval" as const,
+        ...this.debtFields(row.debt),
+        offer_settlement_amount: Number(row.offerSettlementAmount ?? 0),
+        offer_installments: row.offerInstallments ?? 1,
+        amount_paid: 0,
+        installments_paid: 0,
+        due_date: firstDue ? new Date(firstDue).toISOString() : null,
+        days_overdue: null,
+        channel: row.channel ?? null,
+        notes: isSettlement
+          ? "El deudor cumplió el acuerdo y queda un remanente por definir."
+          : request?.notes ?? null,
+        approval_kind: isSettlement
+          ? ("settlement_remainder" as const)
+          : ("payment_plan" as const),
+        discount_pct:
+          row.offerDiscountPct === null ? null : Number(row.offerDiscountPct),
+        conversation: null,
+        conversation_id: null,
+        agreed_at: row.createdAt.toISOString(),
+        updated_at: row.updatedAt.toISOString(),
+        plan_id: row.planId,
+        has_detail: false as const
+      };
+    });
   }
 
   /** Filtro sobre la deuda: portafolio, deudor y búsqueda por cuenta o nombre. */
@@ -495,6 +866,8 @@ interface DebtProjection {
 }
 
 const STATE_PRIORITY: Record<CommitmentState, number> = {
+  // Lo que espera una decisión va primero: es lo único que no avanza solo.
+  awaiting_approval: -1,
   overdue: 0,
   pending: 1,
   broken: 2,
@@ -513,6 +886,15 @@ export function compareByUrgency(a: CommitmentItem, b: CommitmentItem): number {
     STATE_PRIORITY[a.commitment_state] - STATE_PRIORITY[b.commitment_state];
   if (byState !== 0) return byState;
 
+  if (
+    a.commitment_state === "awaiting_approval" &&
+    b.commitment_state === "awaiting_approval"
+  ) {
+    // Al deudor ya se le dijo que le confirmábamos: manda la antigüedad.
+    return (
+      new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime()
+    );
+  }
   if (a.commitment_state === "overdue" && b.commitment_state === "overdue") {
     return (b.days_overdue ?? 0) - (a.days_overdue ?? 0);
   }

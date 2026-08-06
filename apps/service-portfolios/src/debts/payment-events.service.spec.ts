@@ -29,7 +29,11 @@ function makePrisma(
       ),
       update: vi.fn().mockResolvedValue({})
     },
-    auditLog: { create: vi.fn().mockResolvedValue({}) }
+    auditLog: { create: vi.fn().mockResolvedValue({}) },
+    negotiation: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "neg1" })
+    }
   };
 }
 
@@ -79,7 +83,7 @@ describe("PaymentEventsService — plan completado", () => {
     return prisma;
   }
 
-  it("cierra la deuda y condona el remanente del descuento pactado", async () => {
+  it("no condona: el remanente sobrevive y la deuda no se cierra sola", async () => {
     const prisma = planCompletedPrisma();
     const service = makeService(prisma);
 
@@ -94,14 +98,15 @@ describe("PaymentEventsService — plan completado", () => {
     expect(prisma.paymentPlan.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "completed" } })
     );
+    // Condonar es decisión humana: el saldo queda intacto y la deuda espera.
     expect(prisma.debt.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { amountOutstanding: 0, status: "paid_full" }
+        data: { amountOutstanding: 200_000, status: "plan" }
       })
     );
   });
 
-  it("deja la condonación en la bitácora", async () => {
+  it("deja anotada la decisión pendiente en la bitácora", async () => {
     const prisma = planCompletedPrisma();
     await makeService(prisma).handlePaymentConfirmed("org1", {
       debt_id: "debt1",
@@ -112,12 +117,44 @@ describe("PaymentEventsService — plan completado", () => {
     expect(prisma.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          action: "debt.balance_forgiven",
+          action: "debt.settlement_pending_review",
           resourceId: "debt1",
-          changes: expect.objectContaining({ forgiven_amount: 200_000 })
+          changes: expect.objectContaining({ remaining_amount: 200_000 })
         })
       })
     );
+  });
+
+  it("encola el remanente para que un humano lo apruebe", async () => {
+    const prisma = planCompletedPrisma();
+    await makeService(prisma).handlePaymentConfirmed("org1", {
+      debt_id: "debt1",
+      amount: 800_000,
+      amount_outstanding: 200_000
+    });
+
+    expect(prisma.negotiation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "escalated",
+          offerSettlementAmount: 200_000,
+          planId: "plan1"
+        })
+      })
+    );
+  });
+
+  it("no duplica la solicitud si ya hay una esperando", async () => {
+    const prisma = planCompletedPrisma();
+    prisma.negotiation.findFirst.mockResolvedValue({ id: "neg-existente" });
+
+    await makeService(prisma).handlePaymentConfirmed("org1", {
+      debt_id: "debt1",
+      amount: 800_000,
+      amount_outstanding: 200_000
+    });
+
+    expect(prisma.negotiation.create).not.toHaveBeenCalled();
   });
 
   it("escribe la deuda una sola vez, con saldo y estado juntos", async () => {

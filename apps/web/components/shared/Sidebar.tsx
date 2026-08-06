@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../../lib/utils";
 import { useEscalations } from "../../hooks/use-conversations";
-import { useOverdueCommitmentsCount } from "../../hooks/use-negotiations";
+import { usePendingApprovalsCount } from "../../hooks/use-negotiations";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
@@ -21,9 +21,9 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: escalationsData } = useEscalations();
   const escalationCount = escalationsData?.data.length ?? 0;
-  // Compromisos vencidos: lo que el deudor prometió y no cumplió es lo único
-  // de esta bandeja que caduca si nadie lo mira.
-  const overdueCommitments = useOverdueCommitmentsCount();
+  // Acuerdos esperando aprobación: nada avanza hasta que alguien decida, y el
+  // deudor quedó con una respuesta pendiente.
+  const pendingApprovals = usePendingApprovalsCount();
 
   return (
     <aside
@@ -59,12 +59,12 @@ export function Sidebar() {
                   {escalationCount > 99 ? "99+" : escalationCount}
                 </span>
               )}
-              {isNegotiations && overdueCommitments > 0 && (
+              {isNegotiations && pendingApprovals > 0 && (
                 <span
-                  aria-label={`${overdueCommitments} compromisos vencidos`}
+                  aria-label={`${pendingApprovals} acuerdos esperando aprobación`}
                   className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white"
                 >
-                  {overdueCommitments > 99 ? "99+" : overdueCommitments}
+                  {pendingApprovals > 99 ? "99+" : pendingApprovals}
                 </span>
               )}
             </Link>

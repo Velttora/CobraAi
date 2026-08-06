@@ -16,6 +16,8 @@ export type CommitmentSource = "direct_promise" | "direct_plan";
  * se ve igual que una que vence mañana, que es justo lo que hoy no se ve.
  */
 export type CommitmentState =
+  /** Propuesto por el agente, esperando que una persona lo apruebe. */
+  | "awaiting_approval"
   | "pending"
   | "overdue"
   | "kept"
@@ -23,7 +25,7 @@ export type CommitmentState =
   | "cancelled";
 
 /** Vocabulario del motor de negociación, para que el shape no cambie al fusionarlo. */
-export type EngineStatus = "agreed" | "defaulted" | "rejected";
+export type EngineStatus = "agreed" | "defaulted" | "rejected" | "escalated";
 
 const DAY_MS = 86_400_000;
 
@@ -122,6 +124,7 @@ export function summarizePlanProgress(
 
 /** El estado real, traducido al vocabulario que expone el motor de negociación. */
 export function toEngineStatus(state: CommitmentState): EngineStatus {
+  if (state === "awaiting_approval") return "escalated";
   if (state === "broken") return "defaulted";
   if (state === "cancelled") return "rejected";
   return "agreed";
@@ -131,9 +134,9 @@ export function toEngineStatus(state: CommitmentState): EngineStatus {
  * Filtro de la bandeja → estados que lo satisfacen. `null` significa "todos".
  *
  * Acepta también el vocabulario del motor (`agreed`, `defaulted`, …) para que
- * un cliente escrito contra esa API siga funcionando aquí. Los estados que solo
- * existen con motor (`escalated`, `open`) devuelven lista vacía: en main no hay
- * negociaciones esperando decisión, y contestar con datos sería mentir.
+ * un cliente escrito contra esa API siga funcionando aquí. `escalated` y `open`
+ * mapean a lo que espera aprobación humana; `expired` solo existe con motor
+ * (ofertas con vencimiento) y devuelve vacío.
  */
 export function statesForFilter(filter?: string): CommitmentState[] | null {
   switch (filter) {
@@ -141,6 +144,9 @@ export function statesForFilter(filter?: string): CommitmentState[] | null {
     case "":
     case "all":
       return null;
+    case "awaiting_approval":
+    case "escalated":
+      return ["awaiting_approval"];
     case "pending":
       return ["pending"];
     case "overdue":
@@ -154,12 +160,12 @@ export function statesForFilter(filter?: string): CommitmentState[] | null {
     // ── Alias del motor de negociación ────────────────────────────────────
     case "agreed":
       return ["pending", "overdue", "kept"];
+    case "open":
+      return ["awaiting_approval"];
     case "defaulted":
       return ["broken"];
     case "rejected":
       return ["cancelled"];
-    case "escalated":
-    case "open":
     case "expired":
       return [];
     default:

@@ -76,8 +76,8 @@ export class PaymentEventsService {
       }
     });
 
-    if (outcome.forgivenAmount > 0) {
-      await this.recordForgiveness(tenantId, debt.id, outcome);
+    if (outcome.pendingSettlementAmount > 0) {
+      await this.recordPendingSettlement(tenantId, debt.id, outcome);
     }
 
     if (outcome.status !== debt.status) {
@@ -106,8 +106,8 @@ export class PaymentEventsService {
     this.logger.log(
       `Deuda ${debtId} actualizada: outstanding=${outcome.amountOutstanding} ` +
         `status=${outcome.status}` +
-        (outcome.forgivenAmount > 0
-          ? ` (condonado ${outcome.forgivenAmount} por acuerdo cumplido)`
+        (outcome.pendingSettlementAmount > 0
+          ? ` (acuerdo cumplido, ${outcome.pendingSettlementAmount} pendientes de decisión)`
           : "")
     );
   }
@@ -115,12 +115,14 @@ export class PaymentEventsService {
   /**
    * Estado y saldo con que queda la deuda tras aplicar el pago.
    *
-   * El caso que antes se perdía: un plan pactado con descuento que se termina de
-   * pagar. El plan queda `completed` y la deuda conserva el remanente del
-   * descuento, así que caía a `paid_partial` — un estado que no es cobrable ni
-   * agendable, o sea que el deudor cumplía y su cuenta quedaba silenciosamente
-   * retirada con saldo vivo. Un acuerdo cumplido cierra la deuda; ese remanente
-   * es el descuento que se negoció y se condona explícitamente.
+   * Ninguna rama toca el saldo: condonar es una decisión humana. Cuando un plan
+   * se termina de pagar y queda remanente, la deuda NO se cierra sola — el
+   * remanente sobrevive intacto y el acuerdo queda esperando aprobación.
+   *
+   * Lo que sí se evita es el otro extremo: mandarla a `paid_partial`, que la
+   * retiraba de toda gestión con saldo vivo y sin que nadie lo decidiera. Se
+   * queda en `plan`, que está fuera del barrido de mora, hasta que un humano
+   * resuelva.
    */
   private async resolveOutcome(input: {
     tenantId: string;
@@ -131,14 +133,18 @@ export class PaymentEventsService {
   }): Promise<{
     status: DebtStatus;
     amountOutstanding: number;
-    forgivenAmount: number;
+    /** Remanente de un acuerdo cumplido, a la espera de decisión humana. */
+    pendingSettlementAmount: number;
     completedPlanId: string | null;
   }> {
     if (input.completedPlanIds.length > 0 && input.outstandingAfter > 0) {
       return {
-        status: "paid_full",
-        amountOutstanding: 0,
-        forgivenAmount: input.outstandingAfter,
+        // El deudor cumplió lo pactado y todavía figura un remanente: eso es
+        // exactamente lo que un humano tiene que resolver (condonar o cobrar).
+        // Hasta entonces la deuda ni se cierra ni se persigue.
+        status: "plan",
+        amountOutstanding: input.outstandingAfter,
+        pendingSettlementAmount: input.outstandingAfter,
         completedPlanId: input.completedPlanIds[0] ?? null
       };
     }
@@ -176,25 +182,68 @@ export class PaymentEventsService {
         hasPendingStandalonePromise: pendingStandalone > 0
       }),
       amountOutstanding: input.outstandingAfter,
-      forgivenAmount: 0,
+      pendingSettlementAmount: 0,
       completedPlanId: input.completedPlanIds[0] ?? null
     };
   }
 
-  /** Condonar saldo mueve plata: queda en la bitácora, no solo en el log. */
-  private async recordForgiveness(
+  /**
+   * Un acuerdo se cumplió y quedó saldo. No mueve plata: lo pone en la cola de
+   * aprobación para que una persona decida si se condona o se vuelve a cobrar.
+   *
+   * La fila se escribe directo porque `negotiations` es una tabla compartida y
+   * quien aprueba vive en service-notifications. El shape es el mismo que usa
+   * `NegotiationService.requestApproval` — si cambia allá, cambia acá.
+   */
+  private async recordPendingSettlement(
     tenantId: string,
     debtId: string,
-    outcome: { forgivenAmount: number; completedPlanId: string | null }
+    outcome: { pendingSettlementAmount: number; completedPlanId: string | null }
   ): Promise<void> {
+    const debt = await this.prisma.debt.findFirst({
+      where: { id: debtId, tenantId, deletedAt: null },
+      select: { debtorId: true, amountOutstanding: true }
+    });
+
+    const alreadyQueued = await this.prisma.negotiation.findFirst({
+      where: { tenantId, debtId, status: "escalated", deletedAt: null },
+      select: { id: true }
+    });
+
+    if (debt && !alreadyQueued) {
+      await this.prisma.negotiation.create({
+        data: {
+          tenantId,
+          debtId,
+          debtorId: debt.debtorId,
+          status: "escalated",
+          round: 0,
+          originalAmount: debt.amountOutstanding,
+          offerSettlementAmount: outcome.pendingSettlementAmount,
+          offerInstallments: 1,
+          planId: outcome.completedPlanId,
+          history: [
+            {
+              at: new Date().toISOString(),
+              decision: "approval_requested",
+              kind: "settlement_remainder",
+              installments: [],
+              notes: null,
+              reasons: ["requiere_aprobacion_humana", "plan_cumplido_con_saldo"]
+            }
+          ]
+        }
+      });
+    }
+
     await this.prisma.auditLog.create({
       data: {
         tenantId,
-        action: "debt.balance_forgiven",
+        action: "debt.settlement_pending_review",
         resourceType: "debt",
         resourceId: debtId,
         changes: {
-          forgiven_amount: outcome.forgivenAmount,
+          remaining_amount: outcome.pendingSettlementAmount,
           plan_id: outcome.completedPlanId,
           reason: "payment_plan_completed"
         }

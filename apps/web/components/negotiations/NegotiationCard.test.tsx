@@ -1,7 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { CommitmentItem } from "../../hooks/use-negotiations";
 import { NegotiationCard } from "./NegotiationCard";
+
+const approveMutate = vi.fn().mockResolvedValue({});
+const rejectMutate = vi.fn().mockResolvedValue({});
+
+vi.mock("../../hooks/use-negotiations", () => ({
+  useApproveCommitment: () => ({ mutateAsync: approveMutate, isPending: false }),
+  useRejectCommitment: () => ({ mutateAsync: rejectMutate, isPending: false })
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() }
+}));
 
 function makeItem(overrides: Partial<CommitmentItem> = {}): CommitmentItem {
   return {
@@ -112,5 +125,64 @@ describe("NegotiationCard", () => {
       "href",
       "/debts/debt1"
     );
+  });
+
+  it("un acuerdo por aprobar dice qué va a pasar y no muestra avance", () => {
+    render(
+      <NegotiationCard
+        commitment={makeItem({
+          id: "neg1",
+          source: "direct_plan",
+          status: "escalated",
+          commitment_state: "awaiting_approval",
+          approval_kind: "payment_plan",
+          offer_installments: 3,
+          offer_settlement_amount: 900_000,
+          discount_pct: 25
+        })}
+      />
+    );
+
+    expect(screen.getByText("Espera aprobación")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Propuesto por el agente — nadie lo ha aprobado/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Aprobar crea el plan de 3 cuotas/)).toBeInTheDocument();
+    // Nada se materializó todavía: no hay avance que mostrar.
+    expect(screen.queryByText(/cuotas pagadas/)).not.toBeInTheDocument();
+  });
+
+  it("aprobar dispara la decisión con el id del acuerdo", async () => {
+    render(
+      <NegotiationCard
+        commitment={makeItem({
+          id: "neg1",
+          commitment_state: "awaiting_approval",
+          approval_kind: "payment_plan"
+        })}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Aprobar" }));
+
+    expect(approveMutate).toHaveBeenCalledWith("neg1");
+  });
+
+  it("condonar un remanente avisa exactamente cuánto se perdona", () => {
+    render(
+      <NegotiationCard
+        commitment={makeItem({
+          id: "neg2",
+          commitment_state: "awaiting_approval",
+          approval_kind: "settlement_remainder",
+          offer_settlement_amount: 200_000
+        })}
+      />
+    );
+
+    expect(
+      screen.getByText(/El deudor cumplió el acuerdo — falta decidir el saldo/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/condona/)).toBeInTheDocument();
   });
 });

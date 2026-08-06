@@ -4,7 +4,7 @@ import { ConversationAgentService } from "./conversation-agent.service";
 import { KafkaModule } from "../kafka/kafka.module";
 import { AdaptersModule } from "../adapters/adapters.module";
 import { MemoryModule } from "../memory/memory.module";
-import { PaymentPlanModule } from "./payment-plan.module";
+import { NegotiationModule } from "../negotiation/negotiation.module";
 import { ComplianceModule } from "../compliance/compliance.module";
 
 @Module({
@@ -13,7 +13,7 @@ import { ComplianceModule } from "../compliance/compliance.module";
     AdaptersModule,
     ConfigModule,
     MemoryModule,
-    PaymentPlanModule,
+    NegotiationModule,
     ComplianceModule
   ],
   providers: [ConversationAgentService],

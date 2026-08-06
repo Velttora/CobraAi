@@ -136,10 +136,14 @@ describe("statesForFilter", () => {
     expect(statesForFilter("defaulted")).toEqual(["broken"]);
   });
 
-  it("devuelve vacío para estados que solo existen con motor", () => {
-    // Sin motor no hay nada esperando decisión: contestar con datos sería mentir.
-    expect(statesForFilter("escalated")).toEqual([]);
-    expect(statesForFilter("open")).toEqual([]);
+  it("mapea el vocabulario del motor a lo que espera aprobación", () => {
+    expect(statesForFilter("escalated")).toEqual(["awaiting_approval"]);
+    expect(statesForFilter("open")).toEqual(["awaiting_approval"]);
+  });
+
+  it("devuelve vacío para lo que solo existe con motor", () => {
+    // Las ofertas con vencimiento son del motor: acá no hay ninguna.
+    expect(statesForFilter("expired")).toEqual([]);
   });
 });
 

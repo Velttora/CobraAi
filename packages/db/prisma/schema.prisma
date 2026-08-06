@@ -283,6 +283,8 @@ model Tenant {
   auditLogs                    AuditLog[]
   messages                     Message[]
   emailLayout                  EmailLayout?
+  negotiationPolicies          NegotiationPolicy[]
+  negotiations                 Negotiation[]
 
   @@map("tenants")
 }
@@ -312,11 +314,11 @@ model User {
 }
 
 model Portfolio {
-  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId          String                    @map("tenant_id")
-  name              String
-  description       String?
-  status            PortfolioStatus           @default(active)
+  id                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String                    @map("tenant_id")
+  name               String
+  description        String?
+  status             PortfolioStatus           @default(active)
   automationStatus   PortfolioAutomationStatus @default(none) @map("automation_status")
   activePackageSlug  String?                   @map("active_package_slug")
   /// When set in the future, send_notification rules wait until this instant (config grace).
@@ -335,6 +337,7 @@ model Portfolio {
   debts               Debt[]
   workflowRules       WorkflowRule[]
   packageApplications PortfolioPackageApplication[]
+  negotiationPolicies NegotiationPolicy[]
 
   @@index([tenantId, status])
   @@index([tenantId, automationStatus])
@@ -382,6 +385,7 @@ model Debtor {
   contacts      Contact[]
   conversations Conversation[]
   consents      ContactConsent[]
+  negotiations  Negotiation[]
 
   @@unique([tenantId, externalRef])
   @@index([tenantId])
@@ -426,6 +430,7 @@ model Debt {
   paymentLinks       PaymentLink[]
   conversations      Conversation[]
   workflowExecutions WorkflowExecution[]
+  negotiations       Negotiation[]
 
   @@index([tenantId, status])
   @@index([tenantId, aiScore])
@@ -437,26 +442,26 @@ model Debt {
 }
 
 model Contact {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String          @map("tenant_id")
-  debtId          String          @map("debt_id") @db.Uuid
-  debtorId        String          @map("debtor_id") @db.Uuid
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String                @map("tenant_id")
+  debtId          String                @map("debt_id") @db.Uuid
+  debtorId        String                @map("debtor_id") @db.Uuid
   channel         ContactChannel
-  status          ContactStatus   @default(scheduled)
+  status          ContactStatus         @default(scheduled)
   outcome         ContactOutcome?
   responseStatus  ContactResponseStatus @default(pending) @map("response_status")
-  respondedAt     DateTime?       @map("responded_at")
-  attemptNumber   Int             @default(1) @map("attempt_number")
-  nextRetryAt     DateTime?       @map("next_retry_at")
-  sentimentScore  Float?          @map("sentiment_score")
-  transcriptUrl   String?         @map("transcript_url")
-  durationSeconds Int?            @map("duration_seconds")
-  agentType       AgentType       @default(ai) @map("agent_type")
-  startedAt       DateTime?       @map("started_at")
-  endedAt         DateTime?       @map("ended_at")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  deletedAt       DateTime?       @map("deleted_at")
+  respondedAt     DateTime?             @map("responded_at")
+  attemptNumber   Int                   @default(1) @map("attempt_number")
+  nextRetryAt     DateTime?             @map("next_retry_at")
+  sentimentScore  Float?                @map("sentiment_score")
+  transcriptUrl   String?               @map("transcript_url")
+  durationSeconds Int?                  @map("duration_seconds")
+  agentType       AgentType             @default(ai) @map("agent_type")
+  startedAt       DateTime?             @map("started_at")
+  endedAt         DateTime?             @map("ended_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  deletedAt       DateTime?             @map("deleted_at")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   debt          Debt           @relation(fields: [debtId], references: [id])
@@ -527,10 +532,129 @@ model PaymentPlan {
   tenant       Tenant         @relation(fields: [tenantId], references: [id])
   debt         Debt           @relation(fields: [debtId], references: [id])
   installments PromiseToPay[]
+  negotiations Negotiation[]
 
   @@index([tenantId, debtId])
   @@index([tenantId, status])
   @@map("payment_plans")
+}
+
+enum NegotiationStatus {
+  open
+  agreed
+  rejected
+  escalated
+  expired
+  /// El acuerdo se pactó pero el deudor incumplió una cuota. Distinto de
+  /// `rejected` (nunca hubo acuerdo) y de `expired` (la oferta venció sin cerrarse).
+  defaulted
+
+  @@map("negotiation_status")
+}
+
+/// Mandato económico que el acreedor le otorga al agente para negociar solo.
+/// El motor (`@cobrai/utils` negotiation-engine) jamás concede por encima de
+/// estos límites: son el techo duro de la autonomía del agente.
+///
+/// `portfolioId` null = política por defecto del tenant, usada cuando el
+/// portafolio no tiene una propia. La resolución (portafolio → tenant) vive en
+/// `NegotiationService.resolvePolicy`.
+model NegotiationPolicy {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String  @map("tenant_id")
+  portfolioId String? @map("portfolio_id") @db.Uuid
+  name        String
+  isActive    Boolean @default(true) @map("is_active")
+
+  /// Descuento máximo sobre el saldo (0–100).
+  maxDiscountPct      Decimal @default(0) @map("max_discount_pct") @db.Decimal(5, 2)
+  maxInstallments     Int     @default(1) @map("max_installments")
+  /// Abono inicial mínimo exigido, como % del monto del acuerdo.
+  minDownPaymentPct   Decimal @default(0) @map("min_down_payment_pct") @db.Decimal(5, 2)
+  /// Piso de VPN aceptable, como % del saldo pendiente.
+  minAcceptableNpvPct Decimal @default(0) @map("min_acceptable_npv_pct") @db.Decimal(5, 2)
+  /// Tasa de descuento efectiva anual usada para traer los pagos a valor presente.
+  annualDiscountRate  Decimal @default(0.24) @map("annual_discount_rate") @db.Decimal(6, 4)
+  maxTermDays         Int     @default(180) @map("max_term_days")
+  /// Rondas de negociación antes de escalar a un humano.
+  maxRounds           Int     @default(3) @map("max_rounds")
+  offerValidityHours  Int     @default(72) @map("offer_validity_hours")
+  /// Segmentos (RiskSegment) habilitados para negociación automática. `[]` = todos.
+  eligibleSegments    Json    @default("[]") @map("eligible_segments")
+  /// false = el agente propone, pero un humano aprueba antes de cerrar el acuerdo.
+  autoCloseEnabled    Boolean @default(false) @map("auto_close_enabled")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  portfolio    Portfolio?    @relation(fields: [portfolioId], references: [id])
+  negotiations Negotiation[]
+
+  @@unique([tenantId, portfolioId])
+  @@index([tenantId, isActive])
+  @@map("negotiation_policies")
+}
+
+/// Una negociación viva sobre una deuda: qué pidió el deudor, qué autorizó el
+/// motor en cada ronda y, si se cerró, los términos exactos del acuerdo.
+///
+/// `agreementHash` es el SHA-256 de los términos canónicos al momento de cerrar:
+/// evidencia verificable de qué se pactó, independiente de lo que el LLM redactó.
+model Negotiation {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String            @map("tenant_id")
+  debtId         String            @map("debt_id") @db.Uuid
+  debtorId       String            @map("debtor_id") @db.Uuid
+  conversationId String?           @map("conversation_id") @db.Uuid
+  policyId       String?           @map("policy_id") @db.Uuid
+  status         NegotiationStatus @default(open)
+  /// Rondas de concesión ya consumidas.
+  round          Int               @default(0)
+  channel        ContactChannel?
+
+  /// VPN de NO negociar, calculado al abrir. Referencia de toda decisión posterior.
+  baselineNpv Decimal? @map("baseline_npv") @db.Decimal(15, 2)
+
+  /// Saldo que el acuerdo salda, capturado al evaluar. Se guarda en vez de
+  /// reconstruirlo dividiendo por el descuento: el documento del deudor es
+  /// evidencia, y una cifra derivada arrastra el error del redondeo.
+  originalAmount Decimal? @map("original_amount") @db.Decimal(15, 2)
+
+  /// Última oferta sobre la mesa (contra-oferta del motor o propuesta aceptada).
+  offerSettlementAmount Decimal?  @map("offer_settlement_amount") @db.Decimal(15, 2)
+  offerDownPayment      Decimal?  @map("offer_down_payment") @db.Decimal(15, 2)
+  offerInstallments     Int?      @map("offer_installments")
+  offerIntervalDays     Int?      @map("offer_interval_days")
+  offerFirstPaymentDays Int?      @map("offer_first_payment_days")
+  offerDiscountPct      Decimal?  @map("offer_discount_pct") @db.Decimal(5, 2)
+  offerNpv              Decimal?  @map("offer_npv") @db.Decimal(15, 2)
+  offerExpiresAt        DateTime? @map("offer_expires_at")
+
+  /// SHA-256 de los términos canónicos del acuerdo cerrado.
+  agreementHash String?   @map("agreement_hash")
+  agreedAt      DateTime? @map("agreed_at")
+  planId        String?   @map("plan_id") @db.Uuid
+
+  /// Bitácora ronda por ronda: propuesta, decisión del motor y sus razones.
+  history Json @default("[]")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  debt         Debt               @relation(fields: [debtId], references: [id])
+  debtor       Debtor             @relation(fields: [debtorId], references: [id])
+  conversation Conversation?      @relation(fields: [conversationId], references: [id])
+  policy       NegotiationPolicy? @relation(fields: [policyId], references: [id])
+  plan         PaymentPlan?       @relation(fields: [planId], references: [id])
+
+  @@index([tenantId, debtId])
+  @@index([tenantId, debtorId])
+  @@index([tenantId, status])
+  @@map("negotiations")
 }
 
 model Payment {
@@ -594,10 +718,11 @@ model Conversation {
   updatedAt     DateTime           @updatedAt @map("updated_at")
   deletedAt     DateTime?          @map("deleted_at")
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  debtor   Debtor    @relation(fields: [debtorId], references: [id])
-  debt     Debt?     @relation(fields: [debtId], references: [id])
-  messages Message[]
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  debtor       Debtor        @relation(fields: [debtorId], references: [id])
+  debt         Debt?         @relation(fields: [debtId], references: [id])
+  messages     Message[]
+  negotiations Negotiation[]
 
   @@index([tenantId, debtorId])
   @@index([tenantId, status])

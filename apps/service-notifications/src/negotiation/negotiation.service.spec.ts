@@ -79,6 +79,7 @@ function makePrisma(
     plans?: unknown[];
     promises?: unknown[];
     conversations?: unknown[];
+    pendingApprovals?: unknown[];
   } = {}
 ) {
   return {
@@ -90,12 +91,35 @@ function makePrisma(
     },
     conversation: {
       findMany: vi.fn().mockResolvedValue(data.conversations ?? [])
-    }
+    },
+    debt: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: "debt1",
+        debtorId: "debtor1",
+        amountOutstanding: 1_200_000
+      }),
+      updateMany: vi.fn().mockResolvedValue({})
+    },
+    negotiation: {
+      findMany: vi.fn().mockResolvedValue(data.pendingApprovals ?? []),
+      findFirst: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "neg1" }),
+      update: vi.fn().mockResolvedValue({})
+    },
+    auditLog: { create: vi.fn().mockResolvedValue({}) }
   };
 }
 
+/** El plan solo se materializa al aprobar, así que acá basta con espiarlo. */
+function makePaymentPlans() {
+  return { createPlan: vi.fn().mockResolvedValue("plan-nuevo") };
+}
+
+let paymentPlans: ReturnType<typeof makePaymentPlans>;
+
 function makeService(prisma: ReturnType<typeof makePrisma>): NegotiationService {
-  return new NegotiationService(prisma as never);
+  paymentPlans = makePaymentPlans();
+  return new NegotiationService(prisma as never, paymentPlans as never);
 }
 
 beforeEach(() => {
@@ -309,5 +333,198 @@ describe("NegotiationService.summary", () => {
     const summary = await service.summary("org1");
 
     expect(summary.keep_rate).toBeNull();
+  });
+});
+
+describe("NegotiationService — aprobación humana", () => {
+  const proposal = [
+    { installmentNumber: 1, amount: 300_000, dueDate: "2026-04-01" },
+    { installmentNumber: 2, amount: 300_000, dueDate: "2026-05-01" }
+  ];
+
+  function pendingRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "neg1",
+      debtId: "debt1",
+      status: "escalated",
+      channel: "whatsapp",
+      planId: null,
+      offerSettlementAmount: 600_000,
+      offerInstallments: 2,
+      offerDiscountPct: 50,
+      createdAt: d("2026-03-08"),
+      updatedAt: d("2026-03-08"),
+      history: [
+        {
+          at: "2026-03-08T00:00:00.000Z",
+          decision: "approval_requested",
+          kind: "payment_plan",
+          installments: [
+            { installment_number: 1, amount: 300_000, due_date: "2026-04-01" },
+            { installment_number: 2, amount: 300_000, due_date: "2026-05-01" }
+          ],
+          notes: null
+        }
+      ],
+      ...overrides
+    };
+  }
+
+  it("proponer no crea el plan: solo lo deja esperando", async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+
+    const id = await service.requestApproval({
+      tenantId: "org1",
+      debtId: "debt1",
+      kind: "payment_plan",
+      installments: proposal
+    });
+
+    expect(id).toBe("neg1");
+    expect(paymentPlans.createPlan).not.toHaveBeenCalled();
+    expect(prisma.negotiation.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "escalated",
+          offerSettlementAmount: 600_000,
+          offerInstallments: 2
+        })
+      })
+    );
+  });
+
+  it("una propuesta con una sola cuota no es un acuerdo", async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+
+    const id = await service.requestApproval({
+      tenantId: "org1",
+      debtId: "debt1",
+      kind: "payment_plan",
+      installments: [proposal[0]!]
+    });
+
+    expect(id).toBeNull();
+    expect(prisma.negotiation.create).not.toHaveBeenCalled();
+  });
+
+  it("aprobar materializa el plan con los términos guardados", async () => {
+    const prisma = makePrisma();
+    prisma.negotiation.findFirst.mockResolvedValue(pendingRow());
+    const service = makeService(prisma);
+
+    const result = await service.approve("org1", "neg1", "user_42");
+
+    // Se ejecuta el calendario tal como se aprobó, sin recalcular.
+    expect(paymentPlans.createPlan).toHaveBeenCalledWith(
+      "org1",
+      expect.objectContaining({ debtId: "debt1", installments: proposal })
+    );
+    expect(result).toEqual({
+      negotiation_id: "neg1",
+      plan_id: "plan-nuevo",
+      status: "agreed"
+    });
+  });
+
+  it("aprobar deja firmado quién aprobó", async () => {
+    const prisma = makePrisma();
+    prisma.negotiation.findFirst.mockResolvedValue(pendingRow());
+    await makeService(prisma).approve("org1", "neg1", "user_42");
+
+    const history = prisma.negotiation.update.mock.calls[0]?.[0].data.history;
+    expect(history.at(-1)).toMatchObject({
+      decision: "approved",
+      approved_by: "user_42"
+    });
+  });
+
+  it("rechazar no materializa nada", async () => {
+    const prisma = makePrisma();
+    prisma.negotiation.findFirst.mockResolvedValue(pendingRow());
+    const service = makeService(prisma);
+
+    await service.reject("org1", "neg1", { reason: "descuento excesivo", rejectedBy: "user_42" });
+
+    expect(paymentPlans.createPlan).not.toHaveBeenCalled();
+    expect(prisma.negotiation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "rejected" })
+      })
+    );
+  });
+
+  it("aprobar un remanente condona con el humano detrás", async () => {
+    const prisma = makePrisma();
+    prisma.negotiation.findFirst.mockResolvedValue(
+      pendingRow({
+        planId: "plan1",
+        offerSettlementAmount: 200_000,
+        history: [
+          {
+            at: "2026-03-08T00:00:00.000Z",
+            decision: "approval_requested",
+            kind: "settlement_remainder",
+            installments: []
+          }
+        ]
+      })
+    );
+    const service = makeService(prisma);
+
+    await service.approve("org1", "neg1", "user_42");
+
+    expect(prisma.debt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { amountOutstanding: 0, status: "paid_full" }
+      })
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "debt.balance_forgiven",
+          userId: "user_42"
+        })
+      })
+    );
+  });
+
+  it("rechazar un remanente devuelve la deuda a cobranza", async () => {
+    const prisma = makePrisma();
+    prisma.negotiation.findFirst.mockResolvedValue(
+      pendingRow({
+        history: [
+          { at: "x", decision: "approval_requested", kind: "settlement_remainder" }
+        ]
+      })
+    );
+    await makeService(prisma).reject("org1", "neg1", { rejectedBy: "user_42" });
+
+    expect(prisma.debt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "active" } })
+    );
+  });
+
+  it("no se puede aprobar dos veces", async () => {
+    const prisma = makePrisma();
+    prisma.negotiation.findFirst.mockResolvedValue(pendingRow({ status: "agreed" }));
+
+    await expect(makeService(prisma).approve("org1", "neg1")).rejects.toThrow(
+      "ya fue resuelto"
+    );
+  });
+
+  it("los pendientes encabezan la bandeja", async () => {
+    const prisma = makePrisma({
+      plans: [makePlan()],
+      pendingApprovals: [{ ...pendingRow(), debt: makeDebt() }]
+    });
+
+    const items = await makeService(prisma).list("org1");
+
+    expect(items[0]?.id).toBe("neg1");
+    expect(items[0]?.commitment_state).toBe("awaiting_approval");
+    expect(items[0]?.approval_kind).toBe("payment_plan");
   });
 });

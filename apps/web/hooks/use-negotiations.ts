@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchApi, useApiClient } from "./use-api-client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchApi, postApi, useApiClient } from "./use-api-client";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -13,6 +13,8 @@ export type CommitmentSource = "direct_promise" | "direct_plan";
  * la misma fila en base y los separa el calendario.
  */
 export type CommitmentState =
+  /** Propuesto por el agente, esperando que una persona lo apruebe. */
+  | "awaiting_approval"
   | "pending"
   | "overdue"
   | "kept"
@@ -33,7 +35,7 @@ export interface CommitmentItem {
   id: string;
   source: CommitmentSource;
   /** Vocabulario del motor de negociación; la UI usa `commitment_state`. */
-  status: "agreed" | "defaulted" | "rejected";
+  status: "agreed" | "defaulted" | "rejected" | "escalated";
   commitment_state: CommitmentState;
 
   debt_id: string;
@@ -58,6 +60,10 @@ export interface CommitmentItem {
   days_overdue: number | null;
   channel: string | null;
   notes: string | null;
+  /** Qué hay que aprobar; ausente cuando el compromiso ya está vigente. */
+  approval_kind?: "payment_plan" | "settlement_remainder" | null;
+  /** Descuento que implica el acuerdo propuesto, sobre el saldo actual. */
+  discount_pct?: number | null;
 
   conversation: CommitmentConversation | null;
   conversation_id: string | null;
@@ -70,6 +76,8 @@ export interface CommitmentItem {
 
 export interface CommitmentSummary {
   total: number;
+  awaiting_approval: number;
+  awaiting_approval_amount: number;
   pending: number;
   overdue: number;
   kept: number;
@@ -146,8 +154,51 @@ export function useCommitmentSummary(
   });
 }
 
-/** Conteo de compromisos vencidos, para el badge de la navegación. */
-export function useOverdueCommitmentsCount(): number {
+/**
+ * Acuerdos esperando decisión humana, para el badge de la navegación. Es lo
+ * único de la bandeja que está frenado hasta que alguien entre a resolverlo.
+ */
+export function usePendingApprovalsCount(): number {
   const { data } = useCommitmentSummary();
-  return data?.data.overdue ?? 0;
+  return data?.data.awaiting_approval ?? 0;
+}
+
+// ── Decisión humana ───────────────────────────────────────────────────────────
+
+/**
+ * Aprobar es lo que hace existir al acuerdo: recién ahí se crea el plan o se
+ * condona el saldo. Hasta entonces no se movió nada.
+ */
+export function useApproveCommitment() {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      postApi<ApiResponse<{ negotiation_id: string; plan_id: string | null }>>(
+        client,
+        `/api/v1/negotiations/${id}/approve`
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["negotiations"] });
+      void qc.invalidateQueries({ queryKey: ["negotiations-summary"] });
+      void qc.invalidateQueries({ queryKey: ["debts"] });
+    }
+  });
+}
+
+export function useRejectCommitment() {
+  const client = useApiClient();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      postApi<ApiResponse<{ negotiation_id: string; status: string }>>(
+        client,
+        `/api/v1/negotiations/${id}/reject`,
+        { reason }
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["negotiations"] });
+      void qc.invalidateQueries({ queryKey: ["negotiations-summary"] });
+    }
+  });
 }

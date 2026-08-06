@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCommitmentSummary } from "../../hooks/use-negotiations";
 import { buildCommitmentKpis } from "../../lib/commitment-kpis";
+import { cn } from "../../lib/utils";
 import { KPICard } from "./KPICard";
 
 /**
@@ -38,7 +39,12 @@ export function CommitmentKpis(): React.ReactElement | null {
           Ver todos
         </Link>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div
+        className={cn(
+          "grid gap-4 sm:grid-cols-2",
+          kpis.length > 4 ? "xl:grid-cols-5" : "xl:grid-cols-4"
+        )}
+      >
         {query.isLoading
           ? Array.from({ length: 4 }, (_, i) => (
               <KPICard key={i} label="" loading value="" />

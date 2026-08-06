@@ -7,6 +7,8 @@ function makeSummary(
 ): CommitmentSummary {
   return {
     total: 44,
+    awaiting_approval: 0,
+    awaiting_approval_amount: 0,
     pending: 17,
     overdue: 5,
     kept: 10,

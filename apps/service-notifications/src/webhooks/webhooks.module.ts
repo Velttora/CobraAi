@@ -4,7 +4,7 @@ import { ComplianceModule } from "../compliance/compliance.module";
 import { ContactsModule } from "../contacts/contacts.module";
 import { KafkaModule } from "../kafka/kafka.module";
 import { MemoryModule } from "../memory/memory.module";
-import { PaymentPlanModule } from "../agent/payment-plan.module";
+import { NegotiationModule } from "../negotiation/negotiation.module";
 import { WebhooksController } from "./webhooks.controller";
 import { WebhooksService } from "./webhooks.service";
 import { TwilioWaWebhookHandler } from "./twilio-wa-webhook.handler";
@@ -18,7 +18,7 @@ import { SendgridInboundHandler } from "./sendgrid-inbound.handler";
     ContactsModule,
     KafkaModule,
     MemoryModule,
-    PaymentPlanModule
+    NegotiationModule
   ],
   controllers: [WebhooksController],
   providers: [WebhooksService, TwilioWaWebhookHandler, VapiWebhookHandler, SendgridInboundHandler]

@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { successResponse } from "../common/utils/api.utils";
 import {
   ReqContext,
@@ -51,6 +51,29 @@ export class NegotiationsController {
         ctx.tenantId,
         parseFilters({ type, portfolioId, debtorId, search })
       )
+    );
+  }
+
+  // ─── POST /v1/negotiations/:id/approve — el acuerdo recién existe acá ─────
+  @Post(":id/approve")
+  async approve(@ReqContext() ctx: RequestContext, @Param("id") id: string) {
+    return successResponse(
+      await this.negotiations.approve(ctx.tenantId, id, ctx.userId)
+    );
+  }
+
+  // ─── POST /v1/negotiations/:id/reject ────────────────────────────────────
+  @Post(":id/reject")
+  async reject(
+    @ReqContext() ctx: RequestContext,
+    @Param("id") id: string,
+    @Body() body: { reason?: string }
+  ) {
+    return successResponse(
+      await this.negotiations.reject(ctx.tenantId, id, {
+        reason: body?.reason,
+        rejectedBy: ctx.userId
+      })
     );
   }
 }

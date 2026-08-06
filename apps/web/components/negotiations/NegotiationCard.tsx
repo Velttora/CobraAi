@@ -2,7 +2,13 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import type { CommitmentItem } from "../../hooks/use-negotiations";
+import { useState } from "react";
+import { toast } from "sonner";
+import {
+  useApproveCommitment,
+  useRejectCommitment,
+  type CommitmentItem
+} from "../../hooks/use-negotiations";
 import {
   formatCommitmentTitle,
   formatDueLabel,
@@ -35,10 +41,39 @@ export function NegotiationCard({
 }: {
   commitment: CommitmentItem;
 }): React.ReactElement {
+  const approve = useApproveCommitment();
+  const reject = useRejectCommitment();
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+
   const c = commitment;
   const state = STATE_META[c.commitment_state];
   const source = SOURCE_META[c.source];
   const isOverdue = c.commitment_state === "overdue";
+  const awaitingApproval = c.commitment_state === "awaiting_approval";
+  const isSettlement = c.approval_kind === "settlement_remainder";
+
+  async function handleApprove(): Promise<void> {
+    try {
+      await approve.mutateAsync(c.id);
+      toast.success(
+        isSettlement ? "Saldo condonado y cuenta cerrada" : "Acuerdo aprobado"
+      );
+    } catch {
+      toast.error("No se pudo aprobar el acuerdo");
+    }
+  }
+
+  async function handleReject(): Promise<void> {
+    try {
+      await reject.mutateAsync({ id: c.id, reason: reason.trim() || undefined });
+      setRejecting(false);
+      setReason("");
+      toast.success("Acuerdo rechazado");
+    } catch {
+      toast.error("No se pudo rechazar el acuerdo");
+    }
+  }
   const isPlan = c.source === "direct_plan";
   const dueSoon = isDueSoon(c);
   const progress = formatProgressLabel(c);
@@ -48,7 +83,9 @@ export function NegotiationCard({
     <article
       className={cn(
         "rounded-xl border bg-white p-5 transition dark:bg-slate-900",
-        isOverdue
+        awaitingApproval
+          ? "border-amber-300 ring-1 ring-amber-200 dark:border-amber-700 dark:ring-amber-900/60"
+          : isOverdue
           ? "border-red-300 ring-1 ring-red-200 dark:border-red-800 dark:ring-red-900/50"
           : "border-slate-200 dark:border-slate-800"
       )}
@@ -91,7 +128,9 @@ export function NegotiationCard({
       <p
         className={cn(
           "mt-3 text-sm font-medium",
-          isOverdue
+          awaitingApproval
+            ? "text-amber-700 dark:text-amber-400"
+            : isOverdue
             ? "text-[#A32D2D] dark:text-red-400"
             : dueSoon
               ? "text-amber-700 dark:text-amber-400"
@@ -99,7 +138,9 @@ export function NegotiationCard({
         )}
       >
         {formatDueLabel(c)}
-        {c.due_date ? ` · pactado para el ${formatDateOnly(c.due_date)}` : ""}
+        {!awaitingApproval && c.due_date
+          ? ` · pactado para el ${formatDateOnly(c.due_date)}`
+          : ""}
       </p>
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
@@ -110,8 +151,14 @@ export function NegotiationCard({
           </dd>
         </div>
         <div>
-          <dt className="text-slate-500">Pagado</dt>
-          <dd className="font-medium">{money(c.amount_paid, c.currency)}</dd>
+          <dt className="text-slate-500">
+            {awaitingApproval ? "Saldo actual" : "Pagado"}
+          </dt>
+          <dd className="font-medium">
+            {awaitingApproval
+              ? money(c.debt_amount_outstanding, c.currency)
+              : money(c.amount_paid, c.currency)}
+          </dd>
         </div>
         <div>
           <dt className="text-slate-500">Estructura</dt>
@@ -131,7 +178,7 @@ export function NegotiationCard({
 
       {/* Un plan sin avance visible obliga a abrir la cuenta para saber si el
           deudor está pagando o solo firmó. */}
-      {isPlan && (
+      {isPlan && !awaitingApproval && (
         <div className="mt-4">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             <div
@@ -171,6 +218,67 @@ export function NegotiationCard({
           <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
             “{conv.last_message_preview}”
           </p>
+        </div>
+      )}
+
+      {/* Nada de esto existe todavía: aprobar es lo que crea el plan o condona
+          el saldo. Por eso la card muestra exactamente lo que se va a ejecutar. */}
+      {awaitingApproval && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+          <p className="text-sm text-amber-900 dark:text-amber-200">
+            {isSettlement ? (
+              <>
+                Aprobar <strong>condona {money(c.offer_settlement_amount, c.currency)}</strong>{" "}
+                y cierra la cuenta. Rechazar devuelve ese saldo a cobranza.
+              </>
+            ) : (
+              <>
+                Aprobar crea el plan de {c.offer_installments} cuotas por{" "}
+                <strong>{money(c.offer_settlement_amount, c.currency)}</strong>
+                {c.discount_pct ? ` (${c.discount_pct}% menos que el saldo)` : ""}.
+              </>
+            )}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              className="rounded-md bg-[#D85A30] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#c04f29] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={approve.isPending || reject.isPending}
+              onClick={() => void handleApprove()}
+              type="button"
+            >
+              {approve.isPending ? "Aprobando…" : "Aprobar"}
+            </button>
+            <button
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:hover:bg-slate-800"
+              disabled={approve.isPending || reject.isPending}
+              onClick={() => setRejecting((v) => !v)}
+              type="button"
+            >
+              Rechazar
+            </button>
+          </div>
+          {rejecting && (
+            <div className="mt-3 space-y-2">
+              <label className="block text-sm font-medium">
+                Motivo (opcional)
+                <input
+                  className="mt-1 w-full rounded-md border px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Descuento por encima de lo razonable para esta cartera"
+                  type="text"
+                  value={reason}
+                />
+              </label>
+              <button
+                className="rounded-md bg-[#A32D2D] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#8f2727] disabled:opacity-60"
+                disabled={reject.isPending}
+                onClick={() => void handleReject()}
+                type="button"
+              >
+                {reject.isPending ? "Rechazando…" : "Confirmar rechazo"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -3,6 +3,7 @@ import type { CommitmentItem, CommitmentState } from "../hooks/use-negotiations"
 /** Filtro principal: qué pasó con el compromiso. */
 export type CommitmentStatusFilter =
   | "all"
+  | "awaiting_approval"
   | "pending"
   | "overdue"
   | "kept"
@@ -14,6 +15,7 @@ export type CommitmentTypeFilter = "all" | "direct_promise" | "direct_plan";
 export type CommitmentSort = "urgency" | "amount" | "recent";
 
 export const STATUS_FILTERS: { value: CommitmentStatusFilter; label: string }[] = [
+  { value: "awaiting_approval", label: "Esperan aprobación" },
   { value: "overdue", label: "Vencidas" },
   { value: "pending", label: "Vigentes" },
   { value: "kept", label: "Cumplidas" },
@@ -54,6 +56,11 @@ interface StateMeta {
  * ya cerrado no se arregla con urgencia.
  */
 export const STATE_META: Record<CommitmentState, StateMeta> = {
+  awaiting_approval: {
+    label: "Espera aprobación",
+    className:
+      "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+  },
   pending: {
     label: "Vigente",
     className:
@@ -123,6 +130,11 @@ export function formatCommitmentTitle(item: CommitmentItem): string {
  * porque "venció hace 12 días" se lee sin hacer la resta mental.
  */
 export function formatDueLabel(item: CommitmentItem): string {
+  if (item.commitment_state === "awaiting_approval") {
+    return item.approval_kind === "settlement_remainder"
+      ? "El deudor cumplió el acuerdo — falta decidir el saldo"
+      : "Propuesto por el agente — nadie lo ha aprobado";
+  }
   if (!item.due_date) return "Sin fecha pactada";
 
   const days = item.days_overdue ?? 0;
@@ -188,6 +200,8 @@ export function emptyMessage(
         ? "planes en cuotas"
         : "promesas ni acuerdos";
   switch (status) {
+    case "awaiting_approval":
+      return "No hay acuerdos esperando aprobación.";
     case "overdue":
       return `No hay ${noun} vencidas. Todo lo pactado va al día.`;
     case "pending":

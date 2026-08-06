@@ -29,6 +29,20 @@ export function buildCommitmentKpis(
   const judged = summary.kept + summary.broken + summary.overdue;
 
   return [
+    // Solo aparece cuando hay algo que decidir: es lo único de este bloque que
+    // está frenado esperando a una persona.
+    ...(summary.awaiting_approval > 0
+      ? [
+          {
+            key: "awaiting",
+            label: "Esperan aprobación",
+            value: money(summary.awaiting_approval_amount),
+            hint: `${summary.awaiting_approval} acuerdo${plural(summary.awaiting_approval)} sin decidir`,
+            status: "awaiting_approval" as CommitmentStatusFilter,
+            alert: true
+          }
+        ]
+      : []),
     {
       key: "pending",
       label: "Vigente por cobrar",
