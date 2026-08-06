@@ -58,7 +58,7 @@ export class NegotiationsController {
   @Post(":id/approve")
   async approve(@ReqContext() ctx: RequestContext, @Param("id") id: string) {
     return successResponse(
-      await this.negotiations.approve(ctx.tenantId, id, ctx.userId)
+      await this.negotiations.approve(ctx.tenantId, id, ctx.userId, ctx.userRole)
     );
   }
 
@@ -72,7 +72,8 @@ export class NegotiationsController {
     return successResponse(
       await this.negotiations.reject(ctx.tenantId, id, {
         reason: body?.reason,
-        rejectedBy: ctx.userId
+        rejectedBy: ctx.userId,
+        role: ctx.userRole
       })
     );
   }

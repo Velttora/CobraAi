@@ -130,18 +130,50 @@ describe("EmbeddedSignupButton — popup", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("ignora un postMessage que no viene de un origen de facebook.com", () => {
+  // El origen se compara exacto contra los que Meta sirve. `evil-facebook.com`
+  // y `facebook.com.evil.io` son los casos que un `endsWith("facebook.com")`
+  // dejaba pasar: bastaban para que una página a la que se atrae a un admin
+  // autenticado forjara un FINISH y repuntara el canal de WhatsApp del tenant.
+  it.each([
+    "https://evil.example.com",
+    "https://evil-facebook.com",
+    "https://facebook.com.evil.io",
+    "http://www.facebook.com",
+    "https://notfacebook.com"
+  ])("ignora un postMessage forjado desde %s", (origin) => {
     readyButtonSetup();
     fireEvent.click(screen.getByRole("button", { name: "Conectar con WhatsApp" }));
 
     window.dispatchEvent(
       new MessageEvent("message", {
-        origin: "https://evil.example.com",
+        origin,
         data: { type: "WA_EMBEDDED_SIGNUP", event: "CANCEL" }
       })
     );
 
-    // Still popup_open — the forged message from a non-Meta origin was ignored.
+    // Sigue en popup_open — el mensaje forjado fue ignorado.
     expect(screen.getByText("Continúa en la ventana de Meta…")).toBeInTheDocument();
+  });
+
+  it.each([
+    "https://www.facebook.com",
+    "https://web.facebook.com",
+    "https://business.facebook.com"
+  ])("acepta un postMessage legítimo desde %s", (origin) => {
+    readyButtonSetup();
+    fireEvent.click(screen.getByRole("button", { name: "Conectar con WhatsApp" }));
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin,
+          data: { type: "WA_EMBEDDED_SIGNUP", event: "CANCEL" }
+        })
+      );
+    });
+
+    expect(
+      screen.getByText("Cancelaste la conexión. Puedes intentarlo de nuevo cuando quieras.")
+    ).toBeInTheDocument();
   });
 });

@@ -11,6 +11,28 @@ import { useEmbeddedSignupPolling } from "./use-embedded-signup-polling";
 
 const SDK_LOAD_TIMEOUT_MS = 8000;
 const SDK_SRC = "https://connect.facebook.net/en_US/sdk.js";
+
+/** Origins Meta actually serves the Embedded Signup popup from. */
+const META_ORIGINS = new Set([
+  "https://www.facebook.com",
+  "https://web.facebook.com",
+  "https://business.facebook.com",
+  "https://facebook.com"
+]);
+
+/**
+ * Exact-match the postMessage origin against origins Meta owns.
+ *
+ * A suffix check like `origin.endsWith("facebook.com")` looks equivalent and is
+ * not: `https://evil-facebook.com` satisfies it. That gap is enough for a page
+ * an authenticated admin is lured to, to forge a `FINISH` handoff and repoint
+ * the tenant's WhatsApp channel at a `wabaId`/`phoneNumberId` the attacker
+ * controls — every subsequent message to that tenant's debtors would leave
+ * through their number.
+ */
+function isMetaOrigin(origin: string): boolean {
+  return META_ORIGINS.has(origin);
+}
 const PROGRESS_STEPS = [
   "Creando tu cuenta en Twilio",
   "Conectando tu número de WhatsApp",
@@ -88,11 +110,11 @@ export function EmbeddedSignupButton({
   }, [envConfigured]);
 
   // T-08-17b: only act on messages that look like Meta's WhatsApp Embedded
-  // Signup handshake, from a facebook.com origin — a forged postMessage from
-  // any other origin/shape is ignored.
+  // Signup handshake, from an origin Meta actually owns — a forged postMessage
+  // from any other origin/shape is ignored.
   useEffect(() => {
     function handleMessage(event: MessageEvent<WaEmbeddedSignupMessage>): void {
-      if (!event.origin.endsWith("facebook.com")) return;
+      if (!isMetaOrigin(event.origin)) return;
       const payload = event.data;
       if (!payload || payload.type !== "WA_EMBEDDED_SIGNUP") return;
 

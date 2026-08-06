@@ -414,7 +414,7 @@ describe("NegotiationService — aprobación humana", () => {
     prisma.negotiation.findFirst.mockResolvedValue(pendingRow());
     const service = makeService(prisma);
 
-    const result = await service.approve("org1", "neg1", "user_42");
+    const result = await service.approve("org1", "neg1", "user_42", "admin");
 
     // Se ejecuta el calendario tal como se aprobó, sin recalcular.
     expect(paymentPlans.createPlan).toHaveBeenCalledWith(
@@ -431,7 +431,7 @@ describe("NegotiationService — aprobación humana", () => {
   it("aprobar deja firmado quién aprobó", async () => {
     const prisma = makePrisma();
     prisma.negotiation.findFirst.mockResolvedValue(pendingRow());
-    await makeService(prisma).approve("org1", "neg1", "user_42");
+    await makeService(prisma).approve("org1", "neg1", "user_42", "admin");
 
     const history = prisma.negotiation.update.mock.calls[0]?.[0].data.history;
     expect(history.at(-1)).toMatchObject({
@@ -445,7 +445,7 @@ describe("NegotiationService — aprobación humana", () => {
     prisma.negotiation.findFirst.mockResolvedValue(pendingRow());
     const service = makeService(prisma);
 
-    await service.reject("org1", "neg1", { reason: "descuento excesivo", rejectedBy: "user_42" });
+    await service.reject("org1", "neg1", { reason: "descuento excesivo", rejectedBy: "user_42", role: "admin" });
 
     expect(paymentPlans.createPlan).not.toHaveBeenCalled();
     expect(prisma.negotiation.update).toHaveBeenCalledWith(
@@ -473,7 +473,7 @@ describe("NegotiationService — aprobación humana", () => {
     );
     const service = makeService(prisma);
 
-    await service.approve("org1", "neg1", "user_42");
+    await service.approve("org1", "neg1", "user_42", "admin");
 
     expect(prisma.debt.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -499,7 +499,7 @@ describe("NegotiationService — aprobación humana", () => {
         ]
       })
     );
-    await makeService(prisma).reject("org1", "neg1", { rejectedBy: "user_42" });
+    await makeService(prisma).reject("org1", "neg1", { rejectedBy: "user_42", role: "admin" });
 
     expect(prisma.debt.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "active" } })
@@ -510,10 +510,39 @@ describe("NegotiationService — aprobación humana", () => {
     const prisma = makePrisma();
     prisma.negotiation.findFirst.mockResolvedValue(pendingRow({ status: "agreed" }));
 
-    await expect(makeService(prisma).approve("org1", "neg1")).rejects.toThrow(
+    await expect(makeService(prisma).approve("org1", "neg1", undefined, "admin")).rejects.toThrow(
       "ya fue resuelto"
     );
   });
+
+  // Aprobar condona deuda o compromete al tenant con un plan de pago. Sin esta
+  // compuerta cualquier usuario autenticado del tenant podía hacerlo, y el proxy
+  // del api-gateway es genérico: no valida roles por ruta.
+  it.each(["viewer", "agent", "org:viewer", undefined])(
+    "un rol %s no puede aprobar un acuerdo",
+    async (role) => {
+      const prisma = makePrisma();
+
+      await expect(
+        makeService(prisma).approve("org1", "neg1", "user_42", role)
+      ).rejects.toThrow("Solo administradores");
+
+      // La denegación ocurre antes de cualquier lectura o efecto.
+      expect(prisma.negotiation.findFirst).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(["viewer", "agent", undefined])(
+    "un rol %s tampoco puede rechazar un acuerdo",
+    async (role) => {
+      const prisma = makePrisma();
+
+      await expect(
+        makeService(prisma).reject("org1", "neg1", { rejectedBy: "user_42", role })
+      ).rejects.toThrow("Solo administradores");
+      expect(prisma.negotiation.findFirst).not.toHaveBeenCalled();
+    }
+  );
 
   it("los pendientes encabezan la bandeja", async () => {
     const prisma = makePrisma({
