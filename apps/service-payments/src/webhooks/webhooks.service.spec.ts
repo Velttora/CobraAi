@@ -1,80 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import type { DecryptedIntegration } from "@cobrai/integrations";
-import { WebhooksService } from "./webhooks.service";
-
-function buildIntegration(overrides: Partial<DecryptedIntegration> = {}): DecryptedIntegration {
-  return {
-    id: "integration-1",
-    tenantId: "tenant-1",
-    provider: "stripe",
-    mode: "byo",
-    status: "verified",
-    publicConfig: {},
-    secrets: {},
-    webhookToken: "tok",
-    verifiedAt: new Date(),
-    ...overrides
-  } as DecryptedIntegration;
-}
-
-function buildService() {
-  const link = {
-    id: "link-1",
-    tenantId: "tenant-1",
-    debtId: "debt-1",
-    amount: "1000.00",
-    currency: "COP",
-    gateway: "transfer",
-    provider: "stripe"
-  };
-  const prisma = {
-    paymentLink: { findFirst: vi.fn().mockResolvedValue(link) }
-  };
-  const confirmation = { confirmPayment: vi.fn().mockResolvedValue({ duplicate: false }) };
-  const service = new WebhooksService(prisma as never, confirmation as never);
-  return { service, prisma, confirmation, link };
-}
+import { buildIntegration, buildService } from "./webhooks.fixtures";
 
 describe("WebhooksService", () => {
-  describe("Stripe", () => {
-    it("confirms from checkout.session.completed's metadata.token", async () => {
-      const { service, confirmation } = buildService();
-      const integration = buildIntegration({ provider: "stripe" });
-      const rawBody = JSON.stringify({
-        type: "checkout.session.completed",
-        data: { object: { id: "cs_1", metadata: { token: "tok-1" } } }
-      });
-
-      await service.handle(integration, rawBody);
-
-      expect(confirmation.confirmPayment).toHaveBeenCalledWith(
-        expect.objectContaining({ gatewayRef: "cs_1", provider: "stripe", gateway: "transfer" })
-      );
-    });
-
-    it("ignores an unrelated event type", async () => {
-      const { service, confirmation } = buildService();
-      const integration = buildIntegration({ provider: "stripe" });
-      const rawBody = JSON.stringify({ type: "payment_intent.created", data: { object: { id: "pi_1" } } });
-
-      await service.handle(integration, rawBody);
-
-      expect(confirmation.confirmPayment).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("Mercado Pago (anti-regression)", () => {
-    it("still confirms from external_reference/data.id against the new token-routed handler", async () => {
-      const { service, confirmation } = buildService();
-      const integration = buildIntegration({ provider: "mercadopago" });
-      const rawBody = JSON.stringify({ data: { id: "mp-gw-1" }, external_reference: "tok-1" });
-
-      await service.handle(integration, rawBody);
-
-      expect(confirmation.confirmPayment).toHaveBeenCalledWith(expect.objectContaining({ gatewayRef: "mp-gw-1" }));
-    });
-  });
-
   describe("Wompi", () => {
     const originalFetch = global.fetch;
     afterEach(() => {
@@ -178,7 +105,7 @@ describe("WebhooksService", () => {
       const integration = buildIntegration({ provider: "stripe" });
       const rawBody = JSON.stringify({
         type: "checkout.session.completed",
-        data: { object: { id: "cs_1", metadata: { token: "tok-1" } } }
+        data: { object: { id: "cs_1", payment_status: "paid", metadata: { token: "tok-1" } } }
       });
 
       await service.handle(integration, rawBody);
@@ -191,7 +118,7 @@ describe("WebhooksService", () => {
       const integration = buildIntegration({ provider: "stripe", tenantId: "tenant-attacker" });
       const rawBody = JSON.stringify({
         type: "checkout.session.completed",
-        data: { object: { id: "cs_1", metadata: { token: "victim-tenant-token" } } }
+        data: { object: { id: "cs_1", payment_status: "paid", metadata: { token: "victim-tenant-token" } } }
       });
 
       await service.handle(integration, rawBody);
@@ -207,7 +134,7 @@ describe("WebhooksService", () => {
       const integration = buildIntegration({ provider: "stripe" });
       const rawBody = JSON.stringify({
         type: "checkout.session.completed",
-        data: { object: { id: "cs_1", metadata: { token: "tok-1" } } }
+        data: { object: { id: "cs_1", payment_status: "paid", metadata: { token: "tok-1" } } }
       });
 
       await service.handle(integration, rawBody);

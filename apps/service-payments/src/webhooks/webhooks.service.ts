@@ -6,7 +6,14 @@ import { decimalToNumber } from "../common/utils/api.utils";
 
 interface StripeCheckoutEvent {
   type?: string;
-  data?: { object?: { id?: string; metadata?: { token?: string } } };
+  data?: {
+    object?: {
+      id?: string;
+      /** `paid` | `unpaid` | `no_payment_required` — only `paid` means settled. */
+      payment_status?: string;
+      metadata?: { token?: string };
+    };
+  };
 }
 
 interface WompiTransactionEvent {
@@ -33,7 +40,7 @@ export class WebhooksService {
       case "stripe":
         return this.handleStripe(integration.tenantId, rawBody);
       case "mercadopago":
-        return this.handleMercadoPago(integration.tenantId, rawBody);
+        return this.handleMercadoPago(integration, rawBody);
       case "wompi":
         return this.handleWompi(integration, rawBody);
       case "payu":
@@ -47,12 +54,23 @@ export class WebhooksService {
     }
   }
 
-  /** Reconciliation field per 08-08-SUMMARY.md: `metadata.token`, read from `checkout.session.completed`. */
+  /**
+   * Reconciliation field per 08-08-SUMMARY.md: `metadata.token`, read from
+   * `checkout.session.completed`.
+   *
+   * `checkout.session.completed` alone does NOT mean the money arrived —
+   * Stripe's own fulfillment guide is explicit that delayed payment methods
+   * complete the session while `payment_status` is still `unpaid`, and settle
+   * (or fail) later. Confirming on the event alone marks those debts paid
+   * before any money exists.
+   */
   private async handleStripe(tenantId: string, rawBody: string): Promise<void> {
     const event = this.parseJson<StripeCheckoutEvent>(rawBody);
     if (event?.type !== "checkout.session.completed") return;
 
     const session = event.data?.object;
+    if (session?.payment_status !== "paid") return;
+
     const token = session?.metadata?.token;
     const gatewayRef = session?.id;
     if (!token || !gatewayRef) return;
@@ -60,14 +78,56 @@ export class WebhooksService {
     await this.confirmFromToken(tenantId, token, gatewayRef);
   }
 
-  /** Reconciliation field per 08-08-SUMMARY.md: `external_reference`. */
-  private async handleMercadoPago(tenantId: string, rawBody: string): Promise<void> {
+  /**
+   * Mercado Pago's webhook does NOT carry `external_reference` — it only
+   * carries `data.id`, the payment id. Reading `external_reference` off the
+   * notification body (as this did) always yielded an empty token, so every
+   * real MP webhook silently no-opped and still answered 200, which stops MP
+   * retrying: no MP payment could ever reconcile.
+   *
+   * The reference and the real status both come from a follow-up
+   * `GET /v1/payments/{id}`, mirroring the extra lookup `handleWompi` already
+   * needs. Only `approved` confirms — `pending`, `in_process`, `rejected` and
+   * `refunded` must never mark a debt as paid.
+   */
+  private async handleMercadoPago(integration: DecryptedIntegration, rawBody: string): Promise<void> {
     const body = this.parseJson<Record<string, unknown>>(rawBody) ?? {};
     const gatewayRef = String((body.data as { id?: string } | undefined)?.id ?? "");
-    const token = String(body.external_reference ?? "");
-    if (!gatewayRef || !token) return;
+    if (!gatewayRef) return;
 
-    await this.confirmFromToken(tenantId, token, gatewayRef);
+    const payment = await this.lookupMercadoPagoPayment(gatewayRef, integration.secrets.accessToken);
+    if (!payment || payment.status !== "approved") return;
+
+    const token = payment.externalReference;
+    if (!token) return;
+
+    await this.confirmFromToken(integration.tenantId, token, gatewayRef);
+  }
+
+  private async lookupMercadoPagoPayment(
+    paymentId: string,
+    accessToken: string | undefined
+  ): Promise<{ status: string; externalReference: string } | null> {
+    if (!accessToken) return null;
+    try {
+      const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!response.ok) return null;
+      const payload = (await response.json()) as {
+        status?: string;
+        external_reference?: string;
+      };
+      return {
+        status: payload.status ?? "",
+        externalReference: payload.external_reference ?? ""
+      };
+    } catch (err) {
+      this.logger.warn(
+        `No se pudo recuperar el pago de Mercado Pago ${paymentId}: ${(err as Error).message}`
+      );
+      return null;
+    }
   }
 
   /**
