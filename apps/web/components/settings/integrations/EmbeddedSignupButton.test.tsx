@@ -43,12 +43,15 @@ afterEach(() => {
 });
 
 describe("EmbeddedSignupButton — sdk_unavailable", () => {
-  it("sin las variables de entorno, muestra el aviso y nunca un botón roto", () => {
+  // Sin app de Meta registrada no hay nada que el tenant pueda destrabar en su
+  // navegador: culpar a una extensión lo manda a perseguir un problema ajeno.
+  it("sin las variables de entorno, dice que la conexión asistida no está habilitada", () => {
     render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
 
     expect(
-      screen.getByText(/No pudimos cargar el conector de Meta/)
+      screen.getByText(/todavía no está habilitada en esta instalación/)
     ).toBeInTheDocument();
+    expect(screen.queryByText(/extensión del navegador/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Conectar con WhatsApp" })).not.toBeInTheDocument();
   });
 
@@ -60,12 +63,14 @@ describe("EmbeddedSignupButton — sdk_unavailable", () => {
     expect(onSwitchToByo).toHaveBeenCalledTimes(1);
   });
 
-  it("si el script de Meta falla al cargar (onError), muestra el mismo aviso", () => {
+  // Con la app configurada, un fallo de carga SÍ puede ser un bloqueador del
+  // navegador — ahí el aviso original es el correcto.
+  it("si el script de Meta falla al cargar (onError), sí apunta al navegador", () => {
     stubFacebookEnv();
     render(<EmbeddedSignupButton integration={undefined} onSwitchToByo={vi.fn()} />);
 
     act(() => capturedScriptProps.onError?.());
-    expect(screen.getByText(/No pudimos cargar el conector de Meta/)).toBeInTheDocument();
+    expect(screen.getByText(/extensión del navegador/)).toBeInTheDocument();
   });
 });
 
