@@ -14,21 +14,22 @@ interface Pill {
   /** React key, and what distinguishes two pills that map to the same mode. */
   id: string;
   /**
-   * The mode this pill selects. Absent means the option is real but not yet
-   * buildable — it renders disabled and carries `unavailable` instead. Modelling
-   * it as a missing value (rather than a sentinel mode) keeps unselectable
-   * options out of the `managed | byo` union the rest of the card switches on.
+   * Stored mode this pill represents, kept separate from whether it can be
+   * picked. A disabled pill still needs its mode so a tenant already saved on
+   * it sees *their* option highlighted with its own helper, rather than the
+   * card silently describing a mode they are not on. Pills with no mode
+   * (buying a number, a dedicated subuser) are not modes at all.
    */
-  value?: "managed" | "byo";
+  mode?: "managed" | "byo";
   label: string;
   helper: string;
-  /** Why the option cannot be chosen yet — required whenever `value` is absent. */
+  /** Why the option cannot be chosen — its presence is what disables the pill. */
   unavailable?: string;
 }
 
 const BYO_PILL: Pill = {
   id: "byo",
-  value: "byo",
+  mode: "byo",
   label: "Traer mis credenciales",
   helper: "Usas tu propia cuenta del proveedor. Pegas tus credenciales y nosotros solo enviamos."
 };
@@ -46,7 +47,7 @@ const BYO_PILL: Pill = {
 const EMAIL_PILLS: Pill[] = [
   {
     id: "managed",
-    value: "managed",
+    mode: "managed",
     label: "Gestionado por CobraAI",
     helper:
       "Autenticamos tu dominio para que el correo salga a tu nombre. El envío sale de la cuenta compartida de CobraAI."
@@ -78,14 +79,11 @@ const WHATSAPP_PILLS: Pill[] = [
 ];
 
 /**
- * Voice separates two things the old single "managed" pill blurred together.
- *
- * Buying a number through Twilio on the tenant's behalf is not built, so it
- * stays disabled. The managed option is a different thing and does work: it
- * reuses the number already on the tenant's Twilio subaccount from WhatsApp
- * and imports it into Vapi. Keeping both visible is what makes the difference
- * legible — collapsing them is what made the old pill promise a purchase it
- * never performed.
+ * Voice keeps both managed options visible and separate, because the old
+ * single pill blurred them: buying a new number, and reusing the one already
+ * on the tenant's Twilio subaccount from WhatsApp. Neither is offered — the
+ * purchase is not built, and the reuse path depends on managed WhatsApp, which
+ * is itself blocked on the Meta app. Only BYO can be completed today.
  */
 const VOICE_PILLS: Pill[] = [
   BYO_PILL,
@@ -97,9 +95,10 @@ const VOICE_PILLS: Pill[] = [
   },
   {
     id: "managed",
-    value: "managed",
+    mode: "managed",
     label: "Gestionado por CobraAI",
-    helper: "Usamos el número que ya tienes conectado en WhatsApp para las llamadas salientes."
+    helper: "Usamos el número que ya tienes conectado en WhatsApp. Aún no está disponible.",
+    unavailable: "Depende del WhatsApp gestionado, que todavía no está disponible."
   }
 ];
 
@@ -121,8 +120,8 @@ export function ChannelModeToggle({
   disabled = false
 }: ChannelModeToggleProps): React.ReactElement {
   const pills = PILLS_BY_CHANNEL[channel];
-  const active = pills.find((p) => p.value === mode) ?? pills[0]!;
-  const pending = pills.find((p) => p.unavailable);
+  const active = pills.find((p) => p.mode === mode) ?? pills[0]!;
+  const pending = pills.filter((p) => p.unavailable);
 
   return (
     <div className="mt-4 space-y-1">
@@ -132,16 +131,16 @@ export function ChannelModeToggle({
           <button
             className={cn(
               "rounded-md px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-[#D85A30]/30 focus:ring-offset-1",
-              !pill.value
+              pill.unavailable
                 ? "cursor-not-allowed border border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500"
-                : mode === pill.value
+                : mode === pill.mode
                   ? "bg-[#D85A30] text-white"
                   : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             )}
-            disabled={disabled || !pill.value}
+            disabled={disabled || Boolean(pill.unavailable)}
             key={pill.id}
             onClick={() => {
-              if (pill.value) onChange(pill.value);
+              if (!pill.unavailable && pill.mode) onChange(pill.mode);
             }}
             title={pill.unavailable}
             type="button"
@@ -151,11 +150,11 @@ export function ChannelModeToggle({
         ))}
       </div>
       <p className="text-xs text-slate-500">{active.helper}</p>
-      {pending && (
-        <p className="text-xs text-slate-400">
-          {pending.label}: {pending.unavailable}
+      {pending.map((pill) => (
+        <p className="text-xs text-slate-400" key={pill.id}>
+          {pill.label}: {pill.unavailable}
         </p>
-      )}
+      ))}
     </div>
   );
 }
