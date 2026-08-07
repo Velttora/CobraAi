@@ -24,15 +24,33 @@ describe("ChannelModeToggle", () => {
   });
 
   // Comprar un número y reutilizar el de WhatsApp son cosas distintas: la
-  // píldora vieja las mezclaba y prometía una compra que nunca ocurría.
-  it("el gestionado de voz sí es seleccionable, a diferencia de la compra", () => {
+  // píldora vieja las mezclaba. Se muestran separadas, pero ninguna se puede
+  // elegir todavía, así que en voz solo BYO es completable.
+  it("en voz ninguna de las dos gestionadas es seleccionable", () => {
     const onChange = vi.fn();
     render(<ChannelModeToggle channel="voice" mode="byo" onChange={onChange} />);
 
-    const managed = screen.getByRole("button", { name: "Gestionado por CobraAI" });
-    expect(managed).not.toBeDisabled();
-    fireEvent.click(managed);
-    expect(onChange).toHaveBeenCalledWith("managed");
+    for (const label of ["Comprar y gestionar en Twilio", "Gestionado por CobraAI"]) {
+      const pill = screen.getByRole("button", { name: label });
+      expect(pill).toBeDisabled();
+      fireEvent.click(pill);
+    }
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("voz explica por separado por qué cada gestionada está bloqueada", () => {
+    render(<ChannelModeToggle channel="voice" mode="byo" onChange={vi.fn()} />);
+
+    expect(screen.getByText(/compra automática de números/i)).toBeInTheDocument();
+    expect(screen.getByText(/Depende del WhatsApp gestionado/i)).toBeInTheDocument();
+  });
+
+  // Una píldora deshabilitada conserva su modo: un tenant ya guardado en
+  // gestionado debe ver resaltada SU opción, no el texto de otra.
+  it("un tenant guardado en gestionado ve esa opción activa aunque esté bloqueada", () => {
+    render(<ChannelModeToggle channel="voice" mode="managed" onChange={vi.fn()} />);
+
+    expect(screen.getByText(/número que ya tienes conectado en WhatsApp/i)).toBeInTheDocument();
   });
 
   it("WhatsApp pone BYO primero y la gestionada segunda y bloqueada", () => {
