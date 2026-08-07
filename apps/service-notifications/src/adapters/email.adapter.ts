@@ -5,6 +5,7 @@ import type {
   SendEmailTemplateInput,
   SendEmailTemplateResult
 } from "@cobrai/ports";
+import { ConfigService } from "@nestjs/config";
 import { TenantIntegrationService } from "@cobrai/integrations";
 import { isSimulationEnabled } from "./simulation.guard";
 
@@ -12,7 +13,10 @@ import { isSimulationEnabled } from "./simulation.guard";
 export class EmailAdapter implements EmailPort {
   private readonly logger = new Logger(EmailAdapter.name);
 
-  constructor(private readonly integrations: TenantIntegrationService) {}
+  constructor(
+    private readonly integrations: TenantIntegrationService,
+    private readonly config: ConfigService
+  ) {}
 
   async sendTemplate(
     input: SendEmailTemplateInput
@@ -36,7 +40,22 @@ export class EmailAdapter implements EmailPort {
       return { message_id: "", status: "failed" };
     }
 
-    const apiKey = integration.secrets.apiKey;
+    // In shared-sending mode there is no per-tenant subuser and therefore no
+    // scoped key, so the platform's parent key does the sending. It is read
+    // from the environment rather than copied into every tenant row: one
+    // leaked row must not expose the credential that governs all of them.
+    const sharedSending = integration.publicConfig.sharedSendingAccount === "true";
+    const apiKey = sharedSending
+      ? this.config.get<string>("SENDGRID_PARENT_API_KEY")
+      : integration.secrets.apiKey;
+
+    if (!apiKey) {
+      this.logger.error(
+        `Email sin llave utilizable para tenant ${input.tenant_id}` +
+          (sharedSending ? " (modo compartido, falta SENDGRID_PARENT_API_KEY)" : "")
+      );
+      return { message_id: "", status: "failed" };
+    }
     const fromEmail = integration.publicConfig.fromEmail ?? "noreply@cobrai.dev";
     const fromName = integration.publicConfig.fromName;
     // D-22: Reply-To is always the tenant's own domain, never the platform's

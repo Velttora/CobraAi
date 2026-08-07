@@ -112,6 +112,14 @@ export class SendgridProvisioningService {
       if (!response.ok) {
         const detail = await response.text();
         this.logger.error(`SendGrid subuser creation failed for tenant=${tenantId}: ${detail}`);
+        // 401/403 mean the platform's own key cannot manage subusers at all
+        // (wrong scopes, or an account below the tier that offers them). That
+        // is a platform-wide fact, not something this tenant did, and the
+        // caller can still authenticate their domain on the parent account —
+        // so it is signalled distinctly rather than as a generic outage.
+        if (response.status === 401 || response.status === 403) {
+          throw new SubusersUnavailableError(detail);
+        }
         throw new ServiceUnavailableException(detail);
       }
 
@@ -119,6 +127,7 @@ export class SendgridProvisioningService {
       const apiKey = await this.createSubuserApiKey(created.username);
       return { username: created.username, userId: created.user_id, apiKey };
     } catch (err) {
+      if (err instanceof SubusersUnavailableError) throw err;
       if (err instanceof ServiceUnavailableException) throw err;
       const message = this.extractMessage(err);
       this.logger.error(`SendGrid subuser creation could not reach the provider for tenant=${tenantId}: ${message}`);
@@ -153,7 +162,18 @@ export class SendgridProvisioningService {
    * documented as a parent-then-associate flow, not an `On-Behalf-Of`-scoped
    * variant, which does not exist for domain authentication).
    */
-  async authenticateDomain(subuserUsername: string, domain: string): Promise<AuthenticatedDomain> {
+  /**
+   * Authenticates the tenant's domain and returns the CNAMEs they must publish.
+   *
+   * `subuserUsername` is optional: the domain creation call is what signs their
+   * mail, and it runs on the parent account regardless. The association step
+   * only moves that authenticated domain under a subuser, so when there is no
+   * subuser it is skipped rather than failing the whole connection.
+   */
+  async authenticateDomain(
+    subuserUsername: string | undefined,
+    domain: string
+  ): Promise<AuthenticatedDomain> {
     try {
       const createResponse = await fetch(`${SENDGRID_BASE_URL}/whitelabel/domains`, {
         method: "POST",
@@ -167,15 +187,20 @@ export class SendgridProvisioningService {
       }
       const created = (await createResponse.json()) as SendGridDomainResponse;
 
-      const associateResponse = await fetch(`${SENDGRID_BASE_URL}/whitelabel/domains/${created.id}/subuser`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${this.parentApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ username: subuserUsername })
-      });
-      if (!associateResponse.ok) {
-        const detail = await associateResponse.text();
-        this.logger.error(`SendGrid domain-subuser association failed for domain=${domain}: ${detail}`);
-        throw new ServiceUnavailableException(detail);
+      if (subuserUsername) {
+        const associateResponse = await fetch(
+          `${SENDGRID_BASE_URL}/whitelabel/domains/${created.id}/subuser`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${this.parentApiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ username: subuserUsername })
+          }
+        );
+        if (!associateResponse.ok) {
+          const detail = await associateResponse.text();
+          this.logger.error(`SendGrid domain-subuser association failed for domain=${domain}: ${detail}`);
+          throw new ServiceUnavailableException(detail);
+        }
       }
 
       return this.toAuthenticatedDomain(created);
@@ -273,5 +298,20 @@ export class SendgridProvisioningService {
       return String((err as { message?: unknown }).message);
     }
     return "Error desconocido de SendGrid";
+  }
+}
+
+/**
+ * The platform's SendGrid account cannot create subusers — its key lacks the
+ * scope, or the plan does not include them.
+ *
+ * Distinct from a generic provisioning failure because it is recoverable: the
+ * tenant's domain can still be authenticated on the parent account, which is
+ * what actually signs their mail. Only the per-tenant isolation is lost.
+ */
+export class SubusersUnavailableError extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = "SubusersUnavailableError";
   }
 }

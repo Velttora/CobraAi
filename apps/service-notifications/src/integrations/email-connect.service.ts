@@ -1,9 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { IntegrationMode } from "@cobrai/db";
 import { PROVIDER_CHANNEL, TenantIntegrationService } from "@cobrai/integrations";
 import type { IntegrationView } from "@cobrai/integrations";
-import { SendgridProvisioningService } from "./sendgrid-provisioning.service";
+import { SendgridProvisioningService, SubusersUnavailableError } from "./sendgrid-provisioning.service";
 import type { DnsRecord } from "./sendgrid-provisioning.service";
 
 /**
@@ -18,6 +18,7 @@ import type { DnsRecord } from "./sendgrid-provisioning.service";
  */
 @Injectable()
 export class EmailConnectService {
+  private readonly logger = new Logger(EmailConnectService.name);
   private readonly baseWebhookUrl: string;
 
   constructor(
@@ -50,14 +51,37 @@ export class EmailConnectService {
     let subuserUsername = existing?.publicConfig["subuserUsername"];
     let secrets: Record<string, string> = {};
 
+    // When the platform account cannot create subusers, fall back to
+    // authenticating the domain directly on it. Domain authentication is what
+    // signs the tenant's mail and produces their CNAMEs — the subuser only
+    // isolates sending reputation and stats. Losing that isolation is a real
+    // cost (one tenant's spam complaints then affect everyone's deliverability,
+    // which matters in collections) but it is strictly better than an email
+    // channel that cannot be connected at all, so the row records the mode
+    // instead of hiding it.
+    let sharedSendingAccount = false;
+
     try {
       if (!subuserUsername) {
-        const subuser = await this.sendgridProvisioning.createSubuser(input.tenantId, input.adminEmail);
-        subuserUsername = subuser.username;
-        secrets = { apiKey: subuser.apiKey };
+        try {
+          const subuser = await this.sendgridProvisioning.createSubuser(input.tenantId, input.adminEmail);
+          subuserUsername = subuser.username;
+          secrets = { apiKey: subuser.apiKey };
+        } catch (err) {
+          if (!(err instanceof SubusersUnavailableError)) throw err;
+          sharedSendingAccount = true;
+          this.logger.warn(
+            `Tenant ${input.tenantId} queda en cuenta de envío compartida: la cuenta padre de ` +
+              `SendGrid no puede crear subusers. El dominio se autentica igual, pero la ` +
+              `reputación de envío se comparte entre tenants.`
+          );
+        }
       }
 
-      const authenticated = await this.sendgridProvisioning.authenticateDomain(subuserUsername, input.domain);
+      const authenticated = await this.sendgridProvisioning.authenticateDomain(
+        subuserUsername,
+        input.domain
+      );
 
       return this.tenantIntegrations.upsert({
         tenantId: input.tenantId,
@@ -69,7 +93,8 @@ export class EmailConnectService {
             fromEmail: input.fromEmail,
             fromName: input.fromName,
             replyDomain,
-            subuserUsername,
+            ...(subuserUsername ? { subuserUsername } : {}),
+            ...(sharedSendingAccount ? { sharedSendingAccount: "true" } : {}),
             domainId: String(authenticated.domainId)
           },
           authenticated.records
