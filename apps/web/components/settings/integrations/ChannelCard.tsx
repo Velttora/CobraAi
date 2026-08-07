@@ -11,7 +11,13 @@ import {
   useVerifyIntegration
 } from "../../../hooks/use-integrations";
 import { ConfirmDialog } from "../../shared/ConfirmDialog";
-import { CHANNEL_COPY, PROVIDER_BY_CHANNEL, REQUIRED_FIELDS, type ChannelId } from "./channel-config";
+import {
+  CHANNEL_COPY,
+  PROVIDER_BY_CHANNEL,
+  REQUIRED_FIELDS,
+  remedyFor,
+  type ChannelId
+} from "./channel-config";
 import { ChannelFailureBlock } from "./ChannelFailureBlock";
 import { ChannelModeToggle } from "./ChannelModeToggle";
 import { EmailFields } from "./EmailFields";
@@ -238,7 +244,7 @@ export function ChannelCard({
               failureMessage={integration.failureMessage}
               isRetrying={isVerifying}
               onRetry={() => void handleVerify(provider)}
-              remedy={copy.remedy}
+              remedy={remedyFor(channel, integration?.failureMessage)}
             />
           )}
 

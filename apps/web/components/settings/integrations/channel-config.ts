@@ -96,3 +96,40 @@ export interface ChannelFormProps {
 export function secretMetaFor(meta: IntegrationSecretMeta[], field: string): IntegrationSecretMeta | null {
   return meta.find((s) => s.field === field) ?? null;
 }
+
+/**
+ * Chooses the "Qué hacer" line from the provider's actual failure, instead of
+ * always showing the channel's default.
+ *
+ * A fixed per-channel remedy is right only when the failure is the expected
+ * one. When SendGrid answers `authorization required` — our platform account's
+ * credential, nothing the tenant controls — telling them to re-check their
+ * CNAME records sends them to fix something that was never broken. Same for a
+ * key that is valid but lacks the scopes to provision.
+ */
+export function remedyFor(channel: ChannelId, failureMessage?: string | null): string {
+  const fallback = CHANNEL_COPY[channel].remedy;
+  if (!failureMessage) return fallback;
+
+  const message = failureMessage.toLowerCase();
+
+  if (
+    message.includes("authorization required") ||
+    message.includes("unauthorized") ||
+    message.includes("authentication required")
+  ) {
+    return (
+      "Esto no es tu configuración: la plataforma no pudo autenticarse con el proveedor. " +
+      "Avísale al equipo de CobraAI, y mientras tanto conecta tus propias credenciales."
+    );
+  }
+
+  if (message.includes("access forbidden") || message.includes("permission")) {
+    return (
+      "La cuenta de la plataforma no tiene permisos para aprovisionar este canal. " +
+      "Avísale al equipo de CobraAI, o conecta tus propias credenciales."
+    );
+  }
+
+  return fallback;
+}
