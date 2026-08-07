@@ -23,6 +23,7 @@ import {
 import { PaymentProviderSelect } from "./PaymentProviderSelect";
 import { PaymentReadOnlyView } from "./PaymentReadOnlyView";
 import { PaymentVerificationFailure } from "./PaymentVerificationFailure";
+import { apiErrorMessage } from "../../../lib/api-error";
 
 const DEFAULT_PROVIDER = "wompi";
 const CONFIGURED_ONLY_PROVIDERS = new Set(["external_link", "transfer"]);
@@ -146,8 +147,8 @@ export function PaymentGatewayPanel(): React.ReactElement {
         setPublicDraft({});
         setSecretDrafts({});
       }
-    } catch {
-      toast.error("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
     }
   }
 
@@ -155,8 +156,8 @@ export function PaymentGatewayPanel(): React.ReactElement {
     try {
       const result = await verifyIntegration.mutateAsync(selectedProvider);
       reportResult(result.data.status);
-    } catch {
-      toast.error("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
     }
   }
 
