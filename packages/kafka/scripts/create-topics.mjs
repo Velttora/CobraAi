@@ -4,6 +4,10 @@ import { Kafka } from "kafkajs";
 // Debe reflejar todos los event_type usados en `this.kafka.publish(...)` en los
 // microservicios. Si agregas un evento nuevo, agrégalo aquí también.
 const TOPICS = [
+  "cobrai.contact.requested",
+  "cobrai.contact.sent",
+  "cobrai.contact.effective",
+  "cobrai.contact.no_response",
   "cobrai.contact.failed.no_response",
   "cobrai.contact.completed",
   "cobrai.payment_plan.created",
