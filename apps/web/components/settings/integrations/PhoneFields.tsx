@@ -4,7 +4,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import type { IntegrationView } from "../../../lib/types";
 import type { ChannelFormProps } from "./channel-config";
-import { secretMetaFor } from "./channel-config";
+import { savedNumberFrom, secretMetaFor } from "./channel-config";
 import { TwilioByoFields } from "./TwilioByoFields";
 
 export interface PhoneFieldsProps extends ChannelFormProps {
@@ -44,7 +44,7 @@ export function PhoneFields({
         onAccountSidChange={(v) => setPublicField("accountSid", v)}
         onAuthTokenChange={(v) => setSecretField("authToken", v)}
         onPhoneNumberChange={(v) => setPublicField("phoneNumberE164", v)}
-        phoneNumber={publicConfig.phoneNumberE164 ?? ""}
+        phoneNumber={savedNumberFrom(publicConfig)}
       />
     );
   }

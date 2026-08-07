@@ -32,7 +32,7 @@ describe("EmailAdapter", () => {
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
     integrations = makeIntegrations();
-    adapter = new EmailAdapter(integrations as never);
+    adapter = new EmailAdapter(integrations as never, { get: () => "SG.parent_key" } as never);
   });
 
   afterEach(() => {

@@ -118,7 +118,16 @@ export class WhatsAppConnectService {
       tenantId: input.tenantId,
       provider: "twilio_whatsapp",
       mode: "byo",
-      publicConfig: { accountSid: input.accountSid, fromNumber: toWhatsAppFrom(input.phoneNumberE164) },
+      // `phoneNumberE164` is stored alongside `fromNumber` purely so the
+      // settings form can read back what the tenant typed: adapters send with
+      // `fromNumber`, but a form that posts `phoneNumberE164` and never gets
+      // it back looks like the number was lost. Both are written in this one
+      // upsert, so they cannot drift.
+      publicConfig: {
+        accountSid: input.accountSid,
+        phoneNumberE164: input.phoneNumberE164,
+        fromNumber: toWhatsAppFrom(input.phoneNumberE164)
+      },
       secrets: { accountSid: input.accountSid, authToken: input.authToken },
       baseWebhookUrl: this.baseWebhookUrl
     });
@@ -183,7 +192,14 @@ export class WhatsAppConnectService {
       twilioAuthToken: twilioCredentials.authToken
     });
 
-    const publicConfig: Record<string, string> = { outboundNumber: numberE164 };
+    // `accountSid` and `phoneNumberE164` are public here so the BYO voice form
+    // can repopulate after a reload — the SID otherwise lives only in
+    // `secrets`, which never reaches the browser.
+    const publicConfig: Record<string, string> = {
+      outboundNumber: numberE164,
+      phoneNumberE164: numberE164,
+      ...(mode === "byo" ? { accountSid: twilioCredentials.accountSid } : {})
+    };
     const overrideStatus =
       "error" in importResult
         ? { status: "failed" as IntegrationStatus, failureMessage: importResult.error }

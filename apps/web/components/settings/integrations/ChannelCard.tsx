@@ -15,7 +15,10 @@ import {
   CHANNEL_COPY,
   PROVIDER_BY_CHANNEL,
   REQUIRED_FIELDS,
+  DEFAULT_MODE,
+  buildPublicPayload,
   remedyFor,
+  requiredValueFor,
   type ChannelId
 } from "./channel-config";
 import { ChannelFailureBlock } from "./ChannelFailureBlock";
@@ -58,7 +61,7 @@ export function ChannelCard({
   const searchParams = useSearchParams();
   const cardRef = useRef<HTMLElement>(null);
 
-  const savedMode = integration?.mode ?? "managed";
+  const savedMode = integration?.mode ?? DEFAULT_MODE[channel];
   const status = integration?.status ?? "not_configured";
   const secretsMeta = integration?.secrets ?? [];
   const savedPublic = integration?.publicConfig ?? {};
@@ -112,7 +115,7 @@ export function ChannelCard({
 
   const required = REQUIRED_FIELDS[channel][mode];
   const isValid =
-    required.public.every((key) => (publicConfig[key] ?? "").trim() !== "") &&
+    required.public.every((key) => requiredValueFor(key, publicConfig).trim() !== "") &&
     required.secret.every(
       (key) => secretsMeta.some((s) => s.field === key) || Boolean((secretDraft[key] ?? "")?.trim())
     );
@@ -125,7 +128,10 @@ export function ChannelCard({
     e.preventDefault();
     if (!isDirty || !isValid) return;
 
-    const input: SaveIntegrationInput = { mode, publicConfig: publicDraft };
+    const input: SaveIntegrationInput = {
+      mode,
+      publicConfig: buildPublicPayload(required.public, publicDraft, publicConfig)
+    };
     const cleanSecrets: Record<string, string> = {};
     for (const [key, value] of Object.entries(secretDraft)) {
       if (value !== null) cleanSecrets[key] = value;
@@ -207,7 +213,12 @@ export function ChannelCard({
         <ReadOnlyChannelSummary mode={savedMode} publicConfig={savedPublic} />
       ) : (
         <form className="mt-0" onSubmit={(e) => void handleSubmit(e)}>
-          <ChannelModeToggle disabled={disabled} mode={mode} onChange={requestModeChange} />
+          <ChannelModeToggle
+            channel={channel}
+            disabled={disabled}
+            mode={mode}
+            onChange={requestModeChange}
+          />
 
           {channel === "whatsapp" && (
             <WhatsAppFields {...formProps} onSwitchToByo={() => requestModeChange("byo")} />
