@@ -8,13 +8,26 @@ export type VerifierInput = { publicConfig: Record<string, string>; secrets: Rec
  * success, merges the account's friendly name into `publicConfig`; on a
  * non-200, surfaces Twilio's own response body verbatim (never a rewritten
  * message) so the UI's failure block shows the provider's real reason.
+ *
+ * The SID is read from `secrets` when `publicConfig` has none. Every write
+ * path stores it in `secrets`, but only BYO WhatsApp puts it in
+ * `publicConfig` — managed rows store the subaccount SID under a different
+ * key, and voice rows carry the number rather than the account. Reading only
+ * `publicConfig` therefore sent empty Basic auth for those rows, and Twilio's
+ * reply ("Authentication Error - No username provided") reached the tenant as
+ * if their credentials were wrong.
  */
 export async function verifyTwilioAccount(
   provider: IntegrationProvider,
   input: VerifierInput
 ): Promise<VerificationResult> {
-  const accountSid = input.publicConfig["accountSid"] ?? "";
+  const accountSid = input.publicConfig["accountSid"] ?? input.secrets["accountSid"] ?? "";
   const authToken = input.secrets["authToken"] ?? "";
+  if (!accountSid || !authToken) {
+    // Naming the missing half beats forwarding Twilio's reply to an empty
+    // request, which blames the tenant for a credential we never sent.
+    return { ok: false, message: "Faltan el Account SID o el Auth Token de Twilio" };
+  }
   try {
     const auth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
     const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`, {

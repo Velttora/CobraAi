@@ -63,6 +63,35 @@ describe("verifyCredentials", () => {
       expect(result.ok).toBe(true);
     });
 
+    // Regresión: las filas de voz nunca llevaron accountSid en publicConfig, así
+    // que la verificación mandaba Basic auth vacío y Twilio respondía
+    // "No username provided" — un error que parecía culpa del tenant.
+    it("toma el Account SID de secrets cuando publicConfig no lo trae", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ friendly_name: "Acme Cobranzas" })
+      });
+
+      const result = await verifyCredentials("twilio_voice", {
+        publicConfig: { outboundNumber: "+573001234567" },
+        secrets: { accountSid: "AC123", authToken: "secret-token-xyz" }
+      });
+
+      expect(result.ok).toBe(true);
+      expect(fetchMock.mock.calls[0]?.[0]).toContain("/Accounts/AC123.json");
+    });
+
+    it("sin credenciales por ningún lado, dice qué falta en vez de llamar a Twilio", async () => {
+      const result = await verifyCredentials("twilio_voice", {
+        publicConfig: { outboundNumber: "+573001234567" },
+        secrets: {}
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.message).toBe("Faltan el Account SID o el Auth Token de Twilio");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("reports ok:false when the configured outbound number is absent", async () => {
       fetchMock.mockResolvedValue({
         ok: true,
