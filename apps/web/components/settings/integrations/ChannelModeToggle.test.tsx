@@ -5,18 +5,34 @@ import { ChannelModeToggle } from "./ChannelModeToggle";
 const DEDICATED = "Cuenta de envío dedicada";
 
 describe("ChannelModeToggle", () => {
-  it("voz pone BYO primero y la compra de número segunda y bloqueada", () => {
+  it("voz ofrece tres opciones: BYO, comprar (bloqueada) y gestionado", () => {
     const onChange = vi.fn();
     render(<ChannelModeToggle channel="voice" mode="byo" onChange={onChange} />);
 
     const labels = screen.getAllByRole("button").map((b) => b.textContent);
-    expect(labels).toEqual(["Traer mis credenciales", "Comprar número en Twilio"]);
+    expect(labels).toEqual([
+      "Traer mis credenciales",
+      "Comprar y gestionar en Twilio",
+      "Gestionado por CobraAI"
+    ]);
     expect(screen.queryByText(DEDICATED)).not.toBeInTheDocument();
 
-    const buy = screen.getByRole("button", { name: "Comprar número en Twilio" });
+    const buy = screen.getByRole("button", { name: "Comprar y gestionar en Twilio" });
     expect(buy).toBeDisabled();
     fireEvent.click(buy);
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // Comprar un número y reutilizar el de WhatsApp son cosas distintas: la
+  // píldora vieja las mezclaba y prometía una compra que nunca ocurría.
+  it("el gestionado de voz sí es seleccionable, a diferencia de la compra", () => {
+    const onChange = vi.fn();
+    render(<ChannelModeToggle channel="voice" mode="byo" onChange={onChange} />);
+
+    const managed = screen.getByRole("button", { name: "Gestionado por CobraAI" });
+    expect(managed).not.toBeDisabled();
+    fireEvent.click(managed);
+    expect(onChange).toHaveBeenCalledWith("managed");
   });
 
   it("WhatsApp pone BYO primero y la gestionada segunda y bloqueada", () => {

@@ -82,13 +82,13 @@ describe("ChannelCard — ChannelModeToggle default", () => {
   // usuario en una opción que no puede ni elegir ni enviar.
   it.each([
     ["whatsapp" as const, "Gestionado por CobraAI"],
-    ["voice" as const, "Comprar número en Twilio"]
-  ])("%s sin integración parte en BYO, no en managed", (channel, managedLabel) => {
+    ["voice" as const, "Comprar y gestionar en Twilio"]
+  ])("%s sin integración parte en BYO, con su opción pendiente bloqueada", (channel, blockedLabel) => {
     admin();
     render(<ChannelCard channel={channel} integration={undefined} />);
     const byoPill = screen.getByRole("button", { name: "Traer mis credenciales" });
     expect(byoPill.className).toContain("bg-[#D85A30]");
-    expect(screen.getByRole("button", { name: managedLabel })).toBeDisabled();
+    expect(screen.getByRole("button", { name: blockedLabel })).toBeDisabled();
   });
 
   it("no tiene badge 'recomendado' ni ícono de advertencia en BYO", () => {

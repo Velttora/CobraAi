@@ -11,14 +11,23 @@ export interface ChannelModeToggleProps {
 }
 
 interface Pill {
-  value: "managed" | "byo" | "managed-dedicated";
+  /** React key, and what distinguishes two pills that map to the same mode. */
+  id: string;
+  /**
+   * The mode this pill selects. Absent means the option is real but not yet
+   * buildable — it renders disabled and carries `unavailable` instead. Modelling
+   * it as a missing value (rather than a sentinel mode) keeps unselectable
+   * options out of the `managed | byo` union the rest of the card switches on.
+   */
+  value?: "managed" | "byo";
   label: string;
   helper: string;
-  /** Set when the option exists but cannot be chosen yet — see the per-channel lists. */
+  /** Why the option cannot be chosen yet — required whenever `value` is absent. */
   unavailable?: string;
 }
 
 const BYO_PILL: Pill = {
+  id: "byo",
   value: "byo",
   label: "Traer mis credenciales",
   helper: "Usas tu propia cuenta del proveedor. Pegas tus credenciales y nosotros solo enviamos."
@@ -36,6 +45,7 @@ const BYO_PILL: Pill = {
  */
 const EMAIL_PILLS: Pill[] = [
   {
+    id: "managed",
     value: "managed",
     label: "Gestionado por CobraAI",
     helper:
@@ -43,7 +53,7 @@ const EMAIL_PILLS: Pill[] = [
   },
   BYO_PILL,
   {
-    value: "managed-dedicated",
+    id: "managed-dedicated",
     label: "Cuenta de envío dedicada",
     helper:
       "Igual que la gestionada, pero con reputación de envío aislada por empresa. Aún no está disponible.",
@@ -60,7 +70,7 @@ const EMAIL_PILLS: Pill[] = [
 const WHATSAPP_PILLS: Pill[] = [
   BYO_PILL,
   {
-    value: "managed",
+    id: "managed",
     label: "Gestionado por CobraAI",
     helper: "Conectamos tu número por ti mediante Meta Embedded Signup. Aún no está disponible.",
     unavailable: "Requiere nuestra app de Meta aprobada para Embedded Signup. En preparación."
@@ -68,17 +78,28 @@ const WHATSAPP_PILLS: Pill[] = [
 ];
 
 /**
- * Voice managed would mean buying a number through Twilio on the tenant's
- * behalf, which is not built. Until it is, BYO leads and the purchase option
- * is shown disabled — same shape as WhatsApp.
+ * Voice separates two things the old single "managed" pill blurred together.
+ *
+ * Buying a number through Twilio on the tenant's behalf is not built, so it
+ * stays disabled. The managed option is a different thing and does work: it
+ * reuses the number already on the tenant's Twilio subaccount from WhatsApp
+ * and imports it into Vapi. Keeping both visible is what makes the difference
+ * legible — collapsing them is what made the old pill promise a purchase it
+ * never performed.
  */
 const VOICE_PILLS: Pill[] = [
   BYO_PILL,
   {
-    value: "managed",
-    label: "Comprar número en Twilio",
-    helper: "Compramos y configuramos un número saliente a tu nombre. Aún no está disponible.",
+    id: "managed-buy",
+    label: "Comprar y gestionar en Twilio",
+    helper: "Compramos un número nuevo a tu nombre y lo configuramos. Aún no está disponible.",
     unavailable: "La compra automática de números todavía no está implementada."
+  },
+  {
+    id: "managed",
+    value: "managed",
+    label: "Gestionado por CobraAI",
+    helper: "Usamos el número que ya tienes conectado en WhatsApp para las llamadas salientes."
   }
 ];
 
@@ -111,17 +132,16 @@ export function ChannelModeToggle({
           <button
             className={cn(
               "rounded-md px-3 py-1.5 text-xs font-medium transition focus:outline-none focus:ring-2 focus:ring-[#D85A30]/30 focus:ring-offset-1",
-              pill.unavailable
+              !pill.value
                 ? "cursor-not-allowed border border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500"
                 : mode === pill.value
                   ? "bg-[#D85A30] text-white"
                   : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             )}
-            disabled={disabled || Boolean(pill.unavailable)}
-            key={pill.value}
+            disabled={disabled || !pill.value}
+            key={pill.id}
             onClick={() => {
-              if (pill.unavailable || pill.value === "managed-dedicated") return;
-              onChange(pill.value);
+              if (pill.value) onChange(pill.value);
             }}
             title={pill.unavailable}
             type="button"
