@@ -44,20 +44,55 @@ export async function verifyMercadoPago(input: VerifierInput): Promise<Verificat
 }
 
 /**
- * `GET /v1/payment_links?page[size]=1` — an authenticated, read-only list
- * call against Wompi's private-key-protected API (payment link creation
- * itself is POST, so this is the closest read-only equivalent). Confirmed
- * live against https://production.wompi.co/v1/payment_links (401
- * INVALID_ACCESS_TOKEN on a malformed/invalid private key) 2026-08-04.
+ * `GET /v1/merchants/{public_key}` — Wompi's documented merchant lookup.
+ *
+ * This previously called `GET /v1/payment_links?page[size]=1`, which Wompi
+ * does not document: its Payment Links API is POST to create and GET by id
+ * (the latter unauthenticated). That call answered 401 INVALID_ACCESS_TOKEN
+ * for every private key, valid or not, so verification could only ever fail —
+ * the original check had been confirmed against a *bad* key and never against
+ * a good one, which is exactly the gap that hides this class of bug.
+ *
+ * What this verifies and what it does not:
+ * - The public key is well-formed and belongs to a real, active merchant.
+ *   That is the account-level fact worth confirming before a tenant tries to
+ *   collect, and it is what catches a sandbox key pasted into production.
+ * - It does NOT prove the private key works. Wompi exposes no read-only
+ *   endpoint that authenticates one, and creating a real payment link just to
+ *   check would leave litter in the merchant's account. A bad private key
+ *   therefore surfaces on the first checkout, carrying Wompi's own message.
  */
 export async function verifyWompi(input: VerifierInput): Promise<VerificationResult> {
+  const publicKey = input.publicConfig["publicKey"] ?? "";
   const privateKey = input.secrets["privateKey"] ?? "";
+
+  if (!publicKey) {
+    return { ok: false, message: "Falta la llave pública de Wompi" };
+  }
+  if (!privateKey.startsWith("prv_")) {
+    return {
+      ok: false,
+      message: "La llave privada de Wompi debe empezar con prv_test_ o prv_prod_"
+    };
+  }
+  if (publicKey.startsWith("pub_test_") !== privateKey.startsWith("prv_test_")) {
+    return {
+      ok: false,
+      message: "Las llaves de Wompi son de ambientes distintos: ambas deben ser de prueba o ambas de producción"
+    };
+  }
+
   try {
-    const response = await fetch("https://production.wompi.co/v1/payment_links?page%5Bsize%5D=1", {
-      headers: { Authorization: `Bearer ${privateKey}` }
-    });
+    const response = await fetch(
+      `https://production.wompi.co/v1/merchants/${encodeURIComponent(publicKey)}`
+    );
     if (!response.ok) {
-      const detail = await extractJsonOrText(response, (body) => (body as { error?: { reason?: string } }).error?.reason);
+      const detail = await extractJsonOrText(
+        response,
+        (body) =>
+          (body as { error?: { reason?: string } }).error?.reason ??
+          "Wompi no reconoce esta llave pública. Revisa que sea la de producción y que la cuenta esté activa."
+      );
       return { ok: false, message: detail };
     }
     return { ok: true };
