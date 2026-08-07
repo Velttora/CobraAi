@@ -1,6 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { PrismaService } from "@cobrai/db";
+// Value import, not `import type`: Nest reads the constructor's design:paramtypes
+// metadata to resolve this dependency, and a type-only import is erased at
+// compile time — the emitted metadata becomes `Function` and the module fails to
+// boot with "can't resolve dependencies of the IntegrationsService".
+import { PrismaService } from "@cobrai/db";
 import type { IntegrationProvider } from "@cobrai/db";
 import { PROVIDER_CHANNEL, TenantIntegrationService } from "@cobrai/integrations";
 import type { IntegrationView } from "@cobrai/integrations";
