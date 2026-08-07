@@ -2,7 +2,7 @@ import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { assertSimulationNotInProduction } from "./adapters/simulation.guard";
-import { assertEncryptionKeyConfigured } from "./integrations/encryption-key.guard";
+import { checkEncryptionKey } from "./integrations/encryption-key.guard";
 
 async function bootstrap(): Promise<void> {
   // Boot-time assertion (D-17), not a per-call check: a per-call check would let
@@ -11,12 +11,19 @@ async function bootstrap(): Promise<void> {
   // a single phantom message.
   assertSimulationNotInProduction();
 
-  // Same reasoning for the encryption key: without it the service boots fine and
-  // every credential save fails at the moment a tenant presses Guardar, reading
-  // to them as a network problem rather than missing configuration.
-  assertEncryptionKeyConfigured();
-
   const app = await NestFactory.create(AppModule);
+
+  // The encryption key is checked but NOT asserted: only credential storage
+  // needs it, and aborting here would take WhatsApp, email, voice and the
+  // inbound webhooks down over a feature-scoped configuration gap. The
+  // integrations endpoints refuse with this same reason, so it stays
+  // impossible to miss without being an outage.
+  const encryptionKey = checkEncryptionKey();
+  if (!encryptionKey.usable) {
+    new Logger("Bootstrap").error(
+      `Integraciones deshabilitadas: ${encryptionKey.reason}`
+    );
+  }
   app.setGlobalPrefix("api");
   app.useGlobalPipes(
     new ValidationPipe({

@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 // Value import, not `import type`: Nest reads the constructor's design:paramtypes
 // metadata to resolve this dependency, and a type-only import is erased at
@@ -9,6 +15,7 @@ import type { IntegrationProvider } from "@cobrai/db";
 import { PROVIDER_CHANNEL, TenantIntegrationService } from "@cobrai/integrations";
 import type { IntegrationView } from "@cobrai/integrations";
 import { validateExternalLinkTemplate } from "@cobrai/utils";
+import { checkEncryptionKey } from "./encryption-key.guard";
 import { WhatsAppConnectService } from "./whatsapp-connect.service";
 import { EmailConnectService } from "./email-connect.service";
 import type { EmbeddedSignupDto, SaveIntegrationDto } from "./dto/integration.dto";
@@ -43,6 +50,19 @@ export class IntegrationsService {
     this.baseWebhookUrl = config.get<string>("PUBLIC_WEBHOOK_BASE_URL") ?? "";
   }
 
+  /**
+   * Refuses a credential write when the encryption key is unusable, naming the
+   * variable instead of letting `encryptSecretBundle` throw a generic 500 that
+   * reads to the tenant as a network problem. Reads are left alone: listing
+   * integrations and the health screen work fine without it.
+   */
+  private assertCanStoreSecrets(): void {
+    const key = checkEncryptionKey();
+    if (!key.usable) {
+      throw new ServiceUnavailableException(key.reason);
+    }
+  }
+
   /** Ported from `apps/api-gateway/src/tenant/tenant.service.ts`'s `assertAdmin` — same comparison, same Spanish message shape. */
   assertAdmin(role?: string): void {
     if (normalizeClerkRole(role) !== "admin") {
@@ -60,6 +80,7 @@ export class IntegrationsService {
   /** Dispatches a credential write to the matching connect service (comm channels) or `TenantIntegrationService.upsert` directly (payments). */
   async save(tenantId: string, providerParam: string, dto: SaveIntegrationDto, role?: string): Promise<IntegrationView> {
     this.assertAdmin(role);
+    this.assertCanStoreSecrets();
     const provider = assertValidProvider(providerParam);
     const publicConfig = dto.publicConfig ?? {};
     const secrets = dto.secrets ?? {};
