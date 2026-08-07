@@ -5,11 +5,33 @@ import { ChannelModeToggle } from "./ChannelModeToggle";
 const DEDICATED = "Cuenta de envío dedicada";
 
 describe("ChannelModeToggle", () => {
-  it("canales que no son correo mantienen las dos opciones", () => {
-    render(<ChannelModeToggle channel="whatsapp" mode="managed" onChange={vi.fn()} />);
+  it("voz mantiene las dos opciones originales", () => {
+    render(<ChannelModeToggle channel="voice" mode="managed" onChange={vi.fn()} />);
 
-    expect(screen.getAllByRole("button")).toHaveLength(2);
+    const labels = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(labels).toEqual(["Gestionado por CobraAI", "Traer mis credenciales"]);
     expect(screen.queryByText(DEDICATED)).not.toBeInTheDocument();
+  });
+
+  it("WhatsApp pone BYO primero y la gestionada segunda y bloqueada", () => {
+    const onChange = vi.fn();
+    render(<ChannelModeToggle channel="whatsapp" mode="byo" onChange={onChange} />);
+
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      "Traer mis credenciales",
+      "Gestionado por CobraAI"
+    ]);
+
+    const managed = screen.getByRole("button", { name: "Gestionado por CobraAI" });
+    expect(managed).toBeDisabled();
+    fireEvent.click(managed);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("WhatsApp explica por qué la gestionada está bloqueada", () => {
+    render(<ChannelModeToggle channel="whatsapp" mode="byo" onChange={vi.fn()} />);
+    expect(screen.getByText(/app de Meta aprobada/i)).toBeInTheDocument();
   });
 
   it("correo ofrece tres opciones con BYO en segundo lugar y la dedicada al final", () => {

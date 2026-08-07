@@ -54,6 +54,18 @@ export const CHANNEL_COPY: Record<ChannelId, ChannelCopy> = {
   }
 };
 
+/**
+ * Mode an unconfigured channel starts on — the first option the tenant can
+ * actually complete. WhatsApp differs because its managed path is disabled
+ * until the Meta app exists; defaulting it to `managed` would open the card on
+ * an option that cannot be selected or submitted.
+ */
+export const DEFAULT_MODE: Record<ChannelId, "managed" | "byo"> = {
+  whatsapp: "byo",
+  voice: "managed",
+  email: "managed"
+};
+
 interface RequiredFields {
   public: string[];
   secret: string[];
@@ -95,6 +107,55 @@ export interface ChannelFormProps {
 
 export function secretMetaFor(meta: IntegrationSecretMeta[], field: string): IntegrationSecretMeta | null {
   return meta.find((s) => s.field === field) ?? null;
+}
+
+/**
+ * Reads back the number a Twilio channel was saved with.
+ *
+ * The form posts `phoneNumberE164`, but the backend never stores that key: it
+ * normalizes to `fromNumber` (WhatsApp, prefixed `whatsapp:`) or
+ * `outboundNumber` (voice). A form reading `phoneNumberE164` therefore comes
+ * back blank after a reload even though the channel saved correctly, which
+ * reads as data loss.
+ *
+ * `phoneNumberE164` is checked first because it is the draft key the user is
+ * currently typing into — the stored keys are the fallback for a row that was
+ * saved before the backend started persisting it, so existing tenants are
+ * repaired on read rather than needing a migration.
+ */
+export function savedNumberFrom(publicConfig: Record<string, string>): string {
+  const value = publicConfig.phoneNumberE164 ?? publicConfig.fromNumber ?? publicConfig.outboundNumber;
+  return (value ?? "").replace(/^whatsapp:/, "");
+}
+
+/**
+ * Current value of a required public field, for both the "is the form
+ * complete" check and the save payload. Only `phoneNumberE164` needs
+ * resolving — it is the one required key the backend stores under a
+ * different name.
+ */
+export function requiredValueFor(key: string, publicConfig: Record<string, string>): string {
+  return key === "phoneNumberE164" ? savedNumberFrom(publicConfig) : (publicConfig[key] ?? "");
+}
+
+/**
+ * Public config to send on save.
+ *
+ * A save replaces the whole public config server-side, so posting only the
+ * draft drops every required field the user did not retype — reload, correct
+ * just the account SID, and the phone number is wiped. Untouched required
+ * fields are re-sent from what is already stored.
+ */
+export function buildPublicPayload(
+  requiredPublic: string[],
+  publicDraft: Record<string, string>,
+  publicConfig: Record<string, string>
+): Record<string, string> {
+  const payload: Record<string, string> = { ...publicDraft };
+  for (const key of requiredPublic) {
+    if (payload[key] === undefined) payload[key] = requiredValueFor(key, publicConfig);
+  }
+  return payload;
 }
 
 /**

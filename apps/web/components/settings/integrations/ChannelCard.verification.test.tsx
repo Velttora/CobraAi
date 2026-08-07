@@ -55,7 +55,8 @@ beforeEach(() => {
 describe("ChannelCard — cambio de modo con integración verificada", () => {
   it("abre el ConfirmDialog y solo cambia de modo al confirmar", () => {
     admin();
-    render(<ChannelCard channel="whatsapp" integration={view({ mode: "byo", status: "verified" })} />);
+    // Voz, no WhatsApp: allí el modo gestionado sigue siendo seleccionable.
+    render(<ChannelCard channel="voice" integration={view({ mode: "byo", status: "verified" })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Gestionado por CobraAI" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();

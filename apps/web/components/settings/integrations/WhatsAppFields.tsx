@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChannelFormProps } from "./channel-config";
-import { secretMetaFor } from "./channel-config";
+import { savedNumberFrom, secretMetaFor } from "./channel-config";
 import { EmbeddedSignupButton } from "./EmbeddedSignupButton";
 import { TwilioByoFields } from "./TwilioByoFields";
 
@@ -39,13 +39,13 @@ export function WhatsAppFields({
         onAccountSidChange={(v) => setPublicField("accountSid", v)}
         onAuthTokenChange={(v) => setSecretField("authToken", v)}
         onPhoneNumberChange={(v) => setPublicField("phoneNumberE164", v)}
-        phoneNumber={publicConfig.phoneNumberE164 ?? ""}
+        phoneNumber={savedNumberFrom(publicConfig)}
       />
     );
   }
 
   const verified = integration?.status === "verified";
-  const displayNumber = (publicConfig.fromNumber ?? "").replace(/^whatsapp:/, "");
+  const displayNumber = savedNumberFrom(publicConfig);
 
   if (verified) {
     return (

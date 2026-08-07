@@ -70,9 +70,20 @@ describe("ChannelCard — non-admin", () => {
 describe("ChannelCard — ChannelModeToggle default", () => {
   it("un canal sin integración parte en modo managed", () => {
     admin();
-    render(<ChannelCard channel="whatsapp" integration={undefined} />);
+    render(<ChannelCard channel="voice" integration={undefined} />);
     const managedPill = screen.getByRole("button", { name: "Gestionado por CobraAI" });
     expect(managedPill.className).toContain("bg-[#D85A30]");
+  });
+
+  // WhatsApp es la excepción: su modo gestionado está bloqueado hasta que
+  // exista la app de Meta, así que abrir la tarjeta en managed dejaría al
+  // usuario en una opción que no puede ni elegir ni enviar.
+  it("WhatsApp sin integración parte en BYO, no en managed", () => {
+    admin();
+    render(<ChannelCard channel="whatsapp" integration={undefined} />);
+    const byoPill = screen.getByRole("button", { name: "Traer mis credenciales" });
+    expect(byoPill.className).toContain("bg-[#D85A30]");
+    expect(screen.getByRole("button", { name: "Gestionado por CobraAI" })).toBeDisabled();
   });
 
   it("no tiene badge 'recomendado' ni ícono de advertencia en BYO", () => {

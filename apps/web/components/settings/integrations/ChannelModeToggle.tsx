@@ -14,7 +14,7 @@ interface Pill {
   value: "managed" | "byo" | "managed-dedicated";
   label: string;
   helper: string;
-  /** Set when the option exists but cannot be chosen yet — see EMAIL_PILLS. */
+  /** Set when the option exists but cannot be chosen yet — see EMAIL_PILLS / WHATSAPP_PILLS. */
   unavailable?: string;
 }
 
@@ -59,6 +59,22 @@ const EMAIL_PILLS: Pill[] = [
 ];
 
 /**
+ * WhatsApp managed onboarding runs through Meta Embedded Signup, which needs a
+ * Meta app that does not exist yet — so the button could only ever reach its
+ * `sdk_unavailable` fallback. Offering it as a live choice sends the tenant
+ * down a path that dead-ends, so BYO leads and managed is shown disabled.
+ */
+const WHATSAPP_PILLS: Pill[] = [
+  PILLS[1]!,
+  {
+    value: "managed",
+    label: "Gestionado por CobraAI",
+    helper: "Conectamos tu número por ti mediante Meta Embedded Signup. Aún no está disponible.",
+    unavailable: "Requiere nuestra app de Meta aprobada para Embedded Signup. En preparación."
+  }
+];
+
+/**
  * `managed` vs `byo` (D-01). The selectable pills share the exact same geometry —
  * UI-SPEC is explicit that BYO must never read as a downgrade: managed gets
  * no "preferred choice" badge, and BYO gets no warning icon.
@@ -69,7 +85,7 @@ export function ChannelModeToggle({
   channel,
   disabled = false
 }: ChannelModeToggleProps): React.ReactElement {
-  const pills = channel === "email" ? EMAIL_PILLS : PILLS;
+  const pills = channel === "email" ? EMAIL_PILLS : channel === "whatsapp" ? WHATSAPP_PILLS : PILLS;
   const active = pills.find((p) => p.value === mode) ?? pills[0]!;
   const pending = pills.find((p) => p.unavailable);
 
@@ -90,7 +106,8 @@ export function ChannelModeToggle({
             disabled={disabled || Boolean(pill.unavailable)}
             key={pill.value}
             onClick={() => {
-              if (pill.value !== "managed-dedicated") onChange(pill.value);
+              if (pill.unavailable || pill.value === "managed-dedicated") return;
+              onChange(pill.value);
             }}
             title={pill.unavailable}
             type="button"
