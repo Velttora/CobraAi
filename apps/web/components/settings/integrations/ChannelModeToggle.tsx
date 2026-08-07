@@ -6,7 +6,7 @@ import type { ChannelId } from "./channel-config";
 export interface ChannelModeToggleProps {
   mode: "managed" | "byo";
   onChange: (mode: "managed" | "byo") => void;
-  channel?: ChannelId;
+  channel: ChannelId;
   disabled?: boolean;
 }
 
@@ -14,22 +14,15 @@ interface Pill {
   value: "managed" | "byo" | "managed-dedicated";
   label: string;
   helper: string;
-  /** Set when the option exists but cannot be chosen yet — see EMAIL_PILLS / WHATSAPP_PILLS. */
+  /** Set when the option exists but cannot be chosen yet — see the per-channel lists. */
   unavailable?: string;
 }
 
-const PILLS: Pill[] = [
-  {
-    value: "managed",
-    label: "Gestionado por CobraAI",
-    helper: "Creamos y administramos la cuenta del proveedor por ti. Solo autorizas la conexión."
-  },
-  {
-    value: "byo",
-    label: "Traer mis credenciales",
-    helper: "Usas tu propia cuenta del proveedor. Pegas tus credenciales y nosotros solo enviamos."
-  }
-];
+const BYO_PILL: Pill = {
+  value: "byo",
+  label: "Traer mis credenciales",
+  helper: "Usas tu propia cuenta del proveedor. Pegas tus credenciales y nosotros solo enviamos."
+};
 
 /**
  * Email exposes a third option that is deliberately visible-but-disabled.
@@ -48,7 +41,7 @@ const EMAIL_PILLS: Pill[] = [
     helper:
       "Autenticamos tu dominio para que el correo salga a tu nombre. El envío sale de la cuenta compartida de CobraAI."
   },
-  PILLS[1]!,
+  BYO_PILL,
   {
     value: "managed-dedicated",
     label: "Cuenta de envío dedicada",
@@ -65,7 +58,7 @@ const EMAIL_PILLS: Pill[] = [
  * down a path that dead-ends, so BYO leads and managed is shown disabled.
  */
 const WHATSAPP_PILLS: Pill[] = [
-  PILLS[1]!,
+  BYO_PILL,
   {
     value: "managed",
     label: "Gestionado por CobraAI",
@@ -73,6 +66,27 @@ const WHATSAPP_PILLS: Pill[] = [
     unavailable: "Requiere nuestra app de Meta aprobada para Embedded Signup. En preparación."
   }
 ];
+
+/**
+ * Voice managed would mean buying a number through Twilio on the tenant's
+ * behalf, which is not built. Until it is, BYO leads and the purchase option
+ * is shown disabled — same shape as WhatsApp.
+ */
+const VOICE_PILLS: Pill[] = [
+  BYO_PILL,
+  {
+    value: "managed",
+    label: "Comprar número en Twilio",
+    helper: "Compramos y configuramos un número saliente a tu nombre. Aún no está disponible.",
+    unavailable: "La compra automática de números todavía no está implementada."
+  }
+];
+
+const PILLS_BY_CHANNEL: Record<ChannelId, Pill[]> = {
+  whatsapp: WHATSAPP_PILLS,
+  voice: VOICE_PILLS,
+  email: EMAIL_PILLS
+};
 
 /**
  * `managed` vs `byo` (D-01). The selectable pills share the exact same geometry —
@@ -85,7 +99,7 @@ export function ChannelModeToggle({
   channel,
   disabled = false
 }: ChannelModeToggleProps): React.ReactElement {
-  const pills = channel === "email" ? EMAIL_PILLS : channel === "whatsapp" ? WHATSAPP_PILLS : PILLS;
+  const pills = PILLS_BY_CHANNEL[channel];
   const active = pills.find((p) => p.value === mode) ?? pills[0]!;
   const pending = pills.find((p) => p.unavailable);
 

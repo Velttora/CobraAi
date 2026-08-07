@@ -15,11 +15,13 @@ const saveMock = { mutateAsync: vi.fn(), isPending: false };
 const verifyMock = { mutateAsync: vi.fn(), isPending: false };
 const disconnectMock = { mutateAsync: vi.fn(), isPending: false };
 const embeddedSignupMock = { mutateAsync: vi.fn(), isPending: false };
+const recheckDnsMock = { mutateAsync: vi.fn(), isPending: false };
 vi.mock("../../../hooks/use-integrations", () => ({
   useSaveIntegration: () => saveMock,
   useVerifyIntegration: () => verifyMock,
   useDisconnectIntegration: () => disconnectMock,
-  useEmbeddedSignup: () => embeddedSignupMock
+  useEmbeddedSignup: () => embeddedSignupMock,
+  useRecheckDns: () => recheckDnsMock
 }));
 
 // WhatsApp's managed branch renders EmbeddedSignupButton, which calls
@@ -70,20 +72,23 @@ describe("ChannelCard — non-admin", () => {
 describe("ChannelCard — ChannelModeToggle default", () => {
   it("un canal sin integración parte en modo managed", () => {
     admin();
-    render(<ChannelCard channel="voice" integration={undefined} />);
+    render(<ChannelCard channel="email" integration={undefined} />);
     const managedPill = screen.getByRole("button", { name: "Gestionado por CobraAI" });
     expect(managedPill.className).toContain("bg-[#D85A30]");
   });
 
-  // WhatsApp es la excepción: su modo gestionado está bloqueado hasta que
-  // exista la app de Meta, así que abrir la tarjeta en managed dejaría al
+  // WhatsApp y voz tienen su modo gestionado bloqueado hasta que existan la app
+  // de Meta y la compra de números; abrir la tarjeta en managed dejaría al
   // usuario en una opción que no puede ni elegir ni enviar.
-  it("WhatsApp sin integración parte en BYO, no en managed", () => {
+  it.each([
+    ["whatsapp" as const, "Gestionado por CobraAI"],
+    ["voice" as const, "Comprar número en Twilio"]
+  ])("%s sin integración parte en BYO, no en managed", (channel, managedLabel) => {
     admin();
-    render(<ChannelCard channel="whatsapp" integration={undefined} />);
+    render(<ChannelCard channel={channel} integration={undefined} />);
     const byoPill = screen.getByRole("button", { name: "Traer mis credenciales" });
     expect(byoPill.className).toContain("bg-[#D85A30]");
-    expect(screen.getByRole("button", { name: "Gestionado por CobraAI" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: managedLabel })).toBeDisabled();
   });
 
   it("no tiene badge 'recomendado' ni ícono de advertencia en BYO", () => {

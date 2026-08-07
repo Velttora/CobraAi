@@ -56,13 +56,14 @@ export const CHANNEL_COPY: Record<ChannelId, ChannelCopy> = {
 
 /**
  * Mode an unconfigured channel starts on — the first option the tenant can
- * actually complete. WhatsApp differs because its managed path is disabled
- * until the Meta app exists; defaulting it to `managed` would open the card on
- * an option that cannot be selected or submitted.
+ * actually complete. Only email still offers a working managed path: WhatsApp
+ * needs the Meta app, and voice needs number purchasing, neither of which
+ * exists. Defaulting those to `managed` would open the card on an option that
+ * cannot be selected or submitted.
  */
 export const DEFAULT_MODE: Record<ChannelId, "managed" | "byo"> = {
   whatsapp: "byo",
-  voice: "managed",
+  voice: "byo",
   email: "managed"
 };
 

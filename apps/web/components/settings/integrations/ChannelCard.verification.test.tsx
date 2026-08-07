@@ -15,11 +15,13 @@ const saveMock = { mutateAsync: vi.fn(), isPending: false };
 const verifyMock = { mutateAsync: vi.fn(), isPending: false };
 const disconnectMock = { mutateAsync: vi.fn(), isPending: false };
 const embeddedSignupMock = { mutateAsync: vi.fn(), isPending: false };
+const recheckDnsMock = { mutateAsync: vi.fn(), isPending: false };
 vi.mock("../../../hooks/use-integrations", () => ({
   useSaveIntegration: () => saveMock,
   useVerifyIntegration: () => verifyMock,
   useDisconnectIntegration: () => disconnectMock,
-  useEmbeddedSignup: () => embeddedSignupMock
+  useEmbeddedSignup: () => embeddedSignupMock,
+  useRecheckDns: () => recheckDnsMock
 }));
 
 // A managed, unverified WhatsApp render reaches EmbeddedSignupButton, which
@@ -55,19 +57,20 @@ beforeEach(() => {
 describe("ChannelCard — cambio de modo con integración verificada", () => {
   it("abre el ConfirmDialog y solo cambia de modo al confirmar", () => {
     admin();
-    // Voz, no WhatsApp: allí el modo gestionado sigue siendo seleccionable.
-    render(<ChannelCard channel="voice" integration={view({ mode: "byo", status: "verified" })} />);
+    // Correo: es el único canal donde el modo gestionado sigue siendo
+    // seleccionable, así que es el único que puede ejercer esta confirmación.
+    render(<ChannelCard channel="email" integration={view({ mode: "byo", status: "verified" })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Gestionado por CobraAI" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("¿Cambiar el modo de conexión?")).toBeInTheDocument();
 
     // Still BYO — mode did not change until confirmed.
-    expect(screen.getByLabelText("Account SID de Twilio")).toBeInTheDocument();
+    expect(screen.getByLabelText("API key de SendGrid")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Cambiar modo" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Account SID de Twilio")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API key de SendGrid")).not.toBeInTheDocument();
   });
 });
 
