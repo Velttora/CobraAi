@@ -5,8 +5,14 @@ import {
   parseWebOrigins
 } from "./common/cors-origins";
 import { AppModule } from "./app.module";
+import { assertServiceRoutesConfigured } from "./proxy/service-routes";
 
 async function bootstrap(): Promise<void> {
+  // A missing or misspelled service URL is otherwise only discovered one
+  // request at a time, as a 503 on whichever routes use it — which reads like
+  // an intermittent outage rather than a configuration error.
+  assertServiceRoutesConfigured();
+
   const app = await NestFactory.create(AppModule, {
     rawBody: true,
     bufferLogs: true
