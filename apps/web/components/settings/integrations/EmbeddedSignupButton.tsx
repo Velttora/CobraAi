@@ -184,12 +184,17 @@ export function EmbeddedSignupButton({
     );
   }
 
+  // Two very different causes used to share one message. Telling a tenant to
+  // check their ad-blocker when the real reason is that no Meta app has been
+  // registered sends them chasing a problem they cannot fix — the same
+  // misdiagnosis as reporting a missing encryption key as a network failure.
   if (!envConfigured || state === "sdk_unavailable") {
     return (
       <div className="space-y-1 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/50">
         <p className="text-slate-700 dark:text-slate-300">
-          No pudimos cargar el conector de Meta. Revisa si una extensión del navegador lo está bloqueando, o
-          conecta tus credenciales manualmente.
+          {envConfigured
+            ? "No pudimos cargar el conector de Meta. Revisa si una extensión del navegador lo está bloqueando, o conecta tus credenciales manualmente."
+            : "La conexión asistida con Meta todavía no está habilitada en esta instalación. Conecta tus credenciales de Twilio directamente."}
         </p>
         <button className="text-sm text-[#D85A30] hover:underline" onClick={onSwitchToByo} type="button">
           Conectar con mis propias credenciales

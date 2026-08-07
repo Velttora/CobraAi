@@ -42,8 +42,32 @@ export class KafkaConsumerService implements OnModuleInit, OnModuleDestroy {
     });
     await this.consumer.connect();
 
+    // Subscribe per topic rather than letting one failure abort the loop. A
+    // topic that does not exist on the broker yet (UNKNOWN_TOPIC_OR_PARTITION)
+    // used to reject onModuleInit, fail the Nest boot and crash-loop the
+    // machine — so a single missing topic took down the whole workflow engine,
+    // including its HTTP surface, over one event flow that would not have
+    // worked anyway. Degrade instead: consume what exists, and say loudly what
+    // is missing so it gets provisioned.
+    const missing: string[] = [];
     for (const topic of CONSUMED_TOPICS) {
-      await this.consumer.subscribe({ topic, fromBeginning: false });
+      try {
+        await this.consumer.subscribe({ topic, fromBeginning: false });
+      } catch (err) {
+        missing.push(topic);
+        this.logger.error(
+          `No se pudo suscribir a "${topic}": ${(err as Error).message}. ` +
+            `Ese flujo de eventos queda inactivo; el resto del servicio sigue operando.`
+        );
+      }
+    }
+
+    if (missing.length === CONSUMED_TOPICS.length) {
+      this.logger.error(
+        `Ningún topic disponible en el broker (${missing.length}). El consumer queda inerte — ` +
+          `revisa el aprovisionamiento con "pnpm kafka:create-topics".`
+      );
+      return;
     }
 
     this.running = true;

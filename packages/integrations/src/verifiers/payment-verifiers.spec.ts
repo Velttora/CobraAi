@@ -74,31 +74,73 @@ describe("verifyCredentials — payment providers", () => {
   });
 
   describe("wompi", () => {
-    it("returns ok:true on a 200 from the payment_links list", async () => {
-      fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: [] }) });
+    // El verificador anterior llamaba GET /v1/payment_links?page[size]=1, que
+    // Wompi no documenta: su API de links es POST para crear y GET por id. Esa
+    // ruta respondía 401 para CUALQUIER llave privada, buena o mala, así que la
+    // verificación solo podía fallar. Se había comprobado contra una llave mala
+    // y nunca contra una buena.
+    it("verifica contra el endpoint documentado de merchants, con la llave pública", async () => {
+      fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: {} }) });
 
       const result = await verifyCredentials("wompi", {
-        publicConfig: {},
-        secrets: { privateKey: "prv_test_123" }
+        publicConfig: { publicKey: "pub_prod_abc123" },
+        secrets: { privateKey: "prv_prod_abc123" }
       });
 
       expect(result.ok).toBe(true);
+      expect(fetchMock.mock.calls[0][0]).toContain("/v1/merchants/pub_prod_abc123");
     });
 
-    it("returns ok:false with Wompi's message on an invalid token", async () => {
-      fetchMock.mockResolvedValue({
-        ok: false,
-        status: 401,
-        text: async () => JSON.stringify({ error: { reason: "El token proporcionado no tiene el formato correcto" } })
-      });
-
+    it("pide la llave pública, que es la que se puede comprobar", async () => {
       const result = await verifyCredentials("wompi", {
         publicConfig: {},
-        secrets: { privateKey: "bad" }
+        secrets: { privateKey: "prv_prod_abc123" }
       });
 
       expect(result.ok).toBe(false);
-      expect(result.message).toBe("El token proporcionado no tiene el formato correcto");
+      expect(result.message).toContain("llave pública");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("rechaza una llave privada que no parece de Wompi antes de llamar a nadie", async () => {
+      const result = await verifyCredentials("wompi", {
+        publicConfig: { publicKey: "pub_prod_abc123" },
+        secrets: { privateKey: "sk_live_algo_de_stripe" }
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain("prv_");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // Mezclar ambientes es el error más común y el más caro: parece que todo
+    // quedó bien configurado y los cobros nunca llegan a la cuenta real.
+    it("detecta llaves de ambientes distintos", async () => {
+      const result = await verifyCredentials("wompi", {
+        publicConfig: { publicKey: "pub_test_abc123" },
+        secrets: { privateKey: "prv_prod_abc123" }
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.message).toContain("ambientes distintos");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("devuelve el motivo de Wompi cuando rechaza la llave pública", async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 422,
+        text: async () =>
+          JSON.stringify({ error: { reason: "Formato inválido" } })
+      });
+
+      const result = await verifyCredentials("wompi", {
+        publicConfig: { publicKey: "pub_prod_malo" },
+        secrets: { privateKey: "prv_prod_abc123" }
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.message).toBe("Formato inválido");
     });
   });
 
