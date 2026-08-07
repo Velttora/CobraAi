@@ -207,7 +207,12 @@ export function ChannelCard({
         <ReadOnlyChannelSummary mode={savedMode} publicConfig={savedPublic} />
       ) : (
         <form className="mt-0" onSubmit={(e) => void handleSubmit(e)}>
-          <ChannelModeToggle disabled={disabled} mode={mode} onChange={requestModeChange} />
+          <ChannelModeToggle
+            channel={channel}
+            disabled={disabled}
+            mode={mode}
+            onChange={requestModeChange}
+          />
 
           {channel === "whatsapp" && (
             <WhatsAppFields {...formProps} onSwitchToByo={() => requestModeChange("byo")} />
