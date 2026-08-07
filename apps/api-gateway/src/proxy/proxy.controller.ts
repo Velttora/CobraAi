@@ -2,27 +2,8 @@ import { All, Controller, Req, Res } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import type { Response } from "express";
 import type { AuthenticatedRequest } from "../common/types/clerk-request";
+import { SERVICE_ROUTES } from "./service-routes";
 
-type ServiceRoute = {
-  prefix: string;
-  envKey: string;
-};
-
-const SERVICE_ROUTES: ServiceRoute[] = [
-  { prefix: "/api/v1/portfolios", envKey: "SERVICE_PORTFOLIOS_URL" },
-  { prefix: "/api/v1/debts", envKey: "SERVICE_PORTFOLIOS_URL" },
-  { prefix: "/api/v1/debtors", envKey: "SERVICE_PORTFOLIOS_URL" },
-  { prefix: "/api/v1/workflows", envKey: "SERVICE_WORKFLOWS_URL" },
-  { prefix: "/api/v1/contacts", envKey: "SERVICE_NOTIFICATIONS_URL" },
-  { prefix: "/api/v1/conversations", envKey: "SERVICE_NOTIFICATIONS_URL" },
-  { prefix: "/api/v1/negotiations", envKey: "SERVICE_NOTIFICATIONS_URL" },
-  { prefix: "/api/v1/templates", envKey: "SERVICE_NOTIFICATIONS_URL" },
-  { prefix: "/api/v1/payments", envKey: "SERVICE_PAYMENTS_URL" },
-  { prefix: "/api/v1/payment-links", envKey: "SERVICE_PAYMENTS_URL" },
-  { prefix: "/api/v1/audit-logs", envKey: "SERVICE_PORTFOLIOS_URL" },
-  // Settings > Integraciones (Phase 8, plan 08-14).
-  { prefix: "/api/v1/integrations", envKey: "SERVICE_NOTIFICATIONS_URL" }
-];
 
 @Controller()
 export class ProxyController {
